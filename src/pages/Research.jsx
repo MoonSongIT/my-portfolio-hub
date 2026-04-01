@@ -1,14 +1,66 @@
 import { useState } from 'react'
-import { Search, TrendingUp, BarChart3, FileText, Info } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { useNavigate } from 'react-router-dom'
+import { Search, ExternalLink } from 'lucide-react'
+import { useStockSearch, useStockPrice } from '../hooks/useStockData'
+import { useDebounce } from '../hooks/useDebounce'
+import { formatCurrency, formatPercent } from '../utils/formatters'
+import { Card, CardContent } from '../components/ui/card'
 import { Input } from '../components/ui/input'
+import LoadingSpinner from '../components/common/LoadingSpinner'
+
+// 검색 결과 카드 (실시간 가격 조회)
+function SearchResultCard({ item }) {
+  const navigate = useNavigate()
+  const { data: quote, isLoading } = useStockPrice(item.ticker, item.market)
+
+  return (
+    <Card
+      className="border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all"
+      onClick={() => navigate(`/research/${item.ticker}?market=${item.market}`)}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-2">
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">{item.name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{item.ticker} · {item.market}</p>
+          </div>
+          <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-300">
+            {item.type === 'ETF' ? 'ETF' : '주식'}
+          </span>
+        </div>
+        {isLoading ? (
+          <div className="h-8 flex items-center">
+            <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-6 w-24 rounded" />
+          </div>
+        ) : quote ? (
+          <div className="flex items-end justify-between">
+            <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              {formatCurrency(quote.currentPrice, quote.currency)}
+            </p>
+            <span className={`text-sm font-semibold ${quote.changePercent >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              {formatPercent(quote.changePercent)}
+            </span>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">시세 조회 실패</p>
+        )}
+        <div className="mt-2 flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
+          <ExternalLink className="w-3 h-3" />
+          상세보기
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function Research() {
   const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, 300)
+
+  const { data: searchResults, isLoading, isError } = useStockSearch(debouncedQuery)
 
   return (
     <div className="p-6 space-y-6">
-      {/* 페이지 헤더 */}
       <div>
         <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">종목 탐색</h2>
         <p className="text-gray-500 dark:text-gray-400 mt-1">신규 투자 후보를 찾고 분석하세요.</p>
@@ -25,68 +77,35 @@ export default function Research() {
         />
       </div>
 
-      {/* Phase 3 안내 */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-        <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-        <p className="text-sm text-blue-700 dark:text-blue-300">
-          Phase 3에서 실시간 주가 데이터가 연동됩니다. 현재는 UI 레이아웃만 표시됩니다.
-        </p>
-      </div>
+      {/* 검색 결과 */}
+      {isLoading && debouncedQuery && <LoadingSpinner />}
 
-      {/* 종목 상세 분석 템플릿 (빈 상태) */}
-      {query ? (
-        <div className="space-y-4">
-          {/* 기본 정보 카드 */}
-          <Card className="border border-gray-200 dark:border-gray-700">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                기본 정보
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {['현재가', '52주 고가', '52주 저가', '시가총액', '거래량', 'PER', 'PBR', 'ROE'].map((label) => (
-                  <div key={label} className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</p>
-                    <p className="text-lg font-semibold text-gray-400">---</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 가격 차트 영역 */}
-          <Card className="border border-gray-200 dark:border-gray-700">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5" />
-                가격 차트
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <p className="text-gray-400">차트 데이터가 연동되면 표시됩니다</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 재무 지표 */}
-          <Card className="border border-gray-200 dark:border-gray-700">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                재무 지표
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-32 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <p className="text-gray-400">재무 데이터가 연동되면 표시됩니다</p>
-              </div>
-            </CardContent>
-          </Card>
+      {isError && (
+        <div className="text-center py-8">
+          <p className="text-amber-600">검색 중 오류가 발생했습니다. 다시 시도해주세요.</p>
         </div>
-      ) : (
+      )}
+
+      {searchResults && searchResults.length > 0 && (
+        <div>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            검색 결과 ({searchResults.length}건)
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {searchResults.map((item) => (
+              <SearchResultCard key={item.ticker} item={item} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {searchResults && searchResults.length === 0 && debouncedQuery && (
+        <div className="text-center py-12">
+          <p className="text-gray-500 dark:text-gray-400">"{debouncedQuery}"에 대한 검색 결과가 없습니다</p>
+        </div>
+      )}
+
+      {!debouncedQuery && (
         <div className="text-center py-20">
           <Search className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
           <p className="text-lg text-gray-500 dark:text-gray-400">종목을 검색해주세요</p>

@@ -6,6 +6,7 @@ import Portfolio from './pages/Portfolio'
 import Research from './pages/Research'
 import Watchlist from './pages/Watchlist'
 import Reports from './pages/Reports'
+import StockDetail from './pages/StockDetail'
 import Login from './pages/Login'
 import Header from './components/common/Header'
 import Sidebar from './components/common/Sidebar'
@@ -45,6 +46,7 @@ function App() {
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/portfolio" element={<Portfolio />} />
                       <Route path="/research" element={<Research />} />
+                      <Route path="/research/:ticker" element={<StockDetail />} />
                       <Route path="/watchlist" element={<Watchlist />} />
                       <Route path="/reports" element={<Reports />} />
                       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Pencil, Trash2, ArrowUpDown } from 'lucide-react'
 import { usePortfolioStore } from '../../store/portfolioStore'
-import { EXCHANGE_RATE } from '../../data/samplePortfolio'
 import { calculateReturn, calcAllocation } from '../../utils/calculator'
 import { formatCurrency, formatPercent, formatNumber } from '../../utils/formatters'
 import {
@@ -22,7 +21,7 @@ import {
 } from '../ui/dialog'
 
 export default function PortfolioTable({ onEdit }) {
-  const { accounts, selectedAccountId, removeHolding, getSelectedHoldings } = usePortfolioStore()
+  const { accounts, selectedAccountId, exchangeRate, removeHolding, getSelectedHoldings } = usePortfolioStore()
   const [sortKey, setSortKey] = useState('returnRate')
   const [sortAsc, setSortAsc] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null) // { accountId, ticker, name }
@@ -30,7 +29,7 @@ export default function PortfolioTable({ onEdit }) {
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
 
   // 비중 계산
-  const allocations = useMemo(() => calcAllocation(holdings, EXCHANGE_RATE), [holdings])
+  const allocations = useMemo(() => calcAllocation(holdings, exchangeRate), [holdings, exchangeRate])
 
   // 정렬된 데이터
   const sortedHoldings = useMemo(() => {

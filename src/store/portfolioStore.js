@@ -1,20 +1,19 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { sampleAccounts, EXCHANGE_RATE } from '../data/samplePortfolio'
+import { sampleAccounts } from '../data/samplePortfolio'
 import { calculateTotalValue } from '../utils/calculator'
 
 export const usePortfolioStore = create(
   persist(
     immer((set, get) => ({
-      // 현재 로그인한 사용자의 계좌 목록
       accounts: [],
-      // 선택된 계좌 ID ('all' = 전체 합산)
       selectedAccountId: 'all',
+      exchangeRate: 1350,
+      lastUpdated: null,
 
       // ─── 계좌 관련 ───
 
-      // 사용자 계좌 로드 (로그인 시 호출)
       loadUserAccounts: (userId) => set((state) => {
         state.accounts = sampleAccounts
           .filter(acc => acc.userId === userId)
@@ -22,18 +21,16 @@ export const usePortfolioStore = create(
         state.selectedAccountId = 'all'
       }),
 
-      // 계좌 선택 ('all' | 계좌ID)
       selectAccount: (accountId) => set((state) => {
         state.selectedAccountId = accountId
       }),
 
-      // 계좌 초기화 (로그아웃 시 호출)
       clearAccounts: () => set((state) => {
         state.accounts = []
         state.selectedAccountId = 'all'
       }),
 
-      // ─── 종목 관련 (accountId 필수) ───
+      // ─── 종목 관련 ───
 
       addHolding: (accountId, stock) => set((state) => {
         const acc = state.accounts.find(a => a.id === accountId)
@@ -61,6 +58,22 @@ export const usePortfolioStore = create(
         if (holding) holding.currentPrice = price
       }),
 
+      // 전체 종목 가격 일괄 업데이트
+      updateAllPrices: (priceMap) => set((state) => {
+        state.accounts.forEach(acc => {
+          acc.holdings.forEach(h => {
+            if (priceMap[h.ticker] !== undefined) {
+              h.currentPrice = priceMap[h.ticker]
+            }
+          })
+        })
+        state.lastUpdated = new Date().toISOString()
+      }),
+
+      updateExchangeRate: (rate) => set((state) => {
+        state.exchangeRate = rate
+      }),
+
       updateCash: (accountId, krw, usd) => set((state) => {
         const acc = state.accounts.find(a => a.id === accountId)
         if (!acc) return
@@ -70,7 +83,6 @@ export const usePortfolioStore = create(
 
       // ─── 파생 데이터 getter ───
 
-      // 선택 범위의 holdings (전체 or 개별 계좌)
       getSelectedHoldings: () => {
         const { accounts, selectedAccountId } = get()
         if (selectedAccountId === 'all') {
@@ -82,7 +94,6 @@ export const usePortfolioStore = create(
         return acc ? acc.holdings.map(h => ({ ...h, accountId: acc.id, accountName: acc.accountName, accountType: acc.accountType })) : []
       },
 
-      // 선택 계좌의 현금 합산
       getSelectedCash: () => {
         const { accounts, selectedAccountId } = get()
         if (selectedAccountId === 'all') {
@@ -95,20 +106,21 @@ export const usePortfolioStore = create(
         return acc ? { krw: acc.cashKRW, usd: acc.cashUSD } : { krw: 0, usd: 0 }
       },
 
-      // 선택 범위의 총 평가액 (KRW)
       getTotalValue: () => {
-        const { getSelectedHoldings, getSelectedCash } = get()
+        const { getSelectedHoldings, getSelectedCash, exchangeRate } = get()
         const holdings = getSelectedHoldings()
         const { krw, usd } = getSelectedCash()
-        return calculateTotalValue(holdings, krw, usd, EXCHANGE_RATE)
+        return calculateTotalValue(holdings, krw, usd, exchangeRate)
       },
     })),
     {
       name: 'portfolio-storage',
-      version: 3,
+      version: 4,
       migrate: () => ({
         accounts: [],
         selectedAccountId: 'all',
+        exchangeRate: 1350,
+        lastUpdated: null,
       }),
     }
   )
