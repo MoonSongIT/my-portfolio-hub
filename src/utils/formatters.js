@@ -29,3 +29,8 @@ export const formatDate = (date) => {
     day: '2-digit',
   }).format(new Date(date))
 }
+
+// 숫자 포맷팅 (천 단위 구분)
+export const formatNumber = (value) => {
+  return new Intl.NumberFormat('ko-KR').format(value)
+}

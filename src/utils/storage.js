@@ -9,14 +9,26 @@ export const storage = {
   },
 
   set: (key, value) => {
-    localStorage.setItem(key, JSON.stringify(value))
+    try {
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch (e) {
+      console.error('LocalStorage set error:', e)
+    }
   },
 
   remove: (key) => {
-    localStorage.removeItem(key)
+    try {
+      localStorage.removeItem(key)
+    } catch (e) {
+      console.error('LocalStorage remove error:', e)
+    }
   },
 
   clear: () => {
-    localStorage.clear()
+    try {
+      localStorage.clear()
+    } catch (e) {
+      console.error('LocalStorage clear error:', e)
+    }
   },
 }
