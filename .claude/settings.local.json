@@ -8,7 +8,11 @@
       "Bash(\"C:/Users/dohay/ClaudeWork/my-portfolio-hub/.env\":*)",
       "Bash(\"C:/Users/dohay/ClaudeWork/my-portfolio-hub/.env.example\":*)",
       "Bash(\"C:/Users/dohay/ClaudeWork/my-portfolio-hub/.gitignore\":*)",
-      "Bash(\"C:/Users/dohay/ClaudeWork/my-portfolio-hub/src/utils/calculator.js\":*)"
+      "Bash(\"C:/Users/dohay/ClaudeWork/my-portfolio-hub/src/utils/calculator.js\":*)",
+      "Bash(npm run:*)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\dohay\\\\ClaudeWork\\\\my-portfolio-hub\\\\.git\\\\index.lock\" -Force)",
+      "Bash(gh pr:*)",
+      "Bash(gh api:*)"
     ]
   }
 }
