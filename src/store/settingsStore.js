@@ -6,19 +6,15 @@ export const useSettingsStore = create(
     theme: 'light',
     language: 'ko',
     currency: 'KRW',
-    marketStart: '09:00',
-    marketEnd: '15:30',
+    benchmarkIndex: 'KOSPI', // 'KOSPI' | 'SP500'
 
     setTheme: (theme) => set({ theme }),
-
+    toggleTheme: () => set((state) => ({
+      theme: state.theme === 'light' ? 'dark' : 'light',
+    })),
     setLanguage: (language) => set({ language }),
-
     setCurrency: (currency) => set({ currency }),
-
-    setMarketHours: (start, end) => set({
-      marketStart: start,
-      marketEnd: end,
-    }),
-  })),
-  { name: 'settings-storage' }
+    setBenchmark: (benchmarkIndex) => set({ benchmarkIndex }),
+  }),
+  { name: 'settings-storage' })
 )
