@@ -1,10 +1,12 @@
-import { Sun, Moon, Menu, LogOut } from 'lucide-react'
+import { useState } from 'react'
+import { Sun, Moon, Menu, LogOut, Bot } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useAuthStore } from '../../store/authStore'
 import { usePortfolioStore } from '../../store/portfolioStore'
 import { useWatchlistStore } from '../../store/watchlistStore'
 import { Button } from '../ui/button'
+import ChatPanel from '../chat/ChatPanel'
 
 export default function Header({ onToggleSidebar }) {
   const navigate = useNavigate()
@@ -12,6 +14,7 @@ export default function Header({ onToggleSidebar }) {
   const { currentUser, logout } = useAuthStore()
   const { clearAccounts } = usePortfolioStore()
   const { clearWatchlist } = useWatchlistStore()
+  const [chatOpen, setChatOpen] = useState(false)
 
   const handleLogout = () => {
     clearAccounts()
@@ -37,6 +40,17 @@ export default function Header({ onToggleSidebar }) {
       </div>
 
       <div className="flex items-center gap-2">
+        {/* AI 분석 버튼 */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setChatOpen(true)}
+          className="gap-1 text-blue-600 hover:text-blue-700 dark:text-blue-400"
+        >
+          <Bot className="w-4 h-4" />
+          <span className="hidden sm:inline">AI 분석</span>
+        </Button>
+
         {/* 다크모드 토글 */}
         <Button
           variant="ghost"
@@ -70,6 +84,8 @@ export default function Header({ onToggleSidebar }) {
           <LogOut className="w-4 h-4" />
         </Button>
       </div>
+      {/* AI 채팅 패널 */}
+      <ChatPanel open={chatOpen} onOpenChange={setChatOpen} />
     </header>
   )
 }

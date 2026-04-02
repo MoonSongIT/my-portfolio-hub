@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw, Bot } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
@@ -11,6 +11,7 @@ import AllocationPieChart from '../components/charts/AllocationPieChart'
 import AccountSelector from '../components/common/AccountSelector'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
+import ChatPanel from '../components/chat/ChatPanel'
 
 export default function Portfolio() {
   const queryClient = useQueryClient()
@@ -21,6 +22,7 @@ export default function Portfolio() {
   } = usePortfolioStore()
   const [modalOpen, setModalOpen] = useState(false)
   const [editStock, setEditStock] = useState(null)
+  const [chatOpen, setChatOpen] = useState(false)
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
   const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId])
@@ -105,6 +107,14 @@ export default function Portfolio() {
                 <RefreshCw className={`w-4 h-4 ${priceLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
+            <Button
+              variant="outline"
+              onClick={() => setChatOpen(true)}
+              className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950"
+            >
+              <Bot className="w-4 h-4" />
+              포트폴리오 분석
+            </Button>
             <Button onClick={() => setModalOpen(true)} className="gap-2">
               <Plus className="w-4 h-4" />
               종목 추가
@@ -168,6 +178,21 @@ export default function Portfolio() {
           <AllocationPieChart holdings={holdings} accounts={accounts} selectedAccountId={selectedAccountId} />
         </CardContent>
       </Card>
+
+      {/* AI 채팅 패널 */}
+      <ChatPanel
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+        context={{
+          holdings: holdings.map(h => ({
+            ticker: h.ticker, name: h.name, quantity: h.quantity,
+            avgPrice: h.avgPrice, currentPrice: h.currentPrice, market: h.market,
+          })),
+          exchangeRate,
+        }}
+        forceAgent="portfolio"
+        initialMessage="내 포트폴리오 현황을 분석해줘"
+      />
 
       {/* 종목 추가/수정 모달 */}
       <AddStockModal

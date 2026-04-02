@@ -12,7 +12,19 @@
       "Bash(npm run:*)",
       "Bash(Remove-Item \"C:\\\\Users\\\\dohay\\\\ClaudeWork\\\\my-portfolio-hub\\\\.git\\\\index.lock\" -Force)",
       "Bash(gh pr:*)",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "Bash(node -e \":*)",
+      "Bash(timeout 10 node -e \":*)",
+      "Bash(taskkill //F //PID 192380)",
+      "Bash(netstat -ano)",
+      "Bash(npm ls:*)",
+      "Bash(taskkill //F //PID 197628)",
+      "Bash(node --input-type=module -e \":*)",
+      "Bash(echo $NODE_OPTIONS)",
+      "Bash(kill %1)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(where npx.cmd)",
+      "Bash(where node.exe)"
     ]
   }
 }

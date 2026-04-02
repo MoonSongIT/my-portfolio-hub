@@ -318,8 +318,12 @@ KIS_ACCOUNT_NO=여기에_계좌번호_입력
 3. API 호출 코드는 `src/api/` 폴더에만 작성
 4. 에이전트 프롬프트 수정 시 `src/agents/` 폴더 파일 변경
 5. 작업 완료 후 `npm run dev`로 동작 확인 요청
+6. **터미널 명령어는 반드시 PowerShell 문법으로 작성** (사용자 환경: Windows PowerShell)
+   - `curl` 사용 금지 → `Invoke-RestMethod` 또는 `Invoke-WebRequest` 사용
+   - 멀티라인 명령어: 백틱(`` ` ``) 으로 줄 이어쓰기
+   - 명령어 제시 시 **[PowerShell]** 표시 필수
 
 ---
 
-*마지막 업데이트: 2026-04-01*
+*마지막 업데이트: 2026-04-02*
 *프로젝트 오너: dohay*

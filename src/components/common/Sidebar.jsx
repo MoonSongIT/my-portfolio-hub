@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Briefcase, Search, Eye, BarChart3, X } from 'lucide-react'
+import { Home, Briefcase, Search, Eye, BarChart3, Bot, X } from 'lucide-react'
 
 const menu = [
   { label: '대시보드', path: '/', icon: Home },
@@ -7,6 +7,7 @@ const menu = [
   { label: '종목 탐색', path: '/research', icon: Search },
   { label: '관심종목', path: '/watchlist', icon: Eye },
   { label: '리포트', path: '/reports', icon: BarChart3 },
+  { label: 'AI 분석', path: '/ai-chat', icon: Bot },
 ]
 
 export default function Sidebar({ open, onClose }) {

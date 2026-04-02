@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, LayoutGrid, List, ExternalLink, RefreshCw } from 'lucide-react'
+import { Plus, LayoutGrid, List, ExternalLink, RefreshCw, Bot } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { useBatchQuotes, useStockSearch } from '../hooks/useStockData'
@@ -15,6 +15,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../components/ui/dialog'
+import ChatPanel from '../components/chat/ChatPanel'
 
 // 가격 알림 라벨
 function AlertBadge({ changePercent }) {
@@ -31,6 +32,7 @@ export default function Watchlist() {
   const { watchlist, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const [viewMode, setViewMode] = useState('card')
   const [addOpen, setAddOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearch = useDebounce(searchQuery, 300)
 
@@ -98,6 +100,15 @@ export default function Watchlist() {
           <p className="text-gray-500 dark:text-gray-400 mt-1">관심 있는 종목을 모니터링하세요. (계좌 무관)</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setChatOpen(true)}
+            className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950"
+          >
+            <Bot className="w-4 h-4" />
+            오늘 브리핑
+          </Button>
           <button
             onClick={handleRefresh}
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -281,6 +292,18 @@ export default function Watchlist() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI 채팅 패널 */}
+      <ChatPanel
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+        context={{
+          watchlist: watchlist.map(w => ({ ticker: w.ticker, name: w.name, market: w.market })),
+          quotesMap: priceMap,
+        }}
+        forceAgent="alert"
+        initialMessage="오늘 관심종목 시장 브리핑해줘"
+      />
     </div>
   )
 }

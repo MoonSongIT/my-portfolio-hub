@@ -25,6 +25,10 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/yahoo-v10/, ''),
         headers: { 'User-Agent': 'Mozilla/5.0' },
       },
+      '/api/claude': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
     },
   },
   build: {

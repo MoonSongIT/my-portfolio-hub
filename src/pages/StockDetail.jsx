@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Star, StarOff, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Star, StarOff, ExternalLink, Bot } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart,
 } from 'recharts'
@@ -10,6 +10,7 @@ import { formatCurrency, formatPercent, formatNumber, formatLargeNumber, formatS
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import ChatPanel from '../components/chat/ChatPanel'
 
 const RANGE_OPTIONS = [
   { value: '5d', label: '1주' },
@@ -50,6 +51,7 @@ export default function StockDetail() {
   const navigate = useNavigate()
 
   const [range, setRange] = useState('6mo')
+  const [chatOpen, setChatOpen] = useState(false)
 
   const { data: quote, isLoading: quoteLoading, isError: quoteError } = useStockPrice(ticker, market)
   const { data: detail, isLoading: detailLoading } = useStockDetail(ticker, market)
@@ -128,15 +130,26 @@ export default function StockDetail() {
             <p className="text-sm text-gray-500 dark:text-gray-400">{ticker} · {market}</p>
           </div>
         </div>
-        <Button
-          variant={isWatched ? 'outline' : 'default'}
-          size="sm"
-          onClick={toggleWatchlist}
-          className="gap-1"
-        >
-          {isWatched ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
-          {isWatched ? '관심종목 제거' : '관심종목 추가'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setChatOpen(true)}
+            className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950"
+          >
+            <Bot className="w-4 h-4" />
+            AI 분석
+          </Button>
+          <Button
+            variant={isWatched ? 'outline' : 'default'}
+            size="sm"
+            onClick={toggleWatchlist}
+            className="gap-1"
+          >
+            {isWatched ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
+            {isWatched ? '관심종목 제거' : '관심종목 추가'}
+          </Button>
+        </div>
       </div>
 
       {/* 시세 정보 카드 */}
@@ -293,6 +306,29 @@ export default function StockDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI 채팅 패널 */}
+      <ChatPanel
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+        context={{
+          stockData: {
+            symbol: ticker,
+            name: quote?.name,
+            currentPrice: quote?.currentPrice,
+            changePercent: quote?.changePercent,
+            market,
+            marketCap: detail?.marketCap,
+            per: detail?.trailingPE,
+            pbr: detail?.priceToBook,
+            high52w: detail?.fiftyTwoWeekHigh,
+            low52w: detail?.fiftyTwoWeekLow,
+            volume: detail?.averageVolume,
+          },
+        }}
+        forceAgent="research"
+        initialMessage={`${quote?.name || ticker} 종합 분석해줘`}
+      />
     </div>
   )
 }
