@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { usePortfolioStore } from '../../store/portfolioStore'
 import { SECTORS, MARKETS } from '../../data/samplePortfolio'
+import { useStockSearch, useStockPrice } from '../../hooks/useStockData'
+import { useDebounce } from '../../hooks/useDebounce'
+import { formatCurrency } from '../../utils/formatters'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
@@ -27,7 +26,18 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
   const { accounts, addHolding, updateHolding } = usePortfolioStore()
   const [form, setForm] = useState(INITIAL_FORM)
   const [errors, setErrors] = useState({})
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showSearch, setShowSearch] = useState(false)
   const isEdit = !!editStock
+
+  const debouncedSearch = useDebounce(searchQuery, 300)
+  const { data: searchResults } = useStockSearch(debouncedSearch)
+
+  // 선택 종목 실시간 가격 조회
+  const { data: liveQuote } = useStockPrice(
+    !isEdit && form.ticker ? form.ticker : null,
+    form.market
+  )
 
   // 수정 모드: 기존 데이터 채우기
   useEffect(() => {
@@ -43,16 +53,41 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
         sector: editStock.sector,
         currency: editStock.currency,
       })
+      setShowSearch(false)
     } else {
       setForm({
         ...INITIAL_FORM,
         accountId: accounts[0]?.id ?? '',
       })
+      setShowSearch(true)
     }
     setErrors({})
+    setSearchQuery('')
   }, [editStock, open, accounts])
 
-  // 시장 변경 시 통화 자동 설정
+  // 실시간 가격 자동 반영
+  useEffect(() => {
+    if (liveQuote && !isEdit && form.ticker) {
+      setForm(prev => ({
+        ...prev,
+        currentPrice: String(liveQuote.currentPrice),
+      }))
+    }
+  }, [liveQuote, isEdit, form.ticker])
+
+  // 검색 결과 선택
+  const handleSelectSearch = (item) => {
+    setForm(prev => ({
+      ...prev,
+      ticker: item.ticker,
+      name: item.name,
+      market: item.market,
+      currency: item.market === 'KRX' ? 'KRW' : 'USD',
+    }))
+    setSearchQuery('')
+    setShowSearch(false)
+  }
+
   const handleMarketChange = (market) => {
     setForm(prev => ({
       ...prev,
@@ -70,7 +105,6 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
     if (!form.avgPrice || Number(form.avgPrice) <= 0) newErrors.avgPrice = '매수가를 입력하세요'
     if (!form.currentPrice || Number(form.currentPrice) <= 0) newErrors.currentPrice = '현재가를 입력하세요'
 
-    // 중복 체크 (추가 모드 — 동일 계좌 내)
     if (!isEdit && form.accountId) {
       const acc = accounts.find(a => a.id === form.accountId)
       if (acc?.holdings.some(h => h.ticker === form.ticker.trim().toUpperCase())) {
@@ -133,29 +167,63 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
             {errors.accountId && <p className="text-red-500 text-xs mt-1">{errors.accountId}</p>}
           </div>
 
-          {/* 티커 */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">티커</label>
-            <Input
-              value={form.ticker}
-              onChange={(e) => setForm(prev => ({ ...prev, ticker: e.target.value }))}
-              placeholder="예: 005930, AAPL"
-              disabled={isEdit}
-              className="mt-1"
-            />
-            {errors.ticker && <p className="text-red-500 text-xs mt-1">{errors.ticker}</p>}
-          </div>
+          {/* 종목 검색 (추가 모드에서만) */}
+          {!isEdit && (
+            <div className="relative">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">종목 검색</label>
+              <Input
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true) }}
+                onFocus={() => setShowSearch(true)}
+                placeholder="검색어 입력 (예: 삼성전자, AAPL)"
+                className="mt-1"
+              />
+              {/* 자동완성 드롭다운 */}
+              {showSearch && searchResults && searchResults.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                  {searchResults.map((item) => (
+                    <button
+                      key={item.ticker}
+                      onClick={() => handleSelectSearch(item)}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                    >
+                      <span className="font-medium">{item.name}</span>
+                      <span className="ml-2 text-gray-500">{item.ticker} · {item.market}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {showSearch && debouncedSearch && searchResults?.length === 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-3 py-2">
+                  <p className="text-sm text-gray-400">검색 결과가 없습니다</p>
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* 종목명 */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">종목명</label>
-            <Input
-              value={form.name}
-              onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="예: 삼성전자, Apple Inc."
-              className="mt-1"
-            />
-            {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+          {/* 티커 + 종목명 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">티커</label>
+              <Input
+                value={form.ticker}
+                onChange={(e) => setForm(prev => ({ ...prev, ticker: e.target.value }))}
+                placeholder="005930"
+                disabled={isEdit}
+                className="mt-1"
+              />
+              {errors.ticker && <p className="text-red-500 text-xs mt-1">{errors.ticker}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">종목명</label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="삼성전자"
+                className="mt-1"
+              />
+              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+            </div>
           </div>
 
           {/* 시장 + 섹터 */}
@@ -226,6 +294,11 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
                 step="any"
                 className="mt-1"
               />
+              {liveQuote && !isEdit && (
+                <p className="text-xs text-blue-600 mt-0.5">
+                  실시간: {formatCurrency(liveQuote.currentPrice, liveQuote.currency)}
+                </p>
+              )}
               {errors.currentPrice && <p className="text-red-500 text-xs mt-1">{errors.currentPrice}</p>}
             </div>
           </div>

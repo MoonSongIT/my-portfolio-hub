@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
-import { Plus } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { Plus, RefreshCw } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
-import { EXCHANGE_RATE } from '../data/samplePortfolio'
+import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
 import { calculateTotalValue, calculatePortfolioReturn, calculateTotalPnL } from '../utils/calculator'
 import { formatCurrency, formatPercent, formatCurrencyShort } from '../utils/formatters'
 import PortfolioTable from '../components/portfolio/PortfolioTable'
@@ -12,25 +13,56 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 
 export default function Portfolio() {
-  const { accounts, selectedAccountId, getSelectedHoldings, getSelectedCash } = usePortfolioStore()
+  const queryClient = useQueryClient()
+  const {
+    accounts, selectedAccountId, exchangeRate,
+    getSelectedHoldings, getSelectedCash,
+    updateAllPrices, updateExchangeRate, lastUpdated,
+  } = usePortfolioStore()
   const [modalOpen, setModalOpen] = useState(false)
   const [editStock, setEditStock] = useState(null)
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
   const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId])
 
-  // KPI 계산
+  // 고유 종목
+  const uniqueHoldings = useMemo(() => {
+    const seen = new Set()
+    return holdings.filter(h => {
+      if (seen.has(h.ticker)) return false
+      seen.add(h.ticker)
+      return true
+    })
+  }, [holdings])
+
+  const { data: batchData, isLoading: priceLoading } = useBatchQuotes(uniqueHoldings)
+  const { data: rateData } = useExchangeRate()
+
+  useEffect(() => {
+    if (batchData) {
+      const priceMap = {}
+      batchData.forEach(r => {
+        if (r.success && r.data) priceMap[r.ticker] = r.data.currentPrice
+      })
+      if (Object.keys(priceMap).length > 0) updateAllPrices(priceMap)
+    }
+  }, [batchData])
+
+  useEffect(() => {
+    if (rateData?.rate) updateExchangeRate(rateData.rate)
+  }, [rateData])
+
   const totalValue = useMemo(
-    () => calculateTotalValue(holdings, cashKRW, cashUSD, EXCHANGE_RATE),
-    [holdings, cashKRW, cashUSD]
+    () => calculateTotalValue(holdings, cashKRW, cashUSD, exchangeRate),
+    [holdings, cashKRW, cashUSD, exchangeRate]
   )
   const totalReturn = useMemo(
-    () => calculatePortfolioReturn(holdings, EXCHANGE_RATE),
-    [holdings]
+    () => calculatePortfolioReturn(holdings, exchangeRate),
+    [holdings, exchangeRate]
   )
   const totalPnL = useMemo(
-    () => calculateTotalPnL(holdings, EXCHANGE_RATE),
-    [holdings]
+    () => calculateTotalPnL(holdings, exchangeRate),
+    [holdings, exchangeRate]
   )
 
   const handleEdit = (stock) => {
@@ -43,6 +75,15 @@ export default function Portfolio() {
     setEditStock(null)
   }
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['batchQuotes'] })
+    queryClient.invalidateQueries({ queryKey: ['exchangeRate'] })
+  }
+
+  const lastUpdateTime = lastUpdated
+    ? new Date(lastUpdated).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : null
+
   return (
     <div className="p-6 space-y-6">
       {/* 페이지 헤더 */}
@@ -52,12 +93,24 @@ export default function Portfolio() {
             <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">포트폴리오</h2>
             <p className="text-gray-500 dark:text-gray-400 mt-1">보유 중인 주식과 ETF를 관리하세요.</p>
           </div>
-          <Button onClick={() => setModalOpen(true)} className="gap-2 self-start sm:self-auto">
-            <Plus className="w-4 h-4" />
-            종목 추가
-          </Button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              {lastUpdateTime && <span>업데이트 {lastUpdateTime}</span>}
+              {rateData && <span>USD/KRW {Math.round(rateData.rate).toLocaleString()}</span>}
+              <button
+                onClick={handleRefresh}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                title="새로고침"
+              >
+                <RefreshCw className={`w-4 h-4 ${priceLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+            <Button onClick={() => setModalOpen(true)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              종목 추가
+            </Button>
+          </div>
         </div>
-        {/* 계좌 선택 */}
         <AccountSelector />
       </div>
 
