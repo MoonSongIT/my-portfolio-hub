@@ -25,16 +25,6 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/yahoo-v10/, ''),
         headers: { 'User-Agent': 'Mozilla/5.0' },
       },
-      // 네이버 모바일 주식 검색 API (한글 종목 검색)
-      '/api/naver': {
-        target: 'https://m.stock.naver.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/naver/, ''),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
-          'Referer': 'https://m.stock.naver.com/',
-        },
-      },
     },
   },
   build: {

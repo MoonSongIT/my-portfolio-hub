@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { hasKorean, searchKrxStocks } from '../data/krxStocks'
 
 const yahooApi = axios.create({
   baseURL: '/api/yahoo',
@@ -9,12 +8,6 @@ const yahooApi = axios.create({
 const yahooV10Api = axios.create({
   baseURL: '/api/yahoo-v10',
   timeout: 10000,
-})
-
-// 네이버 금융 자동완성 API (한글 종목 검색)
-const naverApi = axios.create({
-  baseURL: '/api/naver',
-  timeout: 8000,
 })
 
 // 한국 종목 티커 → Yahoo Finance 티커 변환
@@ -48,8 +41,6 @@ export const fetchQuote = async (ticker, market = 'NASDAQ') => {
     exchangeName: meta.exchangeName,
     marketState: meta.marketState,
     timestamp: (meta.regularMarketTime || 0) * 1000,
-    fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
-    fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
   }
 }
 
@@ -97,65 +88,10 @@ export const fetchHistory = async (ticker, market = 'NASDAQ', range = '6mo', int
   })).filter(d => d.close != null)
 }
 
-// 네이버 모바일 주식 검색 API로 한국 종목 검색
-// GET /api/search/all?query=삼성&page=1&pageSize=10
-const fetchNaverSearch = async (query) => {
-  const { data } = await naverApi.get('/api/search/all', {
-    params: { query, page: 1, pageSize: 10 },
-  })
-
-  // 응답 구조: { stocks: [...] } 또는 { result: { d: [...] } }
-  const stocks = data?.stocks
-    || data?.result?.stocks
-    || data?.result?.d
-    || []
-
-  return stocks.map(s => {
-    // 필드명이 다를 수 있으므로 여러 키 시도
-    const code    = s.itemcode   || s.code       || s.cd || ''
-    const name    = s.itemname   || s.name       || s.nm || ''
-    const exType  = s.stockExchangeType?.code
-                 || s.market     || s.ex         || ''
-    const isEtf   = name.includes('ETF') || name.includes('KODEX') || name.includes('TIGER')
-    const isKosdaq = exType?.toUpperCase().includes('KOSDAQ')
-    return {
-      ticker: code,
-      name,
-      type: isEtf ? 'ETF' : 'EQUITY',
-      exchange: isKosdaq ? 'KOE' : 'KSC',
-      market: 'KRX',
-    }
-  }).filter(s => s.ticker).slice(0, 10)
-}
-
 // 4. 종목 검색
-// - 한글·숫자코드: 네이버 금융 API → 실패 시 로컬 KRX DB fallback
-// - 영문·티커: Yahoo Finance API
 export const fetchSearch = async (query) => {
   if (!query || query.length < 1) return []
 
-  const isKorean = hasKorean(query)
-  const isNumericCode = /^\d+$/.test(query.trim())
-
-  // 한글 또는 숫자 코드: 네이버 금융 API 우선 사용
-  if (isKorean || isNumericCode) {
-    try {
-      const results = await fetchNaverSearch(query)
-      if (results.length > 0) return results
-    } catch {
-      // 네이버 API 실패 시 로컬 KRX DB로 fallback
-    }
-    // fallback: 로컬 KRX DB
-    return searchKrxStocks(query).map(s => ({
-      ticker: s.ticker,
-      name: s.name,
-      type: s.type,
-      exchange: 'KSC',
-      market: 'KRX',
-    }))
-  }
-
-  // 영문·티커: Yahoo Finance API
   const { data } = await yahooApi.get('/v1/finance/search', {
     params: { q: query, quotesCount: 10, newsCount: 0, listsCount: 0 },
   })

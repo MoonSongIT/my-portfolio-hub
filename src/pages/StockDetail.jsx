@@ -165,9 +165,7 @@ export default function StockDetail() {
             <CardContent className="p-4 text-center">
               <p className="text-xs text-gray-500 mb-1">52주 고가</p>
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {(detail?.fiftyTwoWeekHigh ?? quote?.fiftyTwoWeekHigh) != null
-                  ? formatCurrency(detail?.fiftyTwoWeekHigh ?? quote.fiftyTwoWeekHigh, quote.currency)
-                  : '---'}
+                {detail?.fiftyTwoWeekHigh != null ? formatCurrency(detail.fiftyTwoWeekHigh, quote.currency) : '---'}
               </p>
             </CardContent>
           </Card>
@@ -175,9 +173,7 @@ export default function StockDetail() {
             <CardContent className="p-4 text-center">
               <p className="text-xs text-gray-500 mb-1">52주 저가</p>
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {(detail?.fiftyTwoWeekLow ?? quote?.fiftyTwoWeekLow) != null
-                  ? formatCurrency(detail?.fiftyTwoWeekLow ?? quote.fiftyTwoWeekLow, quote.currency)
-                  : '---'}
+                {detail?.fiftyTwoWeekLow != null ? formatCurrency(detail.fiftyTwoWeekLow, quote.currency) : '---'}
               </p>
             </CardContent>
           </Card>
@@ -243,14 +239,14 @@ export default function StockDetail() {
           <CardContent>
             {detailLoading ? (
               <LoadingSpinner />
-            ) : (
+            ) : detail ? (
               <div className="space-y-3">
-                <MetricRow label="섹터" value={detail?.sector ?? 'N/A'} />
-                <MetricRow label="업종" value={detail?.industry ?? 'N/A'} />
-                <MetricRow label="시가총액" value={fmtCap(detail?.marketCap)} />
-                <MetricRow label="거래량 (평균)" value={detail?.averageVolume != null ? formatNumber(detail.averageVolume) : 'N/A'} />
-                <MetricRow label="배당수익률" value={detail?.dividendYield != null ? fmtPct(detail.dividendYield) : 'N/A'} />
-                {detail?.website && (
+                <MetricRow label="섹터" value={detail.sector} />
+                <MetricRow label="업종" value={detail.industry} />
+                <MetricRow label="시가총액" value={fmtCap(detail.marketCap)} />
+                <MetricRow label="거래량 (평균)" value={detail.averageVolume != null ? formatNumber(detail.averageVolume) : 'N/A'} />
+                <MetricRow label="배당수익률" value={detail.dividendYield != null ? fmtPct(detail.dividendYield) : 'N/A'} />
+                {detail.website && (
                   <div className="pt-2">
                     <a href={detail.website} target="_blank" rel="noopener noreferrer"
                       className="text-sm text-blue-600 hover:underline flex items-center gap-1">
@@ -258,12 +254,14 @@ export default function StockDetail() {
                     </a>
                   </div>
                 )}
-                {detail?.description && (
+                {detail.description && (
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 line-clamp-5">
                     {detail.description}
                   </p>
                 )}
               </div>
+            ) : (
+              <p className="text-gray-400 text-sm">기업 정보를 불러오지 못했습니다</p>
             )}
           </CardContent>
         </Card>
@@ -276,19 +274,21 @@ export default function StockDetail() {
           <CardContent>
             {detailLoading ? (
               <LoadingSpinner />
-            ) : (
+            ) : detail ? (
               <div className="space-y-1">
-                <MetricRow label="PER (주가수익비율)" value={fmtVal(detail?.trailingPE)} hint="낮을수록 저평가" />
-                <MetricRow label="Forward PER" value={fmtVal(detail?.forwardPE)} hint="예상 실적 기준" />
-                <MetricRow label="PBR (주가순자산비율)" value={fmtVal(detail?.priceToBook)} hint="1 미만이면 저평가" />
-                <MetricRow label="ROE (자기자본이익률)" value={fmtPct(detail?.returnOnEquity)} hint="높을수록 효율적" />
-                <MetricRow label="부채비율" value={fmtVal(detail?.debtToEquity, '%')} />
-                <MetricRow label="매출 성장률" value={fmtPct(detail?.revenueGrowth)} />
-                <MetricRow label="이익 성장률" value={fmtPct(detail?.earningsGrowth)} />
-                <MetricRow label="유동비율" value={fmtVal(detail?.currentRatio)} hint="1 이상 안전" />
-                <MetricRow label="애널리스트 추천" value={detail?.recommendationKey?.toUpperCase()} hint={detail?.numberOfAnalystOpinions ? `${detail.numberOfAnalystOpinions}명` : null} />
-                <MetricRow label="목표가" value={detail?.targetMeanPrice != null ? formatCurrency(detail.targetMeanPrice, quote?.currency) : 'N/A'} />
+                <MetricRow label="PER (주가수익비율)" value={fmtVal(detail.trailingPE)} hint="낮을수록 저평가" />
+                <MetricRow label="Forward PER" value={fmtVal(detail.forwardPE)} hint="예상 실적 기준" />
+                <MetricRow label="PBR (주가순자산비율)" value={fmtVal(detail.priceToBook)} hint="1 미만이면 저평가" />
+                <MetricRow label="ROE (자기자본이익률)" value={fmtPct(detail.returnOnEquity)} hint="높을수록 효율적" />
+                <MetricRow label="부채비율" value={fmtVal(detail.debtToEquity, '%')} />
+                <MetricRow label="매출 성장률" value={fmtPct(detail.revenueGrowth)} />
+                <MetricRow label="이익 성장률" value={fmtPct(detail.earningsGrowth)} />
+                <MetricRow label="유동비율" value={fmtVal(detail.currentRatio)} hint="1 이상 안전" />
+                <MetricRow label="애널리스트 추천" value={detail.recommendationKey?.toUpperCase()} hint={detail.numberOfAnalystOpinions ? `${detail.numberOfAnalystOpinions}명` : null} />
+                <MetricRow label="목표가" value={detail.targetMeanPrice != null ? formatCurrency(detail.targetMeanPrice, quote?.currency) : 'N/A'} />
               </div>
+            ) : (
+              <p className="text-gray-400 text-sm">재무 데이터를 불러오지 못했습니다</p>
             )}
           </CardContent>
         </Card>
