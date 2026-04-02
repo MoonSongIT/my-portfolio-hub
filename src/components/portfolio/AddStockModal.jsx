@@ -193,6 +193,11 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
                   ))}
                 </div>
               )}
+              {showSearch && debouncedSearch && searchResults?.length === 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-3 py-2">
+                  <p className="text-sm text-gray-400">검색 결과가 없습니다</p>
+                </div>
+              )}
             </div>
           )}
 
