@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { isKorean, searchKoreanStocks } from '../utils/koreanStocks'
 
 const yahooApi = axios.create({
   baseURL: '/api/yahoo',
@@ -11,7 +12,9 @@ const yahooV10Api = axios.create({
 })
 
 // 한국 종목 티커 → Yahoo Finance 티커 변환
+// 이미 '.KS'/'.KQ' 등 접미사가 있으면 그대로 사용 (중복 방지)
 export const toYahooTicker = (ticker, market) => {
+  if (ticker.includes('.')) return ticker
   if (market === 'KRX') return `${ticker}.KS`
   return ticker
 }
@@ -88,10 +91,22 @@ export const fetchHistory = async (ticker, market = 'NASDAQ', range = '6mo', int
   })).filter(d => d.close != null)
 }
 
-// 4. 종목 검색
+// 4. 종목 검색 (한글 → 로컬 DB, 영문 → Yahoo Finance)
 export const fetchSearch = async (query) => {
   if (!query || query.length < 1) return []
 
+  // 한글 포함 시 로컬 한국 종목 DB에서 검색
+  if (isKorean(query)) {
+    return searchKoreanStocks(query).map(s => ({
+      ticker: s.ticker.replace('.KS', '').replace('.KQ', ''),
+      name: s.name,
+      type: s.type,
+      exchange: s.exchange,
+      market: s.market,
+    }))
+  }
+
+  // 영문/티커 검색은 Yahoo Finance API 사용
   const { data } = await yahooApi.get('/v1/finance/search', {
     params: { q: query, quotesCount: 10, newsCount: 0, listsCount: 0 },
   })

@@ -131,3 +131,44 @@ export const calcDailyChange = (prevValue, currentValue) => ({
   amount: currentValue - prevValue,
   rate: prevValue > 0 ? ((currentValue - prevValue) / prevValue) * 100 : 0,
 })
+
+// ─── 매매 일지 헬퍼 ───
+
+// 기간 코드 → 시작 날짜 문자열 (YYYY-MM-DD)
+export const getStartDate = (dateRange) => {
+  const now = new Date()
+  switch (dateRange) {
+    case '1d': {
+      return now.toISOString().split('T')[0]
+    }
+    case '1w': {
+      now.setDate(now.getDate() - 7)
+      return now.toISOString().split('T')[0]
+    }
+    case '1m': {
+      now.setMonth(now.getMonth() - 1)
+      return now.toISOString().split('T')[0]
+    }
+    case '1y': {
+      now.setFullYear(now.getFullYear() - 1)
+      return now.toISOString().split('T')[0]
+    }
+    default:
+      return '2000-01-01'
+  }
+}
+
+// 기간 필터링
+export const filterByDateRange = (entries, dateRange) => {
+  const start = getStartDate(dateRange)
+  const today = new Date().toISOString().split('T')[0]
+  return entries.filter(e => e.date >= start && e.date <= today)
+}
+
+// 승률 계산 (pnl 기록된 항목 기준)
+export const calculateWinRate = (entries) => {
+  const pnlEntries = entries.filter(e => e.pnl != null)
+  if (pnlEntries.length === 0) return null
+  const wins = pnlEntries.filter(e => e.pnl > 0).length
+  return Math.round((wins / pnlEntries.length) * 100)
+}

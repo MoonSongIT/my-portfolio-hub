@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { db, addTransaction, updateTransaction, deleteTransaction, getAllTransactions } from '../utils/db'
 
 // ─── 심리 카테고리 상수 ───
 
@@ -32,29 +33,51 @@ export const useJournalStore = create(
 
       // ─── 액션 ───
 
-      addEntry: (entry) => set((state) => {
-        state.entries.push({
+      addEntry: (entry) => {
+        const newEntry = {
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           fee: 0,
           pnl: null,
           memo: '',
           ...entry,
+        }
+        set((state) => { state.entries.push(newEntry) })
+        // IndexedDB에도 저장 (비동기, 실패해도 로컬스토리지 백업 유지)
+        addTransaction(newEntry).catch(err => console.warn('[DB] addTransaction failed:', err))
+      },
+
+      updateEntry: (id, updates) => {
+        set((state) => {
+          const entry = state.entries.find(e => e.id === id)
+          if (entry) Object.assign(entry, updates)
         })
-      }),
+        updateTransaction(id, updates).catch(err => console.warn('[DB] updateTransaction failed:', err))
+      },
 
-      updateEntry: (id, updates) => set((state) => {
-        const entry = state.entries.find(e => e.id === id)
-        if (entry) Object.assign(entry, updates)
-      }),
+      deleteEntry: (id) => {
+        set((state) => {
+          state.entries = state.entries.filter(e => e.id !== id)
+        })
+        deleteTransaction(id).catch(err => console.warn('[DB] deleteTransaction failed:', err))
+      },
 
-      deleteEntry: (id) => set((state) => {
-        state.entries = state.entries.filter(e => e.id !== id)
-      }),
+      clearEntries: () => {
+        set((state) => { state.entries = [] })
+        db.transactions.clear().catch(err => console.warn('[DB] clear failed:', err))
+      },
 
-      clearEntries: () => set((state) => {
-        state.entries = []
-      }),
+      // 앱 시작 시 IndexedDB에서 데이터 로드 (localStorage보다 대용량 지원)
+      loadFromDB: async () => {
+        try {
+          const dbEntries = await getAllTransactions()
+          if (dbEntries.length > 0) {
+            set((state) => { state.entries = dbEntries })
+          }
+        } catch (err) {
+          console.warn('[DB] loadFromDB failed, using localStorage:', err)
+        }
+      },
 
       // ─── 포트폴리오 파생 셀렉터 ───
 

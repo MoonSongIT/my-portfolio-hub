@@ -1,12 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, LayoutGrid, List, ExternalLink, RefreshCw, Bot } from 'lucide-react'
+import { Plus, LayoutGrid, List, ExternalLink, RefreshCw, Bot, Bell } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { useBatchQuotes, useStockSearch } from '../hooks/useStockData'
 import { useDebounce } from '../hooks/useDebounce'
 import { formatCurrency, formatPercent } from '../utils/formatters'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import {
@@ -16,8 +16,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../components/ui/dialog'
 import ChatPanel from '../components/chat/ChatPanel'
+import AlarmDialog from '../components/watchlist/AlarmDialog'
 
-// 가격 알림 라벨
+// 등락률 긴급/주의 배지
 function AlertBadge({ changePercent }) {
   if (changePercent == null) return null
   const abs = Math.abs(changePercent)
@@ -26,13 +27,26 @@ function AlertBadge({ changePercent }) {
   return null
 }
 
+// 종목에 알림이 설정되어 있는지 표시
+function AlarmIndicator({ ticker, alerts }) {
+  const count = alerts.filter(a => a.ticker === ticker).length
+  if (count === 0) return null
+  return (
+    <span className="ml-1 inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+      <Bell className="w-2.5 h-2.5" />
+      {count}
+    </span>
+  )
+}
+
 export default function Watchlist() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { watchlist, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
+  const { watchlist, alerts, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const [viewMode, setViewMode] = useState('card')
   const [addOpen, setAddOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  const [alarmStock, setAlarmStock] = useState(null) // AlarmDialog 대상 종목
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearch = useDebounce(searchQuery, 300)
 
@@ -48,9 +62,7 @@ export default function Watchlist() {
     const map = {}
     if (batchData) {
       batchData.forEach(r => {
-        if (r.success && r.data) {
-          map[r.ticker] = r.data
-        }
+        if (r.success && r.data) map[r.ticker] = r.data
       })
     }
     return map
@@ -89,6 +101,11 @@ export default function Watchlist() {
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['batchQuotes'] })
+  }
+
+  // 알림 설정 다이얼로그 열기
+  const handleOpenAlarm = (stock) => {
+    setAlarmStock(stock)
   }
 
   return (
@@ -153,16 +170,24 @@ export default function Watchlist() {
               <div key={stock.ticker}
                 className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow"
               >
+                {/* 삭제 버튼 */}
                 <button
                   onClick={() => removeFromWatchlist(stock.ticker)}
                   className="absolute top-2 right-2 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 text-xs"
                 >
                   삭제
                 </button>
+
+                {/* 종목명 + 알림 표시 */}
                 <div className="mb-2">
-                  <p className="font-semibold text-gray-900 dark:text-gray-100">{stock.name}</p>
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 flex items-center">
+                    {stock.name}
+                    <AlarmIndicator ticker={stock.ticker} alerts={alerts} />
+                  </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">{stock.ticker} · {stock.market}</p>
                 </div>
+
+                {/* 현재가 + 등락률 */}
                 <div className="flex items-end justify-between">
                   <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
                     {stock.currentPrice > 0 ? formatCurrency(stock.currentPrice, stock.currency) : '---'}
@@ -174,12 +199,23 @@ export default function Watchlist() {
                     <AlertBadge changePercent={stock.change} />
                   </div>
                 </div>
-                <button
-                  onClick={() => navigate(`/research/${stock.ticker}?market=${stock.market}`)}
-                  className="mt-2 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 hover:underline"
-                >
-                  <ExternalLink className="w-3 h-3" /> 상세보기
-                </button>
+
+                {/* 하단 액션 버튼 */}
+                <div className="mt-3 flex items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <button
+                    onClick={() => navigate(`/research/${stock.ticker}?market=${stock.market}`)}
+                    className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" /> 상세보기
+                  </button>
+                  <button
+                    onClick={() => handleOpenAlarm(stock)}
+                    className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400"
+                  >
+                    <Bell className="w-3 h-3" />
+                    알림 설정
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -194,13 +230,18 @@ export default function Watchlist() {
                   <TableHead>티커</TableHead>
                   <TableHead className="text-right">현재가</TableHead>
                   <TableHead className="text-right">변동률</TableHead>
-                  <TableHead className="text-center w-24">관리</TableHead>
+                  <TableHead className="text-center w-32">관리</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {enrichedWatchlist.map((stock) => (
                   <TableRow key={stock.ticker}>
-                    <TableCell className="font-medium">{stock.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <span className="flex items-center">
+                        {stock.name}
+                        <AlarmIndicator ticker={stock.ticker} alerts={alerts} />
+                      </span>
+                    </TableCell>
                     <TableCell className="text-gray-500">{stock.ticker}</TableCell>
                     <TableCell className="text-right">
                       {stock.currentPrice > 0 ? formatCurrency(stock.currentPrice, stock.currency) : '---'}
@@ -218,6 +259,12 @@ export default function Watchlist() {
                           상세
                         </button>
                         <button
+                          onClick={() => handleOpenAlarm(stock)}
+                          className="text-gray-400 hover:text-blue-600 text-xs flex items-center gap-0.5"
+                        >
+                          <Bell className="w-3 h-3" /> 알림
+                        </button>
+                        <button
                           onClick={() => removeFromWatchlist(stock.ticker)}
                           className="text-gray-400 hover:text-red-500 text-xs"
                         >
@@ -233,17 +280,28 @@ export default function Watchlist() {
         </Card>
       )}
 
-      {/* 알림 조건 설정 */}
-      <Card className="border border-gray-200 dark:border-gray-700 opacity-60">
-        <CardHeader>
-          <CardTitle className="text-lg">알림 조건 설정</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
-            가격 알림, 거래량 급증 알림 등은 Phase 4에서 구현됩니다.
-          </p>
-        </CardContent>
-      </Card>
+      {/* 등록된 전체 알림 요약 */}
+      {alerts.length > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Bell className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              활성 가격 알림 ({alerts.length}개)
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {alerts.map((alert) => (
+              <span
+                key={alert.id}
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 text-gray-700 dark:text-gray-300"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${alert.condition === 'above' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                {alert.name} {alert.condition === 'above' ? '↑' : '↓'} {formatCurrency(alert.targetPrice, alert.currency)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 종목 추가 모달 (검색 연동) */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -261,7 +319,6 @@ export default function Watchlist() {
                 className="mt-1"
               />
             </div>
-            {/* 검색 결과 */}
             {searchResults && searchResults.length > 0 && (
               <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
                 {searchResults.map((item) => {
@@ -293,7 +350,14 @@ export default function Watchlist() {
         </DialogContent>
       </Dialog>
 
-      {/* AI 채팅 패널 */}
+      {/* 가격 알림 설정 다이얼로그 */}
+      <AlarmDialog
+        open={!!alarmStock}
+        onOpenChange={(v) => { if (!v) setAlarmStock(null) }}
+        stock={alarmStock}
+      />
+
+      {/* AI 채팅 패널 (오늘 브리핑) */}
       <ChatPanel
         open={chatOpen}
         onOpenChange={setChatOpen}

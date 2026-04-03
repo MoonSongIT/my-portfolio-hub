@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Star, StarOff, ExternalLink, Bot } from 'lucide-react'
+import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart,
 } from 'recharts'
 import { useStockPrice, useStockDetail, useStockHistory } from '../hooks/useStockData'
+import CandlestickChart from '../components/charts/CandlestickChart'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { formatCurrency, formatPercent, formatNumber, formatLargeNumber, formatShortDate } from '../utils/formatters'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
@@ -51,6 +52,7 @@ export default function StockDetail() {
   const navigate = useNavigate()
 
   const [range, setRange] = useState('6mo')
+  const [chartType, setChartType] = useState('line') // 'line' | 'candle'
   const [chatOpen, setChatOpen] = useState(false)
 
   const { data: quote, isLoading: quoteLoading, isError: quoteError } = useStockPrice(ticker, market)
@@ -196,22 +198,52 @@ export default function StockDetail() {
       {/* 가격 차트 */}
       <Card className="border border-gray-200 dark:border-gray-700">
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="text-lg">가격 차트</CardTitle>
-            <div className="flex gap-1">
-              {RANGE_OPTIONS.map(opt => (
+            <div className="flex items-center gap-2">
+              {/* 차트 유형 토글 */}
+              <div className="flex rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden">
                 <button
-                  key={opt.value}
-                  onClick={() => setRange(opt.value)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                    range === opt.value
+                  onClick={() => setChartType('line')}
+                  title="라인 차트"
+                  className={`px-3 py-1.5 text-xs flex items-center gap-1 transition-colors ${
+                    chartType === 'line'
                       ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                   }`}
                 >
-                  {opt.label}
+                  <LineIcon className="w-3.5 h-3.5" />
+                  라인
                 </button>
-              ))}
+                <button
+                  onClick={() => setChartType('candle')}
+                  title="캔들스틱 차트"
+                  className={`px-3 py-1.5 text-xs flex items-center gap-1 transition-colors border-l border-gray-200 dark:border-gray-600 ${
+                    chartType === 'candle'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <CandleIcon className="w-3.5 h-3.5" />
+                  캔들
+                </button>
+              </div>
+              {/* 기간 선택 */}
+              <div className="flex gap-1">
+                {RANGE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setRange(opt.value)}
+                    className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                      range === opt.value
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -219,23 +251,27 @@ export default function StockDetail() {
           {historyLoading ? (
             <LoadingSpinner />
           ) : history?.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={history} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="date" tickFormatter={formatShortDate} tick={{ fontSize: 11 }} stroke="#9ca3af" />
-                <YAxis domain={chartDomain} tick={{ fontSize: 11 }} stroke="#9ca3af" width={70}
-                  tickFormatter={(v) => v.toLocaleString()} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="close" stroke="#3B82F6" strokeWidth={2}
-                  fill="url(#colorClose)" dot={false} activeDot={{ r: 4 }} />
-              </AreaChart>
-            </ResponsiveContainer>
+            chartType === 'candle' ? (
+              <CandlestickChart data={history} ticker={ticker} timeframe={range} />
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={history} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" tickFormatter={formatShortDate} tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                  <YAxis domain={chartDomain} tick={{ fontSize: 11 }} stroke="#9ca3af" width={70}
+                    tickFormatter={(v) => v.toLocaleString()} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area type="monotone" dataKey="close" stroke="#3B82F6" strokeWidth={2}
+                    fill="url(#colorClose)" dot={false} activeDot={{ r: 4 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )
           ) : (
             <div className="h-64 flex items-center justify-center text-gray-400">차트 데이터가 없습니다</div>
           )}
