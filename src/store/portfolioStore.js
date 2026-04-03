@@ -2,71 +2,115 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { sampleAccounts } from '../data/samplePortfolio'
+import { useAccountStore } from './accountStore'
+import { useJournalStore } from './journalStore'
 import { calculateTotalValue } from '../utils/calculator'
 
 export const usePortfolioStore = create(
   persist(
     immer((set, get) => ({
-      accounts: [],
+      accounts: [],              // 하위 호환용 (accountStore에서 동기화)
       selectedAccountId: 'all',
       exchangeRate: 1350,
       lastUpdated: null,
+      prices: {},                // { ticker: currentPrice } — 실시간 시세
 
       // ─── 계좌 관련 ───
 
-      loadUserAccounts: (userId) => set((state) => {
-        state.accounts = sampleAccounts
-          .filter(acc => acc.userId === userId)
-          .map(acc => ({ ...acc, holdings: [...acc.holdings] }))
-        state.selectedAccountId = 'all'
-      }),
+      /**
+       * 로그인 시 계좌 + 거래내역 초기화
+       * - accountStore에 계좌 생성
+       * - journalStore에 샘플 보유종목을 매수 거래로 시드
+       * - portfolioStore.accounts에 동기화 (하위 호환)
+       */
+      loadUserAccounts: (userId) => {
+        const accountStore = useAccountStore.getState()
+        const journalStore = useJournalStore.getState()
+
+        // 이미 계좌가 있으면 accounts만 동기화하고 종료
+        if (accountStore.accounts.length > 0) {
+          set((state) => {
+            state.accounts = accountStore.accounts.map(a => ({
+              id: a.id,
+              userId,
+              accountType: a.type,
+              accountName: a.name,
+              broker: a.broker,
+              cashKRW: 0,
+              cashUSD: 0,
+            }))
+            state.selectedAccountId = 'all'
+          })
+          return
+        }
+
+        // 샘플 데이터에서 계좌 + 거래내역 시드
+        const userAccounts = sampleAccounts.filter(a => a.userId === userId)
+        const initialPrices = {}
+
+        userAccounts.forEach(sa => {
+          // accountStore에 계좌 추가
+          accountStore.addAccount({
+            id: sa.id,
+            name: sa.accountName,
+            broker: sa.broker,
+            type: sa.accountType,
+            currency: 'KRW',
+          })
+
+          // 샘플 보유종목 → 매수 거래로 변환
+          sa.holdings.forEach(h => {
+            journalStore.addEntry({
+              accountId: sa.id,
+              date: '2026-01-01',
+              ticker: h.ticker,
+              name: h.name,
+              market: h.market,
+              action: 'buy',
+              price: h.avgPrice,
+              quantity: h.quantity,
+              fee: 0,
+              psychology: '미래가치 투자',
+              memo: '초기 보유 (샘플)',
+            })
+            initialPrices[h.ticker] = h.currentPrice
+          })
+        })
+
+        // portfolioStore 상태 업데이트
+        set((state) => {
+          state.accounts = userAccounts.map(sa => ({
+            id: sa.id,
+            userId: sa.userId,
+            accountType: sa.accountType,
+            accountName: sa.accountName,
+            broker: sa.broker,
+            cashKRW: sa.cashKRW,
+            cashUSD: sa.cashUSD,
+          }))
+          state.selectedAccountId = 'all'
+          Object.assign(state.prices, initialPrices)
+        })
+      },
 
       selectAccount: (accountId) => set((state) => {
         state.selectedAccountId = accountId
       }),
 
-      clearAccounts: () => set((state) => {
-        state.accounts = []
-        state.selectedAccountId = 'all'
-      }),
-
-      // ─── 종목 관련 ───
-
-      addHolding: (accountId, stock) => set((state) => {
-        const acc = state.accounts.find(a => a.id === accountId)
-        if (!acc) return
-        const exists = acc.holdings.find(h => h.ticker === stock.ticker)
-        if (!exists) acc.holdings.push(stock)
-      }),
-
-      updateHolding: (accountId, ticker, updates) => set((state) => {
-        const acc = state.accounts.find(a => a.id === accountId)
-        if (!acc) return
-        const holding = acc.holdings.find(h => h.ticker === ticker)
-        if (holding) Object.assign(holding, updates)
-      }),
-
-      removeHolding: (accountId, ticker) => set((state) => {
-        const acc = state.accounts.find(a => a.id === accountId)
-        if (acc) acc.holdings = acc.holdings.filter(h => h.ticker !== ticker)
-      }),
-
-      updatePrice: (accountId, ticker, price) => set((state) => {
-        const acc = state.accounts.find(a => a.id === accountId)
-        if (!acc) return
-        const holding = acc.holdings.find(h => h.ticker === ticker)
-        if (holding) holding.currentPrice = price
-      }),
-
-      // 전체 종목 가격 일괄 업데이트
-      updateAllPrices: (priceMap) => set((state) => {
-        state.accounts.forEach(acc => {
-          acc.holdings.forEach(h => {
-            if (priceMap[h.ticker] !== undefined) {
-              h.currentPrice = priceMap[h.ticker]
-            }
-          })
+      clearAccounts: () => {
+        useAccountStore.getState().clearAccounts()
+        useJournalStore.getState().clearEntries()
+        set((state) => {
+          state.accounts = []
+          state.selectedAccountId = 'all'
+          state.prices = {}
         })
+      },
+
+      // ─── 시세 관련 ───
+
+      updateAllPrices: (priceMap) => set((state) => {
+        Object.assign(state.prices, priceMap)
         state.lastUpdated = new Date().toISOString()
       }),
 
@@ -74,36 +118,47 @@ export const usePortfolioStore = create(
         state.exchangeRate = rate
       }),
 
-      updateCash: (accountId, krw, usd) => set((state) => {
-        const acc = state.accounts.find(a => a.id === accountId)
-        if (!acc) return
-        if (krw !== undefined) acc.cashKRW = krw
-        if (usd !== undefined) acc.cashUSD = usd
-      }),
+      // ─── 파생 데이터 (journalStore 기반) ───
 
-      // ─── 파생 데이터 getter ───
-
+      /**
+       * 선택된 계좌의 보유 종목 반환
+       * journalStore.computeHoldings 결과 + 실시간 시세 병합
+       */
       getSelectedHoldings: () => {
-        const { accounts, selectedAccountId } = get()
+        const { selectedAccountId, prices, accounts } = get()
+        const journalState = useJournalStore.getState()
+
+        let holdings
         if (selectedAccountId === 'all') {
-          return accounts.flatMap(acc =>
-            acc.holdings.map(h => ({ ...h, accountId: acc.id, accountName: acc.accountName, accountType: acc.accountType }))
-          )
+          holdings = journalState.computeAllHoldings()
+        } else {
+          holdings = journalState.computeHoldings(selectedAccountId)
         }
-        const acc = accounts.find(a => a.id === selectedAccountId)
-        return acc ? acc.holdings.map(h => ({ ...h, accountId: acc.id, accountName: acc.accountName, accountType: acc.accountType })) : []
+
+        return holdings.map(h => {
+          const account = accounts.find(a => a.id === h.accountId)
+          const currency = h.market === 'KRX' ? 'KRW' : 'USD'
+          return {
+            ...h,
+            currentPrice: prices[h.ticker] ?? h.avgPrice,
+            currency,
+            sector: 'ETC',
+            accountName: account?.accountName || '기본 계좌',
+            accountType: account?.accountType || 'GENERAL',
+          }
+        })
       },
 
       getSelectedCash: () => {
         const { accounts, selectedAccountId } = get()
         if (selectedAccountId === 'all') {
           return accounts.reduce(
-            (sum, acc) => ({ krw: sum.krw + acc.cashKRW, usd: sum.usd + acc.cashUSD }),
+            (sum, acc) => ({ krw: sum.krw + (acc.cashKRW || 0), usd: sum.usd + (acc.cashUSD || 0) }),
             { krw: 0, usd: 0 }
           )
         }
         const acc = accounts.find(a => a.id === selectedAccountId)
-        return acc ? { krw: acc.cashKRW, usd: acc.cashUSD } : { krw: 0, usd: 0 }
+        return acc ? { krw: acc.cashKRW || 0, usd: acc.cashUSD || 0 } : { krw: 0, usd: 0 }
       },
 
       getTotalValue: () => {
@@ -112,15 +167,24 @@ export const usePortfolioStore = create(
         const { krw, usd } = getSelectedCash()
         return calculateTotalValue(holdings, krw, usd, exchangeRate)
       },
+
+      // ─── 비권장 (deprecated) ───
+
+      addHolding: () => { console.warn('[portfolioStore] addHolding deprecated: use journalStore.addEntry()') },
+      updateHolding: () => { console.warn('[portfolioStore] updateHolding deprecated') },
+      removeHolding: () => { console.warn('[portfolioStore] removeHolding deprecated') },
+      updatePrice: () => { console.warn('[portfolioStore] updatePrice deprecated: use updateAllPrices()') },
+      updateCash: () => { console.warn('[portfolioStore] updateCash deprecated') },
     })),
     {
       name: 'portfolio-storage',
-      version: 4,
+      version: 5,
       migrate: () => ({
         accounts: [],
         selectedAccountId: 'all',
         exchangeRate: 1350,
         lastUpdated: null,
+        prices: {},
       }),
     }
   )

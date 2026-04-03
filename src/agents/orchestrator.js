@@ -6,6 +6,10 @@
  */
 export const ROUTING_RULES = [
   {
+    agent: 'journal',
+    keywords: ['내 패턴', '매매 패턴', '실수', '심리', '일지', '매매 스타일', '반복', '잘한', '아쉬운', '코치', '내 거래', '내 매매', '추격매매', '공포에'],
+  },
+  {
     agent: 'research',
     keywords: ['분석', '어때', '살까', '팔까', '전망', '목표가', '적정가', '재무', 'PER', 'PBR', 'ROE', '실적', '매출', '영업이익', '차트', '기술적', '이평선', 'RSI', 'MACD'],
   },
@@ -49,6 +53,11 @@ export function routeToAgent(userMessage) {
  * 에이전트 라벨 정보 (UI 배지 표시용)
  */
 export const AGENT_LABELS = {
+  journal: {
+    label: '매매 코치',
+    icon: '📔',
+    color: 'orange',
+  },
   research: {
     label: '종목 리서치',
     icon: '🔍',
@@ -78,6 +87,7 @@ export const ORCHESTRATOR_PROMPT = `당신은 개인 주식·ETF 자산관리 We
 사용자 요청을 분석하여 아래 4개 전문 에이전트 중 적절한 에이전트로 라우팅합니다.
 
 라우팅 규칙:
+- "내 패턴", "실수", "심리", "일지", "매매 스타일" → JournalCoachAgent (최우선)
 - 종목명/티커 + "분석", "어때", "살까" → ResearchAgent
 - "포트폴리오", "내 종목", "수익률", "현황" → PortfolioAgent
 - "관심종목", "오늘 시장", "알림", "체크" → AlertAgent

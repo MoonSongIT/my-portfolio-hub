@@ -107,17 +107,18 @@ export const calcCountryAllocation = (allocations) => {
 // 계좌별 자산 비중 계산
 export const calcAccountAllocation = (accounts, exchangeRate = EXCHANGE_RATE) => {
   return accounts.map(acc => {
-    const holdingsValue = acc.holdings.reduce((sum, h) => {
-      const value = h.quantity * h.currentPrice
+    const holdings = acc.holdings || []
+    const holdingsValue = holdings.reduce((sum, h) => {
+      const value = h.quantity * (h.currentPrice || 0)
       return sum + (h.currency === 'USD' ? value * exchangeRate : value)
     }, 0)
     const cashValue = (acc.cashKRW || 0) + (acc.cashUSD || 0) * exchangeRate
     return {
-      name: acc.accountName,
+      name: acc.accountName || acc.name,
       accountId: acc.id,
-      accountType: acc.accountType,
+      accountType: acc.accountType || acc.type,
       value: holdingsValue + cashValue,
-      weight: 0, // 아래에서 계산
+      weight: 0,
     }
   }).map((acc, _i, arr) => {
     const total = arr.reduce((sum, a) => sum + a.value, 0)

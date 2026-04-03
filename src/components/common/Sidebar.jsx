@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Briefcase, Search, Eye, BarChart3, Bot, X } from 'lucide-react'
+import { Home, Briefcase, BookOpen, Search, Eye, BarChart3, Bot, X } from 'lucide-react'
 
 const menu = [
   { label: '대시보드', path: '/', icon: Home },
   { label: '포트폴리오', path: '/portfolio', icon: Briefcase },
+  { label: '매매 일지', path: '/journal', icon: BookOpen },
   { label: '종목 탐색', path: '/research', icon: Search },
   { label: '관심종목', path: '/watchlist', icon: Eye },
   { label: '리포트', path: '/reports', icon: BarChart3 },

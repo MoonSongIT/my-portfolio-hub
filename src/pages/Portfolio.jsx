@@ -1,12 +1,11 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, RefreshCw, Bot } from 'lucide-react'
+import { RefreshCw, Bot } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
 import { calculateTotalValue, calculatePortfolioReturn, calculateTotalPnL } from '../utils/calculator'
 import { formatCurrency, formatPercent, formatCurrencyShort } from '../utils/formatters'
 import PortfolioTable from '../components/portfolio/PortfolioTable'
-import AddStockModal from '../components/portfolio/AddStockModal'
 import AllocationPieChart from '../components/charts/AllocationPieChart'
 import AccountSelector from '../components/common/AccountSelector'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
@@ -20,8 +19,6 @@ export default function Portfolio() {
     getSelectedHoldings, getSelectedCash,
     updateAllPrices, updateExchangeRate, lastUpdated,
   } = usePortfolioStore()
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editStock, setEditStock] = useState(null)
   const [chatOpen, setChatOpen] = useState(false)
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
@@ -67,16 +64,6 @@ export default function Portfolio() {
     [holdings, exchangeRate]
   )
 
-  const handleEdit = (stock) => {
-    setEditStock(stock)
-    setModalOpen(true)
-  }
-
-  const handleCloseModal = () => {
-    setModalOpen(false)
-    setEditStock(null)
-  }
-
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['batchQuotes'] })
     queryClient.invalidateQueries({ queryKey: ['exchangeRate'] })
@@ -114,10 +101,6 @@ export default function Portfolio() {
             >
               <Bot className="w-4 h-4" />
               포트폴리오 분석
-            </Button>
-            <Button onClick={() => setModalOpen(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              종목 추가
             </Button>
           </div>
         </div>
@@ -165,7 +148,7 @@ export default function Portfolio() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <PortfolioTable onEdit={handleEdit} />
+          <PortfolioTable />
         </CardContent>
       </Card>
 
@@ -194,12 +177,6 @@ export default function Portfolio() {
         initialMessage="내 포트폴리오 현황을 분석해줘"
       />
 
-      {/* 종목 추가/수정 모달 */}
-      <AddStockModal
-        open={modalOpen}
-        onClose={handleCloseModal}
-        editStock={editStock}
-      />
     </div>
   )
 }

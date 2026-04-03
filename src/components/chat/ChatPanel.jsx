@@ -47,15 +47,18 @@ export default function ChatPanel({
     clearHistory,
   } = useChatStore()
 
-  // 최신 메시지로 자동 스크롤
+  // 최신 메시지로 자동 스크롤 (메시지 변경 시)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
-  // 패널 열릴 때 입력창 포커스
+  // 패널 열릴 때: 맨 아래로 즉시 스크롤 + 입력창 포커스
   useEffect(() => {
     if (open) {
-      setTimeout(() => inputRef.current?.focus(), 300)
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+        inputRef.current?.focus()
+      }, 300)
     }
   }, [open])
 
@@ -131,7 +134,7 @@ export default function ChatPanel({
       <SheetContent
         showCloseButton={false}
         style={{ width: `${panelWidth}px`, maxWidth: `${MAX_WIDTH}px` }}
-        className="flex h-full flex-col p-0 sm:max-w-none"
+        className={`flex h-full flex-col p-0 sm:max-w-none ${isLoading ? 'cursor-wait' : ''}`}
       >
         {/* 드래그 리사이즈 핸들 (왼쪽 가장자리) */}
         <div

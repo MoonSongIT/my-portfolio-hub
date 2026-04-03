@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Pencil, Trash2, ArrowUpDown } from 'lucide-react'
+import { ArrowUpDown } from 'lucide-react'
 import { usePortfolioStore } from '../../store/portfolioStore'
 import { calculateReturn, calcAllocation } from '../../utils/calculator'
 import { formatCurrency, formatPercent, formatNumber } from '../../utils/formatters'
@@ -11,20 +11,11 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table'
-import { Button } from '../ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '../ui/dialog'
 
-export default function PortfolioTable({ onEdit }) {
-  const { accounts, selectedAccountId, exchangeRate, removeHolding, getSelectedHoldings } = usePortfolioStore()
+export default function PortfolioTable() {
+  const { accounts, selectedAccountId, exchangeRate, getSelectedHoldings } = usePortfolioStore()
   const [sortKey, setSortKey] = useState('returnRate')
   const [sortAsc, setSortAsc] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState(null) // { accountId, ticker, name }
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
 
@@ -62,13 +53,6 @@ export default function PortfolioTable({ onEdit }) {
     }
   }
 
-  const handleDelete = () => {
-    if (deleteTarget) {
-      removeHolding(deleteTarget.accountId, deleteTarget.ticker)
-      setDeleteTarget(null)
-    }
-  }
-
   const SortButton = ({ label, sortField }) => (
     <button
       onClick={() => handleSort(sortField)}
@@ -97,7 +81,6 @@ export default function PortfolioTable({ onEdit }) {
               <TableHead className="text-right"><SortButton label="평가금액" sortField="evalValue" /></TableHead>
               <TableHead className="text-right"><SortButton label="수익률" sortField="returnRate" /></TableHead>
               <TableHead className="text-right"><SortButton label="비중" sortField="weight" /></TableHead>
-              <TableHead className="text-center w-20">관리</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -123,30 +106,13 @@ export default function PortfolioTable({ onEdit }) {
                 <TableCell className="text-right text-gray-600 dark:text-gray-400">
                   {h.weight.toFixed(1)}%
                 </TableCell>
-                <TableCell className="text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <button
-                      onClick={() => onEdit(h)}
-                      className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-blue-600 transition-colors"
-                      title="수정"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteTarget({ accountId: h.accountId, ticker: h.ticker, name: h.name })}
-                      className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-red-600 transition-colors"
-                      title="삭제"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </TableCell>
               </TableRow>
             ))}
             {sortedHoldings.length === 0 && (
               <TableRow>
-                <TableCell colSpan={showAccountColumn ? 10 : 9} className="text-center py-8 text-gray-500">
-                  보유 종목이 없습니다. 종목을 추가해보세요.
+                <TableCell colSpan={showAccountColumn ? 9 : 8} className="text-center py-10 text-gray-500">
+                  <p className="text-base mb-1">보유 종목이 없습니다.</p>
+                  <p className="text-sm text-gray-400">거래 일지에 매수 기록을 추가하면 자동으로 표시됩니다.</p>
                 </TableCell>
               </TableRow>
             )}
@@ -154,22 +120,6 @@ export default function PortfolioTable({ onEdit }) {
         </Table>
       </div>
 
-      {/* 삭제 확인 Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>종목 삭제</DialogTitle>
-          </DialogHeader>
-          <p className="text-gray-600 dark:text-gray-400 py-2">
-            <span className="font-semibold text-gray-900 dark:text-gray-100">{deleteTarget?.name}</span>
-            ({deleteTarget?.ticker})을(를) 정말 삭제하시겠습니까?
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>취소</Button>
-            <Button variant="destructive" onClick={handleDelete}>삭제</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

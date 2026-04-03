@@ -1,5 +1,5 @@
 import { usePortfolioStore } from '../../store/portfolioStore'
-import { ACCOUNT_TYPES } from '../../data/samplePortfolio'
+import { useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
 
 // 계좌 유형 코드 → 배지 색상
 const TYPE_COLOR = {
@@ -7,10 +7,16 @@ const TYPE_COLOR = {
   IRP: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
   ISA: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
   PENSION: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  ETC: 'bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400',
 }
 
+/**
+ * 기존 버튼 그룹형 계좌 선택기 (하위 호환)
+ * 새 코드에서는 src/components/account/AccountSelector.jsx (Select 드롭다운형) 사용 권장
+ */
 export default function AccountSelector() {
-  const { accounts, selectedAccountId, selectAccount } = usePortfolioStore()
+  const { selectedAccountId, selectAccount } = usePortfolioStore()
+  const accounts = useAccountStore((state) => state.accounts)
 
   if (accounts.length === 0) return null
 
@@ -43,13 +49,13 @@ export default function AccountSelector() {
                 : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
             }`}
           >
-            {acc.accountName}
+            {acc.name}
             <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
               selectedAccountId === acc.id
                 ? 'bg-white/20 text-white'
-                : TYPE_COLOR[acc.accountType]
+                : TYPE_COLOR[acc.type] || TYPE_COLOR.ETC
             }`}>
-              {typeName(acc.accountType)}
+              {typeName(acc.type)}
             </span>
           </button>
         ))}

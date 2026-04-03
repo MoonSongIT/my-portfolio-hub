@@ -5,6 +5,7 @@ import { RESEARCH_PROMPT, buildResearchContext } from '../agents/researchAgent.j
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
 import { REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
+import { buildJournalCoachPrompt, buildJournalContext } from '../agents/journalCoachAgent.js'
 
 /**
  * axios 인스턴스 — 프록시 서버 경유
@@ -19,21 +20,13 @@ const claudeApi = axios.create({
  * 에이전트별 시스템 프롬프트 맵
  */
 const AGENT_PROMPTS = {
+  journal: null, // buildJournalCoachPrompt()로 동적 생성
   research: RESEARCH_PROMPT,
   portfolio: PORTFOLIO_PROMPT,
   alert: ALERT_PROMPT,
   report: REPORT_PROMPT,
 }
 
-/**
- * 에이전트별 컨텍스트 빌더 맵
- */
-const CONTEXT_BUILDERS = {
-  research: buildResearchContext,
-  portfolio: buildPortfolioContext,
-  alert: buildAlertContext,
-  report: buildReportContext,
-}
 
 /**
  * 에러 메시지 생성 (HTTP 상태코드별)
@@ -72,31 +65,34 @@ function getErrorMessage(error) {
 export async function sendToAgent(userMessage, context = {}, forceAgent = null) {
   // 에이전트 라우팅
   const agentType = forceAgent || routeToAgent(userMessage)
-  const systemPrompt = AGENT_PROMPTS[agentType] || AGENT_PROMPTS.portfolio
   const agentInfo = AGENT_LABELS[agentType] || AGENT_LABELS.portfolio
 
-  // 컨텍스트 빌드
+  // 컨텍스트 빌드 & 시스템 프롬프트 결정
   let contextText = ''
-  const builder = CONTEXT_BUILDERS[agentType]
-  if (builder) {
-    try {
-      switch (agentType) {
-        case 'research':
-          contextText = builder(context.stockData || null)
-          break
-        case 'portfolio':
-          contextText = builder(context.holdings || [], context.exchangeRate || null)
-          break
-        case 'alert':
-          contextText = builder(context.watchlist || [], context.quotesMap || null)
-          break
-        case 'report':
-          contextText = builder(context.holdings || [], context.period || 'monthly', context.exchangeRate || null)
-          break
+  let systemPrompt = AGENT_PROMPTS[agentType] || AGENT_PROMPTS.portfolio
+
+  try {
+    switch (agentType) {
+      case 'journal': {
+        const journalContext = buildJournalContext(context.journalEntries || [], context.accounts || [])
+        systemPrompt = buildJournalCoachPrompt(journalContext)
+        break
       }
-    } catch {
-      contextText = ''
+      case 'research':
+        contextText = buildResearchContext(context.stockData || null)
+        break
+      case 'portfolio':
+        contextText = buildPortfolioContext(context.holdings || [], context.exchangeRate || null)
+        break
+      case 'alert':
+        contextText = buildAlertContext(context.watchlist || [], context.quotesMap || null)
+        break
+      case 'report':
+        contextText = buildReportContext(context.holdings || [], context.period || 'monthly', context.exchangeRate || null)
+        break
     }
+  } catch {
+    contextText = ''
   }
 
   // 사용자 메시지 + 컨텍스트 결합
