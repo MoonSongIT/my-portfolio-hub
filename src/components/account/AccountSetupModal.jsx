@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
+import { useAccountStore, useUserAccounts, ACCOUNT_TYPES } from '../../store/accountStore'
 import {
   Dialog,
   DialogContent,
@@ -50,7 +50,8 @@ const EMPTY_FORM = {
  * @param {function} onClose  - 모달 닫기 콜백
  */
 export default function AccountSetupModal({ open, onClose }) {
-  const { accounts, addAccount, updateAccount, deleteAccount } = useAccountStore()
+  const { addAccount, updateAccount, deleteAccount } = useAccountStore()
+  const accounts = useUserAccounts()
 
   // mode: 'list' | 'add' | 'edit'
   const [mode, setMode] = useState('list')

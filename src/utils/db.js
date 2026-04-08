@@ -27,6 +27,34 @@ db.version(3).stores({
   dailyPnl:      '&[ticker+date+accountId], ticker, date, accountId',
 })
 
+// v4: 테스트 데이터 초기화
+db.version(4).stores({
+  transactions: '&id, ticker, action, date, accountId',
+  priceHistory:  '++id, ticker, date',
+  reports:       '++id, type, createdAt',
+  cashFlows:     '&id, accountId, type, date, isAuto',
+  dailyPnl:      '&[ticker+date+accountId], ticker, date, accountId',
+}).upgrade(tx => {
+  tx.table('transactions').clear()
+  tx.table('cashFlows').clear()
+  tx.table('dailyPnl').clear()
+  tx.table('reports').clear()
+})
+
+// v5: 사용자별 데이터 격리 — userId 인덱스 추가 + 기존 비격리 데이터 초기화
+db.version(5).stores({
+  transactions: '&id, ticker, action, date, accountId, userId',
+  priceHistory:  '++id, ticker, date',
+  reports:       '++id, type, createdAt',
+  cashFlows:     '&id, accountId, type, date, isAuto, userId',
+  dailyPnl:      '&[ticker+date+accountId], ticker, date, accountId, userId',
+}).upgrade(tx => {
+  // userId 없는 기존 데이터 전체 삭제 (사용자 혼재 방지)
+  tx.table('transactions').clear()
+  tx.table('cashFlows').clear()
+  tx.table('dailyPnl').clear()
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
@@ -43,6 +71,18 @@ export async function deleteTransaction(id) {
 
 export async function getAllTransactions() {
   return db.transactions.toArray()
+}
+
+export async function getTransactionsByUser(userId) {
+  return db.transactions.where('userId').equals(userId).toArray()
+}
+
+export async function deleteTransactionsByUser(userId) {
+  return db.transactions.where('userId').equals(userId).delete()
+}
+
+export async function deleteCashFlowsByUser(userId) {
+  return db.cashFlows.where('userId').equals(userId).delete()
 }
 
 export async function getTransactionsByTicker(ticker) {
@@ -119,6 +159,10 @@ export async function getAllCashFlows() {
   return db.cashFlows.toArray()
 }
 
+export async function getCashFlowsByUser(userId) {
+  return db.cashFlows.where('userId').equals(userId).toArray()
+}
+
 export async function getCashFlowsByAccount(accountId) {
   return db.cashFlows.where('accountId').equals(accountId).toArray()
 }
@@ -147,6 +191,10 @@ export async function getDailyPnlByDate(date) {
 
 export async function getAllDailyPnl() {
   return db.dailyPnl.toArray()
+}
+
+export async function getDailyPnlByUser(userId) {
+  return db.dailyPnl.where('userId').equals(userId).toArray()
 }
 
 export async function clearDailyPnl() {

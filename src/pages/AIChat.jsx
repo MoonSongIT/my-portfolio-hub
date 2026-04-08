@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { Send, Trash2, Bot } from 'lucide-react'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useWatchlistStore } from '../store/watchlistStore'
+import { useJournalStore } from '../store/journalStore'
 import { useChatStore } from '../store/chatStore'
 import { sendToAgent } from '../api/claudeApi'
 import MessageBubble from '../components/chat/MessageBubble'
@@ -19,9 +20,10 @@ export default function AIChat() {
     addUserMessage, addAIMessage, setLoading, setError, clearHistory,
   } = useChatStore()
 
-  // 포트폴리오 & 관심종목 데이터 (에이전트 컨텍스트용)
-  const { getSelectedHoldings, exchangeRate } = usePortfolioStore()
+  // 포트폴리오 & 관심종목 & 매매 일지 데이터 (에이전트 컨텍스트용)
+  const { getSelectedHoldings, exchangeRate, accounts } = usePortfolioStore()
   const { watchlist } = useWatchlistStore()
+  const { entries: journalEntries } = useJournalStore()
 
   const holdings = useMemo(() => getSelectedHoldings(), [getSelectedHoldings])
 
@@ -40,7 +42,9 @@ export default function AIChat() {
       name: w.name,
       market: w.market,
     })),
-  }), [holdings, exchangeRate, watchlist])
+    journalEntries,  // ← JournalCoachAgent용 매매 일지 데이터
+    accounts,        // ← 계좌 이름 치환용
+  }), [holdings, exchangeRate, watchlist, journalEntries, accounts])
 
   // 자동 스크롤
   useEffect(() => {

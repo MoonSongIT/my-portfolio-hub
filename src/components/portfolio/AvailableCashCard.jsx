@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { Wallet, ArrowDownCircle, ArrowUpCircle, TrendingUp, AlertCircle } from 'lucide-react'
 import { useCashFlowStore } from '../../store/cashFlowStore'
 import { useJournalStore } from '../../store/journalStore'
-import { useAccountStore } from '../../store/accountStore'
+import { useUserAccounts } from '../../store/accountStore'
 import { formatCurrency, formatCurrencyShort } from '../../utils/formatters'
 import CashFlowModal from './CashFlowModal'
 
@@ -12,7 +12,7 @@ export default function AvailableCashCard({ accountId = 'all', compact = false }
   const entries   = useJournalStore(s => s.entries)
   const { getTotalDeposit, getTotalWithdrawal, getAvailableCash } = useCashFlowStore()
   const { computeHoldings, computeAllHoldings } = useJournalStore()
-  const { accounts } = useAccountStore()
+  const accounts = useUserAccounts()
 
   const [modalOpen, setModalOpen]   = useState(false)
   const [modalType, setModalType]   = useState('deposit')

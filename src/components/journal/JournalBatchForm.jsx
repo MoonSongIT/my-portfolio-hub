@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useJournalStore } from '../../store/journalStore'
-import { useAccountStore } from '../../store/accountStore'
+import { useUserAccounts } from '../../store/accountStore'
 import { KRX_STOCKS } from '../../data/krxStocks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Button } from '../ui/button'
@@ -51,7 +51,7 @@ const emptyRow = () => ({
 
 export default function JournalBatchForm({ open, onClose }) {
   const { addEntry } = useJournalStore()
-  const accounts = useAccountStore((state) => state.accounts)
+  const accounts = useUserAccounts()
   const [accountId, setAccountId] = useState('')
   const [date, setDate] = useState(today())
   const [rows, setRows] = useState([emptyRow()])

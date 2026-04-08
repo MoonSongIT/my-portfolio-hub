@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Wallet, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
-import { useAccountStore } from '../store/accountStore'
+import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, Pencil, Building2 } from 'lucide-react'
+import { useAccountStore, useUserAccounts, ACCOUNT_TYPES } from '../store/accountStore'
 import AccountSelector from '../components/account/AccountSelector'
+import AccountSetupModal from '../components/account/AccountSetupModal'
 import AvailableCashCard from '../components/portfolio/AvailableCashCard'
 import CashFlowHistory from '../components/portfolio/CashFlowHistory'
 import CashFlowModal from '../components/portfolio/CashFlowModal'
@@ -12,12 +13,22 @@ const DATE_FILTERS = [
   { value: '3month',     label: '3개월' },
 ]
 
+// 계좌 유형 배지 색상
+const TYPE_COLOR = {
+  GENERAL: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  IRP: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  ISA: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  PENSION: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  ETC: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+}
+
 export default function CashFlow() {
-  const { accounts } = useAccountStore()
+  const accounts = useUserAccounts()
   const [selectedAccountId, setSelectedAccountId] = useState('all')
   const [dateFilter, setDateFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [modalType, setModalType] = useState('deposit')
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
 
   const openModal = (type) => {
     setModalType(type)
@@ -57,12 +68,46 @@ export default function CashFlow() {
         </div>
       </div>
 
-      {/* 계좌 선택 */}
-      <AccountSelector
-        value={selectedAccountId}
-        onChange={setSelectedAccountId}
-        showAllOption={true}
-      />
+      {/* 계좌 선택 + 선택된 계좌 정보 카드 */}
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+        <AccountSelector
+          value={selectedAccountId}
+          onChange={setSelectedAccountId}
+          showAllOption={true}
+          onAddClick={() => setAccountModalOpen(true)}
+        />
+
+        {/* 선택된 단일 계좌 정보 카드 */}
+        {selectedAccountId !== 'all' && (() => {
+          const acc = accounts.find(a => a.id === selectedAccountId)
+          if (!acc) return null
+          const typeName = ACCOUNT_TYPES.find(t => t.code === acc.type)?.name ?? acc.type
+          return (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm text-sm min-w-0">
+              <Building2 size={16} className="text-gray-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-900 dark:text-white truncate">{acc.name}</span>
+                  <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded-full font-medium ${TYPE_COLOR[acc.type] || TYPE_COLOR.ETC}`}>
+                    {typeName}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {[acc.broker, acc.currency].filter(Boolean).join(' · ')}
+                  {acc.memo && <span className="ml-1 italic">{acc.memo}</span>}
+                </p>
+              </div>
+              <button
+                onClick={() => setAccountModalOpen(true)}
+                className="ml-auto shrink-0 p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                title="계좌 수정"
+              >
+                <Pencil size={13} />
+              </button>
+            </div>
+          )
+        })()}
+      </div>
 
       {/* 투자 가능 금액 KPI 카드 */}
       <AvailableCashCard accountId={selectedAccountId} />
@@ -101,9 +146,19 @@ export default function CashFlow() {
         <div className="text-center py-12 text-gray-400 dark:text-gray-600">
           <Wallet size={48} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">등록된 계좌가 없습니다.</p>
-          <p className="text-xs mt-1">포트폴리오 페이지에서 계좌를 먼저 추가해주세요.</p>
+          <p className="text-xs mt-1 mb-4">계좌를 추가하면 입출금 내역을 관리할 수 있습니다.</p>
+          <button
+            onClick={() => setAccountModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-xl border border-dashed border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+          >
+            <Plus size={15} />
+            계좌 추가하기
+          </button>
         </div>
       )}
+
+      {/* 계좌 추가 모달 */}
+      <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
 
       {/* 입출금 모달 */}
       <CashFlowModal

@@ -5,6 +5,9 @@ import { useSettingsStore } from '../../store/settingsStore'
 import { useAuthStore } from '../../store/authStore'
 import { usePortfolioStore } from '../../store/portfolioStore'
 import { useWatchlistStore } from '../../store/watchlistStore'
+import { useJournalStore } from '../../store/journalStore'
+import { useCashFlowStore } from '../../store/cashFlowStore'
+import { useDailyPnlStore } from '../../store/dailyPnlStore'
 import { Button } from '../ui/button'
 import ChatPanel from '../chat/ChatPanel'
 
@@ -14,11 +17,17 @@ export default function Header({ onToggleSidebar }) {
   const { currentUser, logout } = useAuthStore()
   const { clearAccounts } = usePortfolioStore()
   const { clearWatchlist } = useWatchlistStore()
+  const { clearEntries } = useJournalStore()
+  const { clearCashFlows } = useCashFlowStore()
+  const { clearAll: clearDailyPnl } = useDailyPnlStore()
   const [chatOpen, setChatOpen] = useState(false)
 
   const handleLogout = () => {
     clearAccounts()
     clearWatchlist()
+    clearEntries()
+    clearCashFlows()
+    clearDailyPnl()
     logout()
     navigate('/login')
   }

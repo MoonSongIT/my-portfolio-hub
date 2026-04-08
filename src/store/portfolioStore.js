@@ -28,10 +28,15 @@ export const usePortfolioStore = create(
         const accountStore = useAccountStore.getState()
         const journalStore = useJournalStore.getState()
 
+        // 현재 사용자의 계좌만 필터링 (엄격 매칭)
+        const userAccs = accountStore.accounts.filter(
+          a => a.userId === userId
+        )
+
         // 이미 계좌가 있으면 accounts만 동기화하고 종료
-        if (accountStore.accounts.length > 0) {
+        if (userAccs.length > 0) {
           set((state) => {
-            state.accounts = accountStore.accounts.map(a => ({
+            state.accounts = userAccs.map(a => ({
               id: a.id,
               userId,
               accountType: a.type,
@@ -100,7 +105,6 @@ export const usePortfolioStore = create(
 
       clearAccounts: () => {
         useAccountStore.getState().clearAccounts()
-        useJournalStore.getState().clearEntries()
         set((state) => {
           state.accounts = []
           state.selectedAccountId = 'all'
@@ -199,7 +203,7 @@ export const usePortfolioStore = create(
     })),
     {
       name: 'portfolio-storage',
-      version: 5,
+      version: 6,
       migrate: () => ({
         accounts: [],
         selectedAccountId: 'all',

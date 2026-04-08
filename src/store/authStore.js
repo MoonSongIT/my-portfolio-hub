@@ -1,16 +1,33 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { sampleUsers } from '../data/sampleUsers'
 
 export const useAuthStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       currentUser: null,  // { id, name, email }
       isLoggedIn: false,
+      users: [],          // [{ id, name, email, password }]
 
-      // 이메일 + 비밀번호로 로그인 (MVP: 샘플 데이터 대조)
+      // 회원가입
+      register: (name, email, password) => {
+        const { users } = get()
+        if (users.some((u) => u.email === email)) return { ok: false, error: '이미 등록된 이메일입니다' }
+
+        const newUser = {
+          id: `user-${crypto.randomUUID().slice(0, 8)}`,
+          name,
+          email,
+          password,
+          createdAt: new Date().toISOString(),
+        }
+        set({ users: [...users, newUser] })
+        return { ok: true, user: newUser }
+      },
+
+      // 이메일 + 비밀번호로 로그인
       login: (email, password) => {
-        const user = sampleUsers.find(
+        const { users } = get()
+        const user = users.find(
           (u) => u.email === email && u.password === password
         )
         if (!user) return false
@@ -21,17 +38,16 @@ export const useAuthStore = create(
         return true
       },
 
-      // 샘플 계정(홍길동)으로 자동 로그인
-      loginAsDemo: () => {
-        const user = sampleUsers[0]
-        set({
-          currentUser: { id: user.id, name: user.name, email: user.email },
-          isLoggedIn: true,
-        })
-      },
-
       logout: () => set({ currentUser: null, isLoggedIn: false }),
     }),
-    { name: 'auth-storage' }
+    {
+      name: 'auth-storage',
+      version: 2,
+      migrate: (persisted) => ({
+        currentUser: persisted?.currentUser || null,
+        isLoggedIn: persisted?.isLoggedIn || false,
+        users: persisted?.users || [],
+      }),
+    }
   )
 )

@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
 import { useCashFlowStore } from '../../store/cashFlowStore'
-import { useAccountStore } from '../../store/accountStore'
+import { useUserAccounts } from '../../store/accountStore'
 import { formatNumber } from '../../utils/formatters'
 
 // defaultType: 'deposit' | 'withdrawal'
 // defaultAccountId: 특정 계좌 미리 선택
 export default function CashFlowModal({ open, onClose, defaultType = 'deposit', defaultAccountId = '' }) {
   const { addCashFlow } = useCashFlowStore()
-  const { accounts } = useAccountStore()
+  const accounts = useUserAccounts()
 
   const [type, setType]           = useState(defaultType)
   const [accountId, setAccountId] = useState(defaultAccountId || accounts[0]?.id || '')

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useJournalStore, BUY_PSYCHOLOGY, SELL_PSYCHOLOGY } from '../../store/journalStore'
-import { useAccountStore } from '../../store/accountStore'
+import { useUserAccounts, useAccountStore } from '../../store/accountStore'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import JournalEntryForm from './JournalEntryForm'
 
@@ -8,7 +8,7 @@ const ALL_PSYCHOLOGY = ['전체', ...BUY_PSYCHOLOGY, ...SELL_PSYCHOLOGY.filter(p
 
 export default function JournalList({ filterAccountId = '전체' }) {
   const { entries, deleteEntry } = useJournalStore()
-  const accounts = useAccountStore((state) => state.accounts)
+  const accounts = useUserAccounts()
   const getAccountLabel = useAccountStore((state) => state.getAccountLabel)
   const [filterPsychology, setFilterPsychology] = useState('전체')
   const [filterAction, setFilterAction] = useState('전체')

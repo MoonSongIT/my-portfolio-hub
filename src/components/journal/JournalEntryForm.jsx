@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useJournalStore } from '../../store/journalStore'
-import { useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
+import { useUserAccounts, useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
 import { useCashFlowStore } from '../../store/cashFlowStore'
 import { KRX_STOCKS } from '../../data/krxStocks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
@@ -97,7 +97,7 @@ const INITIAL_FORM = {
 
 export default function JournalEntryForm({ open, onClose, editEntry = null }) {
   const { addEntry, updateEntry } = useJournalStore()
-  const accounts = useAccountStore((state) => state.accounts)
+  const accounts = useUserAccounts()
   const cashFlows = useCashFlowStore(s => s.cashFlows)
   const entries   = useJournalStore(s => s.entries)
   const { computeHoldings } = useJournalStore()

@@ -5,6 +5,7 @@ import { useSettingsStore } from './store/settingsStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
+import { useAuthStore } from './store/authStore'
 import Header from './components/common/Header'
 import Sidebar from './components/common/Sidebar'
 import ProtectedRoute from './components/common/ProtectedRoute'
@@ -27,6 +28,7 @@ function App() {
   const { loadFromDB } = useJournalStore()
   const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
   const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
+  const currentUser = useAuthStore(s => s.currentUser)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // PWA 서비스 워커 등록
@@ -52,12 +54,14 @@ function App() {
     }
   }, [theme])
 
-  // 앱 시작 시 IndexedDB에서 데이터 로드
+  // 앱 시작 시 (또는 로그인 상태 변경 시) 사용자별 IndexedDB 데이터 로드
   useEffect(() => {
-    loadFromDB()
-    loadCashFlowsFromDB()
-    loadDailyPnlFromDB()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    const userId = currentUser?.id
+    if (!userId) return
+    loadFromDB(userId)
+    loadCashFlowsFromDB(userId)
+    loadDailyPnlFromDB(userId)
+  }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <BrowserRouter>

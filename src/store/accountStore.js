@@ -1,8 +1,10 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { deleteCashFlowsByAccount as dbDeleteByAccount } from '../utils/db'
 import { useCashFlowStore } from './cashFlowStore'
+import { useAuthStore } from './authStore'
 
 // 계좌 유형 정의
 export const ACCOUNT_TYPES = [
@@ -22,8 +24,10 @@ export const useAccountStore = create(
 
       addAccount: (account) => set((state) => {
         if (state.accounts.find(a => a.id === account.id)) return
+        const userId = useAuthStore.getState().currentUser?.id
         state.accounts.push({
           id: account.id || crypto.randomUUID(),
+          userId,
           name: account.name,
           broker: account.broker || '',
           type: account.type || 'GENERAL',
@@ -48,8 +52,12 @@ export const useAccountStore = create(
         dbDeleteByAccount(id).catch(err => console.warn('[DB] cascade deleteCashFlows failed:', err))
       },
 
+      // 현재 로그인 사용자의 계좌만 삭제
       clearAccounts: () => set((state) => {
-        state.accounts = []
+        const userId = useAuthStore.getState().currentUser?.id
+        state.accounts = userId
+          ? state.accounts.filter(a => a.userId !== userId)
+          : []
       }),
 
       // ─── 셀렉터 ───
@@ -67,20 +75,21 @@ export const useAccountStore = create(
     })),
     {
       name: 'account-storage',
-      version: 2,
-      migrate: (persisted, version) => {
-        if (version === 1) {
-          // v1 → v2: initialBalance 필드 추가
-          const accounts = persisted?.accounts || []
-          return {
-            accounts: accounts.map(a => ({
-              ...a,
-              initialBalance: a.initialBalance ?? 0,
-            })),
-          }
-        }
-        return { accounts: [] }
-      },
+      version: 4,                    // userId 없는 기존 계좌 데이터 초기화
+      migrate: () => ({ accounts: [] }),
     }
   )
 )
+
+/**
+ * 현재 로그인 사용자의 계좌만 반환하는 커스텀 훅
+ * (Zustand selector에서 새 배열을 반환하면 무한 리렌더 발생 → useMemo로 안정화)
+ */
+export function useUserAccounts() {
+  const allAccounts = useAccountStore(s => s.accounts)
+  const currentUserId = useAuthStore(s => s.currentUser?.id)
+  return useMemo(
+    () => allAccounts.filter(a => a.userId === currentUserId),
+    [allAccounts, currentUserId]
+  )
+}

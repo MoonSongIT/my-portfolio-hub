@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useJournalStore } from '../store/journalStore'
-import { useAccountStore } from '../store/accountStore'
+import { useUserAccounts } from '../store/accountStore'
 import JournalEntryForm from '../components/journal/JournalEntryForm'
 import JournalBatchForm from '../components/journal/JournalBatchForm'
 import JournalList from '../components/journal/JournalList'
@@ -16,7 +16,7 @@ export default function Journal() {
   const [selectedAccountId, setSelectedAccountId] = useState('전체')
 
   const { entries, getProfitByPsychology, getSummaryStats } = useJournalStore()
-  const accounts = useAccountStore((state) => state.accounts)
+  const accounts = useUserAccounts()
 
   // 선택 계좌 필터 (전체 = undefined → 전체 집계)
   const accountFilter = selectedAccountId === '전체' ? undefined : selectedAccountId

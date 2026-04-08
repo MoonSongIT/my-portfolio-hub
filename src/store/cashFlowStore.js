@@ -5,9 +5,11 @@ import {
   addCashFlow as dbAdd,
   updateCashFlow as dbUpdate,
   deleteCashFlow as dbDelete,
-  getAllCashFlows,
+  getCashFlowsByUser,
+  deleteCashFlowsByUser as dbDeleteByUser,
   deleteCashFlowsByAccount as dbDeleteByAccount,
 } from '../utils/db'
+import { useAuthStore } from './authStore'
 
 // ─── 입출금 유형 상수 ───
 export const CASH_FLOW_TYPES = {
@@ -24,11 +26,13 @@ export const useCashFlowStore = create(
 
       // 수동 입출금 추가
       addCashFlow: (flow) => {
+        const userId = useAuthStore.getState().currentUser?.id
         const newFlow = {
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           isAuto: false,
           memo: '',
+          userId,
           ...flow,
         }
         set((state) => { state.cashFlows.push(newFlow) })
@@ -38,11 +42,13 @@ export const useCashFlowStore = create(
 
       // 매매 연동 자동 입출금 추가 (journalStore에서 호출)
       addAutoFlow: (flow) => {
+        const userId = useAuthStore.getState().currentUser?.id
         const newFlow = {
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           isAuto: true,
           memo: '',
+          userId,
           ...flow,
         }
         set((state) => { state.cashFlows.push(newFlow) })
@@ -75,16 +81,19 @@ export const useCashFlowStore = create(
       },
 
       clearCashFlows: () => {
+        const userId = useAuthStore.getState().currentUser?.id
         set((state) => { state.cashFlows = [] })
+        if (userId) {
+          dbDeleteByUser(userId).catch(err => console.warn('[DB] clearCashFlows failed:', err))
+        }
       },
 
-      // 앱 시작 시 IndexedDB에서 로드
-      loadFromDB: async () => {
+      // 앱 시작 시 IndexedDB에서 사용자별 로드
+      loadFromDB: async (userId) => {
+        if (!userId) return
         try {
-          const dbFlows = await getAllCashFlows()
-          if (dbFlows.length > 0) {
-            set((state) => { state.cashFlows = dbFlows })
-          }
+          const dbFlows = await getCashFlowsByUser(userId)
+          set((state) => { state.cashFlows = dbFlows })
         } catch (err) {
           console.warn('[DB] cashFlow loadFromDB failed, using localStorage:', err)
         }
@@ -154,8 +163,10 @@ export const useCashFlowStore = create(
     })),
     {
       name: 'cashflow-storage',
-      version: 1,
+      version: 3,
       migrate: () => ({ cashFlows: [] }),
+      // IndexedDB가 정식 저장소이므로 localStorage에는 아무것도 저장하지 않음
+      partialize: () => ({}),
     }
   )
 )

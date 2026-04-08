@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { db, addTransaction, updateTransaction, deleteTransaction, getAllTransactions } from '../utils/db'
+import { db, addTransaction, updateTransaction, deleteTransaction, getTransactionsByUser, deleteTransactionsByUser } from '../utils/db'
 import { useCashFlowStore } from './cashFlowStore'
+import { useAuthStore } from './authStore'
 
 // ─── 심리 카테고리 상수 ───
 
@@ -35,6 +36,7 @@ export const useJournalStore = create(
       // ─── 액션 ───
 
       addEntry: (entry) => {
+        const userId = useAuthStore.getState().currentUser?.id
         const newEntry = {
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
@@ -42,6 +44,7 @@ export const useJournalStore = create(
           pnl: null,
           memo: '',
           linkedCashFlowId: null,
+          userId,
           ...entry,
         }
 
@@ -94,17 +97,19 @@ export const useJournalStore = create(
       },
 
       clearEntries: () => {
+        const userId = useAuthStore.getState().currentUser?.id
         set((state) => { state.entries = [] })
-        db.transactions.clear().catch(err => console.warn('[DB] clear failed:', err))
+        if (userId) {
+          deleteTransactionsByUser(userId).catch(err => console.warn('[DB] clearEntries failed:', err))
+        }
       },
 
-      // 앱 시작 시 IndexedDB에서 데이터 로드 (localStorage보다 대용량 지원)
-      loadFromDB: async () => {
+      // 앱 시작 시 IndexedDB에서 사용자별 데이터 로드
+      loadFromDB: async (userId) => {
+        if (!userId) return
         try {
-          const dbEntries = await getAllTransactions()
-          if (dbEntries.length > 0) {
-            set((state) => { state.entries = dbEntries })
-          }
+          const dbEntries = await getTransactionsByUser(userId)
+          set((state) => { state.entries = dbEntries })
         } catch (err) {
           console.warn('[DB] loadFromDB failed, using localStorage:', err)
         }
@@ -226,31 +231,10 @@ export const useJournalStore = create(
     })),
     {
       name: 'journal-storage',
-      version: 3,
-      migrate: (persisted, version) => {
-        if (version === 1) {
-          const entries = persisted?.entries || []
-          return {
-            entries: entries.map(e => ({
-              ...e,
-              accountId: e.accountId || 'default',
-              fee: e.fee ?? 0,
-              linkedCashFlowId: null,
-            })),
-          }
-        }
-        if (version === 2) {
-          // v2 → v3: linkedCashFlowId 필드 추가
-          const entries = persisted?.entries || []
-          return {
-            entries: entries.map(e => ({
-              ...e,
-              linkedCashFlowId: e.linkedCashFlowId ?? null,
-            })),
-          }
-        }
-        return { entries: [] }
-      },
+      version: 5,
+      migrate: () => ({ entries: [] }),
+      // IndexedDB가 정식 저장소이므로 localStorage에는 아무것도 저장하지 않음
+      partialize: () => ({}),
     }
   )
 )

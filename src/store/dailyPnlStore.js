@@ -4,8 +4,9 @@ import { immer } from 'zustand/middleware/immer'
 import {
   upsertDailyPnl,
   bulkUpsertDailyPnl,
-  getAllDailyPnl,
+  getDailyPnlByUser,
 } from '../utils/db'
+import { useAuthStore } from './authStore'
 
 export const useDailyPnlStore = create(
   persist(
@@ -16,41 +17,44 @@ export const useDailyPnlStore = create(
       // ─── 액션 ───
 
       saveSnapshot: (snapshot) => {
+        const userId = useAuthStore.getState().currentUser?.id
+        const withUser = { ...snapshot, userId }
         const key = `${snapshot.ticker}|${snapshot.date}|${snapshot.accountId}`
-        set((state) => { state.snapshots[key] = snapshot })
-        upsertDailyPnl(snapshot).catch(err => console.warn('[DB] upsertDailyPnl failed:', err))
+        set((state) => { state.snapshots[key] = withUser })
+        upsertDailyPnl(withUser).catch(err => console.warn('[DB] upsertDailyPnl failed:', err))
       },
 
       bulkSave: (snapshots) => {
+        const userId = useAuthStore.getState().currentUser?.id
+        const withUser = snapshots.map(s => ({ ...s, userId }))
         set((state) => {
-          snapshots.forEach(s => {
+          withUser.forEach(s => {
             const key = `${s.ticker}|${s.date}|${s.accountId}`
             state.snapshots[key] = s
           })
         })
-        bulkUpsertDailyPnl(snapshots).catch(err => console.warn('[DB] bulkUpsertDailyPnl failed:', err))
+        bulkUpsertDailyPnl(withUser).catch(err => console.warn('[DB] bulkUpsertDailyPnl failed:', err))
       },
 
       clearAll: () => {
         set((state) => { state.snapshots = {} })
       },
 
-      // 앱 시작 시 IndexedDB에서 로드 (최근 180일치만)
-      loadFromDB: async () => {
+      // 앱 시작 시 IndexedDB에서 사용자별 로드 (최근 180일치만)
+      loadFromDB: async (userId) => {
+        if (!userId) return
         try {
-          const all = await getAllDailyPnl()
+          const all = await getDailyPnlByUser(userId)
           const cutoff = new Date()
           cutoff.setDate(cutoff.getDate() - 180)
           const cutoffStr = cutoff.toISOString().split('T')[0]
           const recent = all.filter(s => s.date >= cutoffStr)
-          if (recent.length > 0) {
-            const map = {}
-            recent.forEach(s => {
-              const key = `${s.ticker}|${s.date}|${s.accountId}`
-              map[key] = s
-            })
-            set((state) => { state.snapshots = map })
-          }
+          const map = {}
+          recent.forEach(s => {
+            const key = `${s.ticker}|${s.date}|${s.accountId}`
+            map[key] = s
+          })
+          set((state) => { state.snapshots = map })
         } catch (err) {
           console.warn('[DB] dailyPnl loadFromDB failed:', err)
         }
@@ -133,7 +137,7 @@ export const useDailyPnlStore = create(
     })),
     {
       name: 'daily-pnl-storage',
-      version: 1,
+      version: 2,
       // localStorage에는 최근 30일치만 캐시 (나머지는 IndexedDB)
       partialize: (state) => {
         const cutoff = new Date()

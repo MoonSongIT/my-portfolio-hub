@@ -1,4 +1,4 @@
-import { useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
+import { useAccountStore, useUserAccounts, ACCOUNT_TYPES } from '../../store/accountStore'
 import {
   Select,
   SelectContent,
@@ -36,7 +36,7 @@ export default function AccountSelector({
   showAllOption = true,
   className = '',
 }) {
-  const accounts = useAccountStore((state) => state.accounts)
+  const accounts = useUserAccounts()
 
   const typeName = (code) =>
     ACCOUNT_TYPES.find((t) => t.code === code)?.name ?? code
@@ -54,12 +54,20 @@ export default function AccountSelector({
     )
   }
 
+  // 현재 선택된 계좌명 (SelectValue fallback 방지)
+  const selectedLabel = value === 'all'
+    ? `전체 (${accounts.length}계좌)`
+    : (() => {
+        const acc = accounts.find(a => a.id === value)
+        return acc ? `${acc.name} · ${typeName(acc.type)}` : '계좌 선택'
+      })()
+
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       <Landmark className="size-4 text-gray-400 dark:text-gray-500 shrink-0" />
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="min-w-[180px]">
-          <SelectValue />
+          <span className="truncate text-sm">{selectedLabel}</span>
         </SelectTrigger>
         <SelectContent align="start" alignItemWithTrigger={false}>
           {/* 전체 옵션 */}
