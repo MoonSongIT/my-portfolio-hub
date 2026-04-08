@@ -12,7 +12,7 @@ import {
   TableRow,
 } from '../ui/table'
 
-export default function PortfolioTable() {
+export default function PortfolioTable({ onRowClick }) {
   const { accounts, selectedAccountId, exchangeRate, getSelectedHoldings } = usePortfolioStore()
   const [sortKey, setSortKey] = useState('returnRate')
   const [sortAsc, setSortAsc] = useState(false)
@@ -56,7 +56,7 @@ export default function PortfolioTable() {
   const SortButton = ({ label, sortField }) => (
     <button
       onClick={() => handleSort(sortField)}
-      className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+      className="flex items-center justify-end gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors w-full"
     >
       {label}
       <ArrowUpDown className="w-3 h-3" />
@@ -85,7 +85,11 @@ export default function PortfolioTable() {
           </TableHeader>
           <TableBody>
             {sortedHoldings.map((h) => (
-              <TableRow key={`${h.accountId}-${h.ticker}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+              <TableRow
+                key={`${h.accountId}-${h.ticker}`}
+                className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${onRowClick ? 'cursor-pointer' : ''}`}
+                onClick={() => onRowClick?.(h)}
+              >
                 <TableCell>
                   <p className="font-medium text-gray-900 dark:text-gray-100">{h.name}</p>
                   <p className="text-xs text-gray-500">{h.market}</p>

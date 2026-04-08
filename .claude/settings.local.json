@@ -26,7 +26,12 @@
       "Bash(where npx.cmd)",
       "Bash(where node.exe)",
       "Bash(git add:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git commit -m \"feat: Phase 4 계속 — 매매 일지 & AI 코치 UI 컴포넌트 완성:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(npx @vite-pwa/assets-generator --preset minimal public/icon.svg)",
+      "Bash(ls C:/Users/dohay/ClaudeWork/my-portfolio-hub/dist/*.png)"
     ]
   }
 }

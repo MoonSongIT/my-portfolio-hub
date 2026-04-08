@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { deleteCashFlowsByAccount as dbDeleteByAccount } from '../utils/db'
+import { useCashFlowStore } from './cashFlowStore'
 
 // 계좌 유형 정의
 export const ACCOUNT_TYPES = [
@@ -26,6 +28,7 @@ export const useAccountStore = create(
           broker: account.broker || '',
           type: account.type || 'GENERAL',
           currency: account.currency || 'KRW',
+          initialBalance: account.initialBalance ?? 0,
           memo: account.memo || '',
           createdAt: new Date().toISOString(),
         })
@@ -36,9 +39,14 @@ export const useAccountStore = create(
         if (account) Object.assign(account, updates)
       }),
 
-      deleteAccount: (id) => set((state) => {
-        state.accounts = state.accounts.filter(a => a.id !== id)
-      }),
+      deleteAccount: (id) => {
+        set((state) => {
+          state.accounts = state.accounts.filter(a => a.id !== id)
+        })
+        // 연결된 입출금 내역 cascade 삭제 (cashFlowStore + IndexedDB)
+        useCashFlowStore.getState().deleteCashFlowsByAccount(id)
+        dbDeleteByAccount(id).catch(err => console.warn('[DB] cascade deleteCashFlows failed:', err))
+      },
 
       clearAccounts: () => set((state) => {
         state.accounts = []
@@ -59,8 +67,20 @@ export const useAccountStore = create(
     })),
     {
       name: 'account-storage',
-      version: 1,
-      migrate: () => ({ accounts: [] }),
+      version: 2,
+      migrate: (persisted, version) => {
+        if (version === 1) {
+          // v1 → v2: initialBalance 필드 추가
+          const accounts = persisted?.accounts || []
+          return {
+            accounts: accounts.map(a => ({
+              ...a,
+              initialBalance: a.initialBalance ?? 0,
+            })),
+          }
+        }
+        return { accounts: [] }
+      },
     }
   )
 )

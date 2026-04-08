@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 import { sampleAccounts } from '../data/samplePortfolio'
 import { useAccountStore } from './accountStore'
 import { useJournalStore } from './journalStore'
+import { useCashFlowStore } from './cashFlowStore'
 import { calculateTotalValue } from '../utils/calculator'
 
 export const usePortfolioStore = create(
@@ -150,15 +151,35 @@ export const usePortfolioStore = create(
       },
 
       getSelectedCash: () => {
-        const { accounts, selectedAccountId } = get()
-        if (selectedAccountId === 'all') {
-          return accounts.reduce(
-            (sum, acc) => ({ krw: sum.krw + (acc.cashKRW || 0), usd: sum.usd + (acc.cashUSD || 0) }),
-            { krw: 0, usd: 0 }
-          )
+        const { selectedAccountId } = get()
+        const cashFlowStore = useCashFlowStore.getState()
+        const journalStore  = useJournalStore.getState()
+        const accountStore  = useAccountStore.getState()
+
+        // 계좌별 투자 가능 금액 계산 (입금 - 출금 - 현재 투자원가)
+        const calcAvailable = (accountId) => {
+          const deposit    = cashFlowStore.getTotalDeposit(accountId)
+          const withdrawal = cashFlowStore.getTotalWithdrawal(accountId)
+          const invested   = journalStore.computeHoldings(accountId)
+            .reduce((s, h) => s + (h.totalCost || 0), 0)
+          return deposit - withdrawal - invested
         }
-        const acc = accounts.find(a => a.id === selectedAccountId)
-        return acc ? { krw: acc.cashKRW || 0, usd: acc.cashUSD || 0 } : { krw: 0, usd: 0 }
+
+        if (selectedAccountId === 'all') {
+          return accountStore.accounts.reduce((sum, acc) => {
+            const available = calcAvailable(acc.id)
+            return acc.currency === 'USD'
+              ? { krw: sum.krw, usd: sum.usd + available }
+              : { krw: sum.krw + available, usd: sum.usd }
+          }, { krw: 0, usd: 0 })
+        }
+
+        const acc = accountStore.accounts.find(a => a.id === selectedAccountId)
+        if (!acc) return { krw: 0, usd: 0 }
+        const available = calcAvailable(selectedAccountId)
+        return acc.currency === 'USD'
+          ? { krw: 0, usd: available }
+          : { krw: available, usd: 0 }
       },
 
       getTotalValue: () => {

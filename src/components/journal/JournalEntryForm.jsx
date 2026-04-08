@@ -1,12 +1,57 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useJournalStore } from '../../store/journalStore'
-import { useAccountStore } from '../../store/accountStore'
+import { useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
+import { useCashFlowStore } from '../../store/cashFlowStore'
 import { KRX_STOCKS } from '../../data/krxStocks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import PsychologySelector from './PsychologySelector'
 import AccountSelector from '../account/AccountSelector'
+import { formatCurrencyShort } from '../../utils/formatters'
+import { Landmark, Wallet } from 'lucide-react'
+
+// ─── 천단위 콤마 헬퍼 ───
+
+// raw 숫자 문자열 → 콤마 표시 (소수점·음수 보존)
+function formatNumDisplay(raw) {
+  if (raw === '' || raw == null) return ''
+  const str = String(raw)
+  const isNeg = str.startsWith('-')
+  const abs   = isNeg ? str.slice(1) : str
+  const [intPart, decPart] = abs.split('.')
+  const formatted = intPart ? Number(intPart).toLocaleString('ko-KR') : '0'
+  const result = decPart !== undefined ? `${formatted}.${decPart}` : formatted
+  return isNeg ? `-${result}` : result
+}
+
+// 입력 이벤트 → raw 문자열 (콤마 제거, 허용 문자만 통과)
+function parseNumInput(val, { allowNeg = false, allowDec = false } = {}) {
+  let s = val.replace(/,/g, '')
+  // 허용 문자 필터
+  const pattern = allowNeg && allowDec ? /[^0-9.\-]/g
+                : allowNeg            ? /[^0-9\-]/g
+                : allowDec            ? /[^0-9.]/g
+                :                       /[^0-9]/g
+  s = s.replace(pattern, '')
+  // 소수점 중복 제거
+  if (allowDec) {
+    const parts = s.split('.')
+    if (parts.length > 2) s = parts[0] + '.' + parts.slice(1).join('')
+  }
+  // 음수 부호는 맨 앞에만
+  if (allowNeg) s = s.replace(/(?!^)-/g, '')
+  return s
+}
+
+// 계좌 유형 배지 색상
+const TYPE_COLOR = {
+  GENERAL: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  IRP:     'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  ISA:     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  PENSION: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  ETC:     'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+}
 
 // 로컬 종목 검색 (KRX + 미국 주요 종목 하드코딩)
 const US_STOCKS = [
@@ -53,6 +98,10 @@ const INITIAL_FORM = {
 export default function JournalEntryForm({ open, onClose, editEntry = null }) {
   const { addEntry, updateEntry } = useJournalStore()
   const accounts = useAccountStore((state) => state.accounts)
+  const cashFlows = useCashFlowStore(s => s.cashFlows)
+  const entries   = useJournalStore(s => s.entries)
+  const { computeHoldings } = useJournalStore()
+  const { getTotalDeposit, getTotalWithdrawal } = useCashFlowStore()
   const [form, setForm] = useState(INITIAL_FORM)
   const [errors, setErrors] = useState({})
   const [searchQuery, setSearchQuery] = useState('')
@@ -144,6 +193,23 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
     ? (Number(form.price) * Number(form.quantity)).toLocaleString('ko-KR')
     : null
 
+  // 선택된 계좌 정보
+  const selectedAccount = useMemo(
+    () => accounts.find(a => a.id === form.accountId) || null,
+    [form.accountId, accounts]
+  )
+  const selectedAccountTypeName = useMemo(
+    () => ACCOUNT_TYPES.find(t => t.code === selectedAccount?.type)?.name || '',
+    [selectedAccount]
+  )
+  const availableCash = useMemo(() => {
+    if (!form.accountId) return null
+    const deposit    = getTotalDeposit(form.accountId)
+    const withdrawal = getTotalWithdrawal(form.accountId)
+    const invested   = computeHoldings(form.accountId).reduce((s, h) => s + (h.totalCost || 0), 0)
+    return deposit - withdrawal - invested
+  }, [form.accountId, cashFlows, entries])
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg">
@@ -152,15 +218,54 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* 계좌 선택 */}
+          {/* 계좌 선택 + 선택된 계좌 카드 */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">계좌</label>
-            <div className="mt-1">
-              <AccountSelector
-                value={form.accountId}
-                onChange={(v) => set('accountId', v)}
-                showAllOption={false}
-              />
+            <div className="mt-1 flex items-stretch gap-3">
+              {/* 왼쪽: 드롭다운 */}
+              <div className="flex-1">
+                <AccountSelector
+                  value={form.accountId}
+                  onChange={(v) => set('accountId', v)}
+                  showAllOption={false}
+                />
+              </div>
+
+              {/* 오른쪽: 선택된 계좌 정보 카드 */}
+              {selectedAccount ? (
+                <div className="flex-1 flex items-center gap-2.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center shrink-0">
+                    <Landmark size={14} className="text-gray-500 dark:text-gray-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                        {selectedAccount.name}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium leading-none shrink-0 ${TYPE_COLOR[selectedAccount.type] || TYPE_COLOR.ETC}`}>
+                        {selectedAccountTypeName}
+                      </span>
+                    </div>
+                    {selectedAccount.broker && (
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
+                        {selectedAccount.broker}
+                      </p>
+                    )}
+                    {availableCash !== null && (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Wallet size={9} className={availableCash < 0 ? 'text-red-400' : 'text-green-500'} />
+                        <span className={`text-[10px] font-medium ${availableCash < 0 ? 'text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                          {formatCurrencyShort(availableCash)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-600">
+                  계좌를 선택하세요
+                </div>
+              )}
             </div>
             {errors.accountId && <p className="text-red-500 text-xs mt-1">{errors.accountId}</p>}
           </div>
@@ -243,12 +348,11 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">가격</label>
               <Input
-                type="number"
-                value={form.price}
-                onChange={(e) => set('price', e.target.value)}
-                placeholder="72000"
-                min="0"
-                step="any"
+                type="text"
+                inputMode="decimal"
+                value={formatNumDisplay(form.price)}
+                onChange={(e) => set('price', parseNumInput(e.target.value, { allowDec: true }))}
+                placeholder="209,500"
                 className="mt-1"
               />
               {errors.price && <p className="text-red-500 text-xs mt-1">{errors.price}</p>}
@@ -256,11 +360,11 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">수량</label>
               <Input
-                type="number"
-                value={form.quantity}
-                onChange={(e) => set('quantity', e.target.value)}
+                type="text"
+                inputMode="numeric"
+                value={formatNumDisplay(form.quantity)}
+                onChange={(e) => set('quantity', parseNumInput(e.target.value))}
                 placeholder="10"
-                min="1"
                 className="mt-1"
               />
               {errors.quantity && <p className="text-red-500 text-xs mt-1">{errors.quantity}</p>}
@@ -270,12 +374,11 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">수수료 (선택)</label>
             <Input
-              type="number"
-              value={form.fee}
-              onChange={(e) => set('fee', e.target.value)}
-              placeholder="예: 360"
-              min="0"
-              step="any"
+              type="text"
+              inputMode="decimal"
+              value={formatNumDisplay(form.fee)}
+              onChange={(e) => set('fee', parseNumInput(e.target.value, { allowDec: true }))}
+              placeholder="예: 1,500"
               className="mt-1"
             />
           </div>
@@ -304,11 +407,11 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
                 실현 손익 (선택)
               </label>
               <Input
-                type="number"
-                value={form.pnl}
-                onChange={(e) => set('pnl', e.target.value)}
-                placeholder="예: 150000 또는 -50000"
-                step="any"
+                type="text"
+                inputMode="decimal"
+                value={formatNumDisplay(form.pnl)}
+                onChange={(e) => set('pnl', parseNumInput(e.target.value, { allowNeg: true, allowDec: true }))}
+                placeholder="예: 150,000 또는 -50,000"
                 className="mt-1"
               />
               <p className="text-xs text-gray-400 mt-0.5">양수: 이익, 음수: 손실</p>

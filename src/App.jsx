@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
 import { useJournalStore } from './store/journalStore'
+import { useCashFlowStore } from './store/cashFlowStore'
+import { useDailyPnlStore } from './store/dailyPnlStore'
 import Header from './components/common/Header'
 import Sidebar from './components/common/Sidebar'
 import ProtectedRoute from './components/common/ProtectedRoute'
@@ -17,11 +19,14 @@ const Watchlist = lazy(() => import('./pages/Watchlist'))
 const Reports   = lazy(() => import('./pages/Reports'))
 const StockDetail = lazy(() => import('./pages/StockDetail'))
 const AIChat    = lazy(() => import('./pages/AIChat'))
+const CashFlow  = lazy(() => import('./pages/CashFlow'))
 const Login     = lazy(() => import('./pages/Login'))
 
 function App() {
   const { theme } = useSettingsStore()
   const { loadFromDB } = useJournalStore()
+  const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
+  const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // PWA 서비스 워커 등록
@@ -47,9 +52,11 @@ function App() {
     }
   }, [theme])
 
-  // 앱 시작 시 IndexedDB에서 매매 일지 데이터 로드
+  // 앱 시작 시 IndexedDB에서 데이터 로드
   useEffect(() => {
     loadFromDB()
+    loadCashFlowsFromDB()
+    loadDailyPnlFromDB()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -97,6 +104,7 @@ function App() {
                           <Route path="/watchlist" element={<Watchlist />} />
                           <Route path="/reports" element={<Reports />} />
                           <Route path="/ai-chat" element={<AIChat />} />
+                          <Route path="/cashflow" element={<CashFlow />} />
                           <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                       </Suspense>

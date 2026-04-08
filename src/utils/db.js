@@ -10,6 +10,23 @@ db.version(1).stores({
   reports:       '++id, type, createdAt',
 })
 
+// v2: 입출금 내역 테이블 추가
+db.version(2).stores({
+  transactions: '&id, ticker, action, date, accountId',
+  priceHistory:  '++id, ticker, date',
+  reports:       '++id, type, createdAt',
+  cashFlows:     '&id, accountId, type, date, isAuto',
+})
+
+// v3: 일별 손익 스냅샷 테이블 추가
+db.version(3).stores({
+  transactions: '&id, ticker, action, date, accountId',
+  priceHistory:  '++id, ticker, date',
+  reports:       '++id, type, createdAt',
+  cashFlows:     '&id, accountId, type, date, isAuto',
+  dailyPnl:      '&[ticker+date+accountId], ticker, date, accountId',
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
@@ -82,4 +99,56 @@ export async function saveReport(reportData) {
 
 export async function getReportsByType(type) {
   return db.reports.where('type').equals(type).toArray()
+}
+
+// ─── cashFlows CRUD ───
+
+export async function addCashFlow(entry) {
+  return db.cashFlows.put(entry)
+}
+
+export async function updateCashFlow(id, updates) {
+  return db.cashFlows.update(id, updates)
+}
+
+export async function deleteCashFlow(id) {
+  return db.cashFlows.delete(id)
+}
+
+export async function getAllCashFlows() {
+  return db.cashFlows.toArray()
+}
+
+export async function getCashFlowsByAccount(accountId) {
+  return db.cashFlows.where('accountId').equals(accountId).toArray()
+}
+
+export async function deleteCashFlowsByAccount(accountId) {
+  return db.cashFlows.where('accountId').equals(accountId).delete()
+}
+
+// ─── dailyPnl CRUD ───
+
+export async function upsertDailyPnl(snapshot) {
+  return db.dailyPnl.put(snapshot)
+}
+
+export async function bulkUpsertDailyPnl(snapshots) {
+  return db.dailyPnl.bulkPut(snapshots)
+}
+
+export async function getDailyPnlByTicker(ticker) {
+  return db.dailyPnl.where('ticker').equals(ticker).sortBy('date')
+}
+
+export async function getDailyPnlByDate(date) {
+  return db.dailyPnl.where('date').equals(date).toArray()
+}
+
+export async function getAllDailyPnl() {
+  return db.dailyPnl.toArray()
+}
+
+export async function clearDailyPnl() {
+  return db.dailyPnl.clear()
 }

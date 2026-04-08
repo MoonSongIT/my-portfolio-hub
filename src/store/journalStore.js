@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { db, addTransaction, updateTransaction, deleteTransaction, getAllTransactions } from '../utils/db'
+import { useCashFlowStore } from './cashFlowStore'
 
 // ─── 심리 카테고리 상수 ───
 
@@ -40,8 +41,33 @@ export const useJournalStore = create(
           fee: 0,
           pnl: null,
           memo: '',
+          linkedCashFlowId: null,
           ...entry,
         }
+
+        // 매수/매도 시 현금 흐름 자동 연동
+        // 매수: price*qty + fee (수수료 포함 실제 출금액)
+        // 매도: price*qty       (수수료는 실현손익에 이미 반영)
+        if (newEntry.accountId && newEntry.price && newEntry.quantity) {
+          const fee = newEntry.action === 'buy' ? (newEntry.fee || 0) : 0
+          const amount = newEntry.price * newEntry.quantity + fee
+          const cashFlowType = newEntry.action === 'buy' ? 'withdrawal' : 'deposit'
+          const label = newEntry.action === 'buy'
+            ? `매수: ${newEntry.name || newEntry.ticker}`
+            : `매도: ${newEntry.name || newEntry.ticker}`
+
+          const cashFlowId = useCashFlowStore.getState().addAutoFlow({
+            accountId: newEntry.accountId,
+            type: cashFlowType,
+            amount,
+            currency: newEntry.market === 'NYSE' || newEntry.market === 'NASDAQ' ? 'USD' : 'KRW',
+            date: newEntry.date,
+            memo: label,
+            linkedJournalId: newEntry.id,
+          })
+          newEntry.linkedCashFlowId = cashFlowId
+        }
+
         set((state) => { state.entries.push(newEntry) })
         // IndexedDB에도 저장 (비동기, 실패해도 로컬스토리지 백업 유지)
         addTransaction(newEntry).catch(err => console.warn('[DB] addTransaction failed:', err))
@@ -56,6 +82,11 @@ export const useJournalStore = create(
       },
 
       deleteEntry: (id) => {
+        // 연결된 자동 현금 흐름도 함께 삭제
+        const entry = get().entries.find(e => e.id === id)
+        if (entry?.linkedCashFlowId) {
+          useCashFlowStore.getState().deleteCashFlow(entry.linkedCashFlowId)
+        }
         set((state) => {
           state.entries = state.entries.filter(e => e.id !== id)
         })
@@ -195,16 +226,26 @@ export const useJournalStore = create(
     })),
     {
       name: 'journal-storage',
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
         if (version === 1) {
-          // v1 → v2: 기존 entries에 accountId, fee 추가
           const entries = persisted?.entries || []
           return {
             entries: entries.map(e => ({
               ...e,
               accountId: e.accountId || 'default',
               fee: e.fee ?? 0,
+              linkedCashFlowId: null,
+            })),
+          }
+        }
+        if (version === 2) {
+          // v2 → v3: linkedCashFlowId 필드 추가
+          const entries = persisted?.entries || []
+          return {
+            entries: entries.map(e => ({
+              ...e,
+              linkedCashFlowId: e.linkedCashFlowId ?? null,
             })),
           }
         }
