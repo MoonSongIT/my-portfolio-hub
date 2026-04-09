@@ -130,8 +130,9 @@ export const usePortfolioStore = create(
        * journalStore.computeHoldings 결과 + 실시간 시세 병합
        */
       getSelectedHoldings: () => {
-        const { selectedAccountId, prices, accounts } = get()
+        const { selectedAccountId, prices } = get()
         const journalState = useJournalStore.getState()
+        const accountStore = useAccountStore.getState()
 
         let holdings
         if (selectedAccountId === 'all') {
@@ -141,15 +142,16 @@ export const usePortfolioStore = create(
         }
 
         return holdings.map(h => {
-          const account = accounts.find(a => a.id === h.accountId)
+          // accountStore에서 직접 조회 (name 필드 사용)
+          const account = accountStore.accounts.find(a => a.id === h.accountId)
           const currency = h.market === 'KRX' ? 'KRW' : 'USD'
           return {
             ...h,
             currentPrice: prices[h.ticker] ?? h.avgPrice,
             currency,
             sector: 'ETC',
-            accountName: account?.accountName || '기본 계좌',
-            accountType: account?.accountType || 'GENERAL',
+            accountName: account?.name || '알 수 없는 계좌',
+            accountType: account?.type || 'GENERAL',
           }
         })
       },

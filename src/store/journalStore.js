@@ -48,6 +48,16 @@ export const useJournalStore = create(
           ...entry,
         }
 
+        // 매도 시 실현손익 자동 계산 (사용자가 직접 입력하지 않은 경우)
+        if (newEntry.action === 'sell' && newEntry.pnl === null) {
+          const currentHoldings = get().computeHoldings(newEntry.accountId)
+          const holding = currentHoldings.find(h => h.ticker === newEntry.ticker)
+          if (holding && holding.avgPrice > 0) {
+            // pnl은 해당 종목의 원화폐 단위로 저장 (USD → KRW 변환은 집계 시 처리)
+            newEntry.pnl = Math.round((newEntry.price - holding.avgPrice) * newEntry.quantity)
+          }
+        }
+
         // 매수/매도 시 현금 흐름 자동 연동
         // 매수: price*qty + fee (수수료 포함 실제 출금액)
         // 매도: price*qty       (수수료는 실현손익에 이미 반영)
@@ -185,8 +195,8 @@ export const useJournalStore = create(
         return get().entries.filter(e => e.date >= start && e.date <= end)
       },
 
-      // 심리 유형별 수익률 집계 (선택적 accountId 필터)
-      getProfitByPsychology: (accountId) => {
+      // 심리 유형별 수익률 집계 (선택적 accountId 필터, 환율 적용)
+      getProfitByPsychology: (accountId, exchangeRate = 1350) => {
         let entries = get().entries
         if (accountId) entries = entries.filter(e => e.accountId === accountId)
 
@@ -198,7 +208,9 @@ export const useJournalStore = create(
           map[e.psychology].count += 1
           if (e.pnl !== null && e.pnl !== undefined) {
             map[e.psychology].pnlCount += 1
-            map[e.psychology].totalPnl += e.pnl
+            // USD 종목 pnl은 KRW로 환산
+            const pnlKRW = (e.market !== 'KRX') ? e.pnl * exchangeRate : e.pnl
+            map[e.psychology].totalPnl += pnlKRW
           }
         })
 
@@ -208,6 +220,52 @@ export const useJournalStore = create(
             avgPnl: item.pnlCount > 0 ? Math.round(item.totalPnl / item.pnlCount) : null,
           }))
           .sort((a, b) => (b.avgPnl ?? -Infinity) - (a.avgPnl ?? -Infinity))
+      },
+
+      // 기존 매도 항목의 pnl이 null인 경우 소급 계산
+      recalculateSellPnl: () => {
+        const entries = [...get().entries].sort(
+          (a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt)
+        )
+
+        // account+ticker별 누적 매수 원가 추적
+        const costMap = {}
+        const updates = []
+
+        for (const entry of entries) {
+          const key = `${entry.accountId}_${entry.ticker}`
+          if (!costMap[key]) costMap[key] = { totalCost: 0, quantity: 0 }
+          const pos = costMap[key]
+
+          if (entry.action === 'buy') {
+            pos.totalCost += entry.price * entry.quantity + (entry.fee || 0)
+            pos.quantity += entry.quantity
+          } else if (entry.action === 'sell') {
+            if (pos.quantity > 0 && (entry.pnl === null || entry.pnl === undefined)) {
+              const avgPrice = pos.totalCost / pos.quantity
+              updates.push({ id: entry.id, pnl: Math.round((entry.price - avgPrice) * entry.quantity) })
+            }
+            // 매도 후 원가 감소
+            if (pos.quantity > 0) {
+              const avgPrice = pos.totalCost / pos.quantity
+              pos.totalCost -= avgPrice * entry.quantity
+              pos.quantity -= entry.quantity
+            }
+          }
+        }
+
+        if (updates.length === 0) return 0
+
+        set((state) => {
+          updates.forEach(({ id, pnl }) => {
+            const e = state.entries.find(e => e.id === id)
+            if (e) e.pnl = pnl
+          })
+        })
+        updates.forEach(({ id, pnl }) => {
+          updateTransaction(id, { pnl }).catch(err => console.warn('[DB] recalculate pnl failed:', err))
+        })
+        return updates.length
       },
 
       // 전체 통계 요약 (선택적 accountId 필터)

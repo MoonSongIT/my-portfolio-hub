@@ -36,12 +36,20 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const err = await response.text()
-      return res.status(response.status).json({ error: err })
+      console.error(`[Claude API Error] Status ${response.status}:`, err)
+      return res.status(response.status).json({
+        error: `Claude API Error: ${response.status}`,
+        details: err.substring(0, 200)
+      })
     }
 
     const data = await response.json()
     res.json(data)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    console.error('[API Handler Error]:', err.message)
+    res.status(500).json({
+      error: '서버 오류가 발생했습니다.',
+      message: err.message
+    })
   }
 }

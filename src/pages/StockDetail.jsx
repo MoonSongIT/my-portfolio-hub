@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Component } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon } from 'lucide-react'
 import {
@@ -12,6 +12,40 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import ChatPanel from '../components/chat/ChatPanel'
+
+// 차트 에러 격리용 ErrorBoundary
+class ChartErrorBoundary extends Component {
+  state = { hasError: false, error: null }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error) {
+    console.error('[ChartErrorBoundary]', error)
+  }
+  // key 변경 시 에러 상태 리셋
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, error: null })
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-[300px] flex flex-col items-center justify-center text-gray-400">
+          <p className="text-sm">차트 렌더링 오류</p>
+          <p className="text-xs mt-1 text-red-400">{this.state.error?.message}</p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="mt-3 text-xs text-blue-500 hover:underline"
+          >
+            다시 시도
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const RANGE_OPTIONS = [
   { value: '5d', label: '1주' },
@@ -103,6 +137,8 @@ export default function StockDetail() {
     )
   }
 
+  const isKRX = market === 'KRX'
+
   const fmtVal = (v, suffix = '') => v != null ? `${v.toLocaleString()}${suffix}` : 'N/A'
   const fmtPct = (v) => v != null ? formatPercent(v * 100) : 'N/A'
   const fmtCap = (v) => {
@@ -180,7 +216,9 @@ export default function StockDetail() {
             <CardContent className="p-4 text-center">
               <p className="text-xs text-gray-500 mb-1">52주 고가</p>
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {detail?.fiftyTwoWeekHigh != null ? formatCurrency(detail.fiftyTwoWeekHigh, quote.currency) : '---'}
+                {(detail?.fiftyTwoWeekHigh ?? quote?.fiftyTwoWeekHigh) != null
+                  ? formatCurrency(detail?.fiftyTwoWeekHigh ?? quote.fiftyTwoWeekHigh, quote.currency)
+                  : '---'}
               </p>
             </CardContent>
           </Card>
@@ -188,7 +226,9 @@ export default function StockDetail() {
             <CardContent className="p-4 text-center">
               <p className="text-xs text-gray-500 mb-1">52주 저가</p>
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {detail?.fiftyTwoWeekLow != null ? formatCurrency(detail.fiftyTwoWeekLow, quote.currency) : '---'}
+                {(detail?.fiftyTwoWeekLow ?? quote?.fiftyTwoWeekLow) != null
+                  ? formatCurrency(detail?.fiftyTwoWeekLow ?? quote.fiftyTwoWeekLow, quote.currency)
+                  : '---'}
               </p>
             </CardContent>
           </Card>
@@ -248,33 +288,35 @@ export default function StockDetail() {
           </div>
         </CardHeader>
         <CardContent>
-          {historyLoading ? (
-            <LoadingSpinner />
-          ) : history?.length > 0 ? (
-            chartType === 'candle' ? (
-              <CandlestickChart data={history} ticker={ticker} timeframe={range} />
+          <ChartErrorBoundary resetKey={`${chartType}-${range}`}>
+            {historyLoading ? (
+              <LoadingSpinner />
+            ) : history?.length > 0 ? (
+              chartType === 'candle' ? (
+                <CandlestickChart data={history} ticker={ticker} timeframe={range} />
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={history} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" tickFormatter={formatShortDate} tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                    <YAxis domain={chartDomain} tick={{ fontSize: 11 }} stroke="#9ca3af" width={70}
+                      tickFormatter={(v) => v.toLocaleString()} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Area type="monotone" dataKey="close" stroke="#3B82F6" strokeWidth={2}
+                      fill="url(#colorClose)" dot={false} activeDot={{ r: 4 }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={history} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                  <defs>
-                    <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tickFormatter={formatShortDate} tick={{ fontSize: 11 }} stroke="#9ca3af" />
-                  <YAxis domain={chartDomain} tick={{ fontSize: 11 }} stroke="#9ca3af" width={70}
-                    tickFormatter={(v) => v.toLocaleString()} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area type="monotone" dataKey="close" stroke="#3B82F6" strokeWidth={2}
-                    fill="url(#colorClose)" dot={false} activeDot={{ r: 4 }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )
-          ) : (
-            <div className="h-64 flex items-center justify-center text-gray-400">차트 데이터가 없습니다</div>
-          )}
+              <div className="h-64 flex items-center justify-center text-gray-400">차트 데이터가 없습니다</div>
+            )}
+          </ChartErrorBoundary>
         </CardContent>
       </Card>
 
@@ -288,14 +330,52 @@ export default function StockDetail() {
           <CardContent>
             {detailLoading ? (
               <LoadingSpinner />
-            ) : detail ? (
+            ) : (
               <div className="space-y-3">
-                <MetricRow label="섹터" value={detail.sector} />
-                <MetricRow label="업종" value={detail.industry} />
-                <MetricRow label="시가총액" value={fmtCap(detail.marketCap)} />
-                <MetricRow label="거래량 (평균)" value={detail.averageVolume != null ? formatNumber(detail.averageVolume) : 'N/A'} />
-                <MetricRow label="배당수익률" value={detail.dividendYield != null ? fmtPct(detail.dividendYield) : 'N/A'} />
-                {detail.website && (
+                <MetricRow label="섹터" value={detail?.sector ?? 'N/A'} />
+                <MetricRow label="업종" value={detail?.industry ?? 'N/A'} />
+                <MetricRow label="시가총액" value={fmtCap(detail?.marketCap ?? quote?.marketCap)} />
+                {/* 액면가: KRX 전용 */}
+                {isKRX && (
+                  <MetricRow
+                    label="액면가"
+                    value={
+                      (detail?.parValue ?? quote?.parValue) != null
+                        ? `${(detail?.parValue ?? quote?.parValue).toLocaleString()}원`
+                        : 'N/A'
+                    }
+                  />
+                )}
+                {/* 외국인 보유율: KRX 전용 */}
+                {isKRX && (
+                  <MetricRow
+                    label="외국인 보유율"
+                    value={detail?.foreignRate != null ? `${detail.foreignRate.toFixed(2)}%` : 'N/A'}
+                  />
+                )}
+                <MetricRow
+                  label="거래량 (평균 20일)"
+                  value={detail?.averageVolume != null ? formatNumber(detail.averageVolume) : 'N/A'}
+                />
+                {/* 거래대금: KRX 전용 */}
+                {isKRX && detail?.tradingValue != null && (
+                  <MetricRow
+                    label="거래대금"
+                    value={`${(detail.tradingValue / 1000).toFixed(0)}억원`}
+                  />
+                )}
+                <MetricRow
+                  label="배당수익률"
+                  value={detail?.dividendYield != null ? fmtPct(detail.dividendYield) : 'N/A'}
+                />
+                {/* 주당 배당금: KRX 전용 */}
+                {isKRX && detail?.dividendPerShare != null && (
+                  <MetricRow
+                    label="주당 배당금"
+                    value={`${detail.dividendPerShare.toLocaleString()}원`}
+                  />
+                )}
+                {detail?.website && (
                   <div className="pt-2">
                     <a href={detail.website} target="_blank" rel="noopener noreferrer"
                       className="text-sm text-blue-600 hover:underline flex items-center gap-1">
@@ -303,14 +383,12 @@ export default function StockDetail() {
                     </a>
                   </div>
                 )}
-                {detail.description && (
+                {detail?.description && (
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 line-clamp-5">
                     {detail.description}
                   </p>
                 )}
               </div>
-            ) : (
-              <p className="text-gray-400 text-sm">기업 정보를 불러오지 못했습니다</p>
             )}
           </CardContent>
         </Card>
@@ -323,21 +401,56 @@ export default function StockDetail() {
           <CardContent>
             {detailLoading ? (
               <LoadingSpinner />
-            ) : detail ? (
-              <div className="space-y-1">
-                <MetricRow label="PER (주가수익비율)" value={fmtVal(detail.trailingPE)} hint="낮을수록 저평가" />
-                <MetricRow label="Forward PER" value={fmtVal(detail.forwardPE)} hint="예상 실적 기준" />
-                <MetricRow label="PBR (주가순자산비율)" value={fmtVal(detail.priceToBook)} hint="1 미만이면 저평가" />
-                <MetricRow label="ROE (자기자본이익률)" value={fmtPct(detail.returnOnEquity)} hint="높을수록 효율적" />
-                <MetricRow label="부채비율" value={fmtVal(detail.debtToEquity, '%')} />
-                <MetricRow label="매출 성장률" value={fmtPct(detail.revenueGrowth)} />
-                <MetricRow label="이익 성장률" value={fmtPct(detail.earningsGrowth)} />
-                <MetricRow label="유동비율" value={fmtVal(detail.currentRatio)} hint="1 이상 안전" />
-                <MetricRow label="애널리스트 추천" value={detail.recommendationKey?.toUpperCase()} hint={detail.numberOfAnalystOpinions ? `${detail.numberOfAnalystOpinions}명` : null} />
-                <MetricRow label="목표가" value={detail.targetMeanPrice != null ? formatCurrency(detail.targetMeanPrice, quote?.currency) : 'N/A'} />
-              </div>
             ) : (
-              <p className="text-gray-400 text-sm">재무 데이터를 불러오지 못했습니다</p>
+              <div className="space-y-1">
+                {/* ── 공통 밸류에이션 ── */}
+                <MetricRow label="PER (주가수익비율)"  value={fmtVal(detail?.trailingPE)}  hint="낮을수록 저평가" />
+                <MetricRow label="추정 PER (Forward)" value={fmtVal(detail?.forwardPE)}   hint="예상 실적 기준" />
+                <MetricRow label="PBR (주가순자산비율)" value={fmtVal(detail?.priceToBook)} hint="1 미만이면 저평가" />
+
+                {/* ── KRX 전용: 주당 지표 ── */}
+                {isKRX ? (
+                  <>
+                    <MetricRow
+                      label="EPS (주당순이익)"
+                      value={detail?.eps != null ? `${detail.eps.toLocaleString()}원` : 'N/A'}
+                    />
+                    <MetricRow
+                      label="추정 EPS"
+                      value={detail?.cnsEps != null ? `${detail.cnsEps.toLocaleString()}원` : 'N/A'}
+                      hint="컨센서스 기준"
+                    />
+                    <MetricRow
+                      label="BPS (주당순자산)"
+                      value={detail?.bps != null ? `${detail.bps.toLocaleString()}원` : 'N/A'}
+                    />
+                  </>
+                ) : (
+                  /* ── 미국 주식 전용: Yahoo 재무 지표 ── */
+                  <>
+                    <MetricRow label="ROE (자기자본이익률)" value={fmtPct(detail?.returnOnEquity)}   hint="높을수록 효율적" />
+                    <MetricRow label="부채비율"             value={fmtVal(detail?.debtToEquity, '%')} />
+                    <MetricRow label="매출 성장률"           value={fmtPct(detail?.revenueGrowth)} />
+                    <MetricRow label="이익 성장률"           value={fmtPct(detail?.earningsGrowth)} />
+                    <MetricRow label="유동비율"              value={fmtVal(detail?.currentRatio)}  hint="1 이상 안전" />
+                  </>
+                )}
+
+                {/* ── 공통: 컨센서스 ── */}
+                <MetricRow
+                  label="애널리스트 추천"
+                  value={detail?.recommendationKey
+                    ? ({ buy: '매수', hold: '중립', sell: '매도' }[detail.recommendationKey] ?? detail.recommendationKey.toUpperCase())
+                    : 'N/A'}
+                  hint={detail?.numberOfAnalystOpinions ? `분석가 ${detail.numberOfAnalystOpinions}명` : null}
+                />
+                <MetricRow
+                  label="목표가"
+                  value={detail?.targetMeanPrice != null
+                    ? formatCurrency(detail.targetMeanPrice, quote?.currency)
+                    : 'N/A'}
+                />
+              </div>
             )}
           </CardContent>
         </Card>

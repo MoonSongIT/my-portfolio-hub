@@ -32,8 +32,8 @@ export default function ProfitLineChart() {
 
   // Y축 도메인 계산 (최소/최대에 여유 마진)
   const values = data.map(d => d.totalValue)
-  const minVal = Math.min(...values)
-  const maxVal = Math.max(...values)
+  const minVal = data.length > 0 ? Math.min(...values) : 0
+  const maxVal = data.length > 0 ? Math.max(...values) : 0
   const margin = (maxVal - minVal) * 0.1
 
   return (
@@ -55,8 +55,16 @@ export default function ProfitLineChart() {
         ))}
       </div>
 
+      {/* 데이터 없음 */}
+      {data.length === 0 && (
+        <div className="flex flex-col items-center justify-center h-[300px] text-gray-400 dark:text-gray-600">
+          <p className="text-sm">데이터가 없습니다.</p>
+          <p className="text-xs mt-1">일별 손익 스냅샷이 쌓이면 차트가 표시됩니다.</p>
+        </div>
+      )}
+
       {/* 라인차트 */}
-      <ResponsiveContainer width="100%" height={300}>
+      {data.length > 0 && <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
@@ -82,7 +90,7 @@ export default function ProfitLineChart() {
             activeDot={{ r: 4, fill: '#3B82F6' }}
           />
         </LineChart>
-      </ResponsiveContainer>
+      </ResponsiveContainer>}
     </div>
   )
 }

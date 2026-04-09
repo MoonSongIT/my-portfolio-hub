@@ -1,11 +1,116 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import YahooFinanceClass from 'yahoo-finance2'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // .env 파일의 모든 변수를 로드 (VITE_ 접두사 없는 것 포함)
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiKey = env.ANTHROPIC_API_KEY
+
+  return {
   plugins: [
     react(),
+    // yahoo-finance2 기반 재무 데이터 프록시 (크럼 인증 자동 처리)
+    {
+      name: 'yahoo-finance2-proxy',
+      configureServer(server) {
+        // v3: new YahooFinanceClass() 인스턴스 생성
+        const yf = new YahooFinanceClass({ suppressNotices: ['yahooSurvey'] })
+
+        server.middlewares.use('/api/yf2/quoteSummary', async (req, res) => {
+          try {
+            const url = new URL(req.url, 'http://localhost')
+            const ticker = url.searchParams.get('ticker')
+            if (!ticker) {
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              return res.end(JSON.stringify({ error: 'ticker 파라미터 필요' }))
+            }
+
+            const result = await yf.quoteSummary(ticker, {
+              modules: ['summaryProfile', 'summaryDetail', 'defaultKeyStatistics', 'financialData', 'price'],
+            })
+
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify(result))
+          } catch (err) {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ _error: err.message }))
+          }
+        })
+      },
+    },
+    // Claude API 로컬 프록시 미들웨어 (개발 서버 내장)
+    {
+      name: 'claude-api-proxy',
+      configureServer(server) {
+        server.middlewares.use('/api/claude', async (req, res, next) => {
+          if (req.method === 'OPTIONS') {
+            res.writeHead(200, {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            })
+            return res.end()
+          }
+
+          if (req.method !== 'POST') return next()
+
+          let body = ''
+          req.on('data', (chunk) => { body += chunk.toString() })
+          req.on('end', async () => {
+            try {
+              const { systemPrompt, messages, maxTokens = 4096 } = JSON.parse(body)
+
+              if (!systemPrompt || !messages?.length) {
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                return res.end(JSON.stringify({ error: '필수 파라미터 누락 (systemPrompt, messages)' }))
+              }
+
+              if (!apiKey) {
+                console.error('[Claude Proxy] ANTHROPIC_API_KEY 미설정!')
+                res.writeHead(500, { 'Content-Type': 'application/json' })
+                return res.end(JSON.stringify({ error: 'API 키 미설정. .env 파일에 ANTHROPIC_API_KEY를 확인하세요.' }))
+              }
+
+              console.log(`[Claude Proxy] 요청 → model: claude-sonnet-4-6, messages: ${messages.length}`)
+
+              const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': apiKey,
+                  'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify({
+                  model: 'claude-sonnet-4-6',
+                  max_tokens: maxTokens,
+                  system: systemPrompt,
+                  messages,
+                }),
+              })
+
+              const data = await upstream.json()
+
+              if (!upstream.ok) {
+                console.error(`[Claude Proxy] API 오류 ${upstream.status}:`, JSON.stringify(data).substring(0, 200))
+                res.writeHead(upstream.status, { 'Content-Type': 'application/json' })
+                return res.end(JSON.stringify({ error: `Claude API Error: ${upstream.status}`, details: data }))
+              }
+
+              console.log(`[Claude Proxy] 성공 ✅ stop_reason: ${data.stop_reason}`)
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify(data))
+            } catch (err) {
+              console.error('[Claude Proxy] 예외 발생:', err.message)
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: '프록시 오류', message: err.message }))
+            }
+          })
+        })
+      },
+    },
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon-180x180.png', 'icon.svg'],
@@ -76,9 +181,14 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/yahoo-v10/, ''),
         headers: { 'User-Agent': 'Mozilla/5.0' },
       },
-      '/api/claude': {
-        target: 'http://localhost:3001',
+      '/api/naver': {
+        target: 'https://m.stock.naver.com',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/naver/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+          'Referer': 'https://m.stock.naver.com',
+        },
       },
     },
   },
@@ -97,4 +207,5 @@ export default defineConfig({
       },
     },
   },
+  }
 })

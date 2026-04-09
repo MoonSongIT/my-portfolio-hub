@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { isKorean, searchKoreanStocks } from '../utils/koreanStocks'
+import { fetchNaverQuote, fetchNaverProfile, fetchNaverHistory } from './naverApi'
 
 const yahooApi = axios.create({
   baseURL: '/api/yahoo',
@@ -21,6 +22,11 @@ export const toYahooTicker = (ticker, market) => {
 
 // 1. 실시간 시세 (단일 종목)
 export const fetchQuote = async (ticker, market = 'NASDAQ') => {
+  // 한국 주식은 네이버 파이낸스 사용
+  if (market === 'KRX') {
+    return fetchNaverQuote(ticker)
+  }
+
   const yahooTicker = toYahooTicker(ticker, market)
   const { data } = await yahooApi.get(`/v8/finance/chart/${yahooTicker}`, {
     params: { interval: '1d', range: '1d' },
@@ -44,6 +50,10 @@ export const fetchQuote = async (ticker, market = 'NASDAQ') => {
     exchangeName: meta.exchangeName,
     marketState: meta.marketState,
     timestamp: (meta.regularMarketTime || 0) * 1000,
+    // v8 meta에서 직접 추출 (KRX 종목에서도 안정적으로 제공)
+    fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
+    fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
+    marketCap: meta.marketCap,
   }
 }
 
@@ -70,6 +80,11 @@ export const fetchBatchQuotes = async (holdings) => {
 
 // 3. 가격 히스토리
 export const fetchHistory = async (ticker, market = 'NASDAQ', range = '6mo', interval = '1d') => {
+  // 한국 주식은 네이버 파이낸스 사용
+  if (market === 'KRX') {
+    return fetchNaverHistory(ticker, range)
+  }
+
   const yahooTicker = toYahooTicker(ticker, market)
   const { data } = await yahooApi.get(`/v8/finance/chart/${yahooTicker}`, {
     params: { interval, range },
@@ -125,43 +140,62 @@ export const fetchSearch = async (query) => {
 
 // 5. 기업 상세 + 재무 지표
 export const fetchProfile = async (ticker, market = 'NASDAQ') => {
+  // 한국 주식은 네이버 파이낸스 사용
+  if (market === 'KRX') {
+    try {
+      return await fetchNaverProfile(ticker)
+    } catch {
+      return {}
+    }
+  }
+
   const yahooTicker = toYahooTicker(ticker, market)
-  const modules = 'summaryProfile,summaryDetail,defaultKeyStatistics,financialData'
 
-  const { data } = await yahooV10Api.get(`/v10/finance/quoteSummary/${yahooTicker}`, {
-    params: { modules },
-  })
+  try {
+    const { data } = await axios.get('/api/yf2/quoteSummary', {
+      params: { ticker: yahooTicker },
+      timeout: 15000,
+    })
 
-  const result = data.quoteSummary?.result?.[0]
-  if (!result) throw new Error(`기업 정보를 찾을 수 없습니다: ${ticker}`)
+    if (data._error) return {}  // 서버 측 오류
 
-  const profile = result.summaryProfile || {}
-  const detail = result.summaryDetail || {}
-  const stats = result.defaultKeyStatistics || {}
-  const financial = result.financialData || {}
+    const profile   = data.summaryProfile   || {}
+    const detail    = data.summaryDetail    || {}
+    const stats     = data.defaultKeyStatistics || {}
+    const financial = data.financialData    || {}
 
-  return {
-    sector: profile.sector,
-    industry: profile.industry,
-    website: profile.website,
-    description: profile.longBusinessSummary,
-    country: profile.country,
-    marketCap: detail.marketCap?.raw,
-    fiftyTwoWeekHigh: detail.fiftyTwoWeekHigh?.raw,
-    fiftyTwoWeekLow: detail.fiftyTwoWeekLow?.raw,
-    dividendYield: detail.dividendYield?.raw,
-    averageVolume: detail.averageVolume?.raw,
-    trailingPE: detail.trailingPE?.raw,
-    forwardPE: stats.forwardPE?.raw,
-    priceToBook: stats.priceToBook?.raw,
-    returnOnEquity: financial.returnOnEquity?.raw,
-    debtToEquity: financial.debtToEquity?.raw,
-    revenueGrowth: financial.revenueGrowth?.raw,
-    earningsGrowth: financial.earningsGrowth?.raw,
-    currentRatio: financial.currentRatio?.raw,
-    targetMeanPrice: financial.targetMeanPrice?.raw,
-    recommendationKey: financial.recommendationKey,
-    numberOfAnalystOpinions: financial.numberOfAnalystOpinions?.raw,
+    // PER: Yahoo가 직접 제공하지 않는 KRX 종목은 순이익/발행주식수로 계산
+    let trailingPE = detail.trailingPE ?? null
+    if (trailingPE == null && stats.netIncomeToCommon && stats.sharesOutstanding && financial.currentPrice) {
+      const eps = stats.netIncomeToCommon / stats.sharesOutstanding
+      if (eps > 0) trailingPE = parseFloat((financial.currentPrice / eps).toFixed(2))
+    }
+
+    return {
+      sector:       profile.sector       || null,
+      industry:     profile.industry     || null,
+      website:      profile.website      || null,
+      description:  profile.longBusinessSummary || null,
+      country:      profile.country      || null,
+      marketCap:    detail.marketCap     ?? null,
+      fiftyTwoWeekHigh: detail.fiftyTwoWeekHigh ?? null,
+      fiftyTwoWeekLow:  detail.fiftyTwoWeekLow  ?? null,
+      dividendYield:    detail.dividendYield     ?? null,
+      averageVolume:    detail.averageVolume      ?? null,
+      trailingPE,
+      forwardPE:    stats.forwardPE      ?? null,
+      priceToBook:  stats.priceToBook    ?? null,
+      returnOnEquity:   financial.returnOnEquity   ?? null,
+      debtToEquity:     financial.debtToEquity     ?? null,
+      revenueGrowth:    financial.revenueGrowth    ?? null,
+      earningsGrowth:   financial.earningsGrowth   ?? null,
+      currentRatio:     financial.currentRatio     ?? null,
+      targetMeanPrice:  financial.targetMeanPrice  ?? null,
+      recommendationKey: financial.recommendationKey || null,
+      numberOfAnalystOpinions: financial.numberOfAnalystOpinions ?? null,
+    }
+  } catch {
+    return {}
   }
 }
 

@@ -50,6 +50,8 @@ function getErrorMessage(error) {
       return 'AI 요청 한도에 도달했습니다. 잠시 후 다시 시도해주세요.'
     case 500:
       return '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+    case 529:
+      return 'AI 서버가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.'
     default:
       return `오류가 발생했습니다. (${status})`
   }
@@ -115,12 +117,12 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
       lastError = error
       const status = error.response?.status
 
-      // 429는 재시도 불필요 (한도 초과)
+      // 429, 401은 재시도 불필요 (한도 초과 / 인증 오류)
       if (status === 429 || status === 401) break
 
-      // 500 에러만 재시도
-      if (status === 500 && attempt < 2) {
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
+      // 500, 529(과부하) 에러 재시도
+      if ((status === 500 || status === 529) && attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
         continue
       }
 

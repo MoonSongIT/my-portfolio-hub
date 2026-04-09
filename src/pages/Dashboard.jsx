@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { TrendingUp, TrendingDown, Wallet, Briefcase, RefreshCw } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
+import { useUserAccounts } from '../store/accountStore'
 import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
 import {
   calculateTotalValue,
@@ -29,6 +30,9 @@ export default function Dashboard() {
     getSelectedHoldings, getSelectedCash,
     updateAllPrices, updateExchangeRate, lastUpdated,
   } = usePortfolioStore()
+
+  // 실제 계좌 수는 accountStore 기준으로 읽음 (portfolioStore.accounts는 동기화 지연 있음)
+  const userAccounts = useUserAccounts()
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
   const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId])
@@ -82,6 +86,7 @@ export default function Dashboard() {
     let todayPnL = 0
     batchData.forEach(r => {
       if (!r.success || !r.data) return
+      if (!r.data.previousClose || r.data.previousClose <= 0) return  // previousClose 없으면 스킵
       const h = holdings.filter(h => h.ticker === r.ticker)
       h.forEach(holding => {
         const change = (r.data.currentPrice - r.data.previousClose) * holding.quantity
@@ -94,10 +99,10 @@ export default function Dashboard() {
 
   const holdingsSub = useMemo(() => {
     if (selectedAccountId === 'all') {
-      return `${holdings.length}종목 / ${accounts.length}계좌`
+      return `${holdings.length}종목 / ${userAccounts.length}계좌`
     }
     return `KR ${holdings.filter(h => h.market === 'KRX').length} / US ${holdings.filter(h => h.market !== 'KRX').length}`
-  }, [holdings, accounts, selectedAccountId])
+  }, [holdings, userAccounts, selectedAccountId])
 
   const holdingsWithStats = useMemo(() => {
     const allocations = calcAllocation(holdings, exchangeRate)

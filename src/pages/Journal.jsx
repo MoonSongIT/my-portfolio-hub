@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useJournalStore } from '../store/journalStore'
 import { useUserAccounts } from '../store/accountStore'
+import { usePortfolioStore } from '../store/portfolioStore'
 import JournalEntryForm from '../components/journal/JournalEntryForm'
 import JournalBatchForm from '../components/journal/JournalBatchForm'
 import JournalList from '../components/journal/JournalList'
@@ -15,12 +16,18 @@ export default function Journal() {
   const [chatOpen, setChatOpen] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState('전체')
 
-  const { entries, getProfitByPsychology, getSummaryStats } = useJournalStore()
+  const { entries, getProfitByPsychology, getSummaryStats, recalculateSellPnl } = useJournalStore()
   const accounts = useUserAccounts()
+  const exchangeRate = usePortfolioStore(s => s.exchangeRate)
+
+  // 마운트 시 기존 매도 항목 pnl 소급 계산
+  useEffect(() => {
+    recalculateSellPnl()
+  }, [])
 
   // 선택 계좌 필터 (전체 = undefined → 전체 집계)
   const accountFilter = selectedAccountId === '전체' ? undefined : selectedAccountId
-  const chartData = getProfitByPsychology(accountFilter)
+  const chartData = getProfitByPsychology(accountFilter, exchangeRate)
   const stats = getSummaryStats(accountFilter)
 
   return (
