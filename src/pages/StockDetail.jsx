@@ -190,46 +190,95 @@ export default function StockDetail() {
         </div>
       </div>
 
-      {/* 시세 정보 카드 */}
+      {/* 시세 정보 카드 — 4열 레이아웃 */}
       {quote && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* 카드 1: 현재가 + 전일 종가 */}
           <Card className="border border-gray-200 dark:border-gray-700">
-            <CardContent className="p-4 text-center">
-              <p className="text-xs text-gray-500 mb-1">현재가</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                {formatCurrency(quote.currentPrice, quote.currency)}
-              </p>
-              <p className={`text-sm font-semibold ${quote.changePercent >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                {quote.change >= 0 ? '+' : ''}{quote.change?.toFixed(2)} ({formatPercent(quote.changePercent)})
-              </p>
+            <CardContent className="px-3 py-2">
+              <div className="text-center mb-1">
+                <p className="text-xs text-gray-500 mb-0.5">현재가</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  {formatCurrency(quote.currentPrice, quote.currency)}
+                </p>
+                <p className={`text-sm font-semibold ${quote.changePercent >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {quote.change >= 0 ? '+' : ''}{quote.change?.toFixed(2)} ({formatPercent(quote.changePercent)})
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-500">전일 종가</p>
+                <p className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                  {formatCurrency(quote.previousClose, quote.currency)}
+                </p>
+              </div>
             </CardContent>
           </Card>
+
+          {/* 카드 2: 52주 고가 + 52주 저가 */}
           <Card className="border border-gray-200 dark:border-gray-700">
-            <CardContent className="p-4 text-center">
-              <p className="text-xs text-gray-500 mb-1">전일 종가</p>
-              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {formatCurrency(quote.previousClose, quote.currency)}
-              </p>
+            <CardContent className="px-3 py-2">
+              <div className="text-center mb-1">
+                <p className="text-xs text-gray-500 mb-0.5">52주 고가</p>
+                <p className="text-lg font-semibold text-emerald-600">
+                  {(detail?.fiftyTwoWeekHigh ?? quote?.fiftyTwoWeekHigh) != null
+                    ? formatCurrency(detail?.fiftyTwoWeekHigh ?? quote.fiftyTwoWeekHigh, quote.currency)
+                    : '---'}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-500">52주 저가</p>
+                <p className="text-lg font-semibold text-red-500">
+                  {(detail?.fiftyTwoWeekLow ?? quote?.fiftyTwoWeekLow) != null
+                    ? formatCurrency(detail?.fiftyTwoWeekLow ?? quote.fiftyTwoWeekLow, quote.currency)
+                    : '---'}
+                </p>
+              </div>
             </CardContent>
           </Card>
+
+          {/* 카드 3: 액면가 + 외국인 보유율 */}
           <Card className="border border-gray-200 dark:border-gray-700">
-            <CardContent className="p-4 text-center">
-              <p className="text-xs text-gray-500 mb-1">52주 고가</p>
-              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {(detail?.fiftyTwoWeekHigh ?? quote?.fiftyTwoWeekHigh) != null
-                  ? formatCurrency(detail?.fiftyTwoWeekHigh ?? quote.fiftyTwoWeekHigh, quote.currency)
-                  : '---'}
-              </p>
+            <CardContent className="px-3 py-2">
+              <div className="text-center mb-1">
+                <p className="text-xs text-gray-500 mb-0.5">액면가</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {(detail?.parValue ?? quote?.parValue) != null
+                    ? `${(detail?.parValue ?? quote.parValue).toLocaleString()}원`
+                    : 'N/A'}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-500">외국인 보유율</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {detail?.foreignRate != null ? `${detail.foreignRate}%` : 'N/A'}
+                </p>
+              </div>
             </CardContent>
           </Card>
+
+          {/* 카드 4: 애널리스트 추천 + 목표가 */}
           <Card className="border border-gray-200 dark:border-gray-700">
-            <CardContent className="p-4 text-center">
-              <p className="text-xs text-gray-500 mb-1">52주 저가</p>
-              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {(detail?.fiftyTwoWeekLow ?? quote?.fiftyTwoWeekLow) != null
-                  ? formatCurrency(detail?.fiftyTwoWeekLow ?? quote.fiftyTwoWeekLow, quote.currency)
-                  : '---'}
-              </p>
+            <CardContent className="px-3 py-2">
+              <div className="text-center mb-1">
+                <p className="text-xs text-gray-500 mb-0.5">애널리스트 추천</p>
+                <p className={`text-lg font-semibold ${
+                  detail?.recommendationKey === 'buy' ? 'text-emerald-600' :
+                  detail?.recommendationKey === 'sell' ? 'text-red-500' :
+                  'text-gray-900 dark:text-gray-100'
+                }`}>
+                  {detail?.recommendationKey
+                    ? ({ buy: '매수', hold: '중립', sell: '매도' }[detail.recommendationKey] ?? detail.recommendationKey.toUpperCase())
+                    : 'N/A'}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-500">목표가</p>
+                <p className="text-lg font-semibold text-blue-500">
+                  {detail?.targetMeanPrice != null
+                    ? formatCurrency(detail.targetMeanPrice, quote?.currency)
+                    : 'N/A'}
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -335,24 +384,6 @@ export default function StockDetail() {
                 <MetricRow label="섹터" value={detail?.sector ?? 'N/A'} />
                 <MetricRow label="업종" value={detail?.industry ?? 'N/A'} />
                 <MetricRow label="시가총액" value={fmtCap(detail?.marketCap ?? quote?.marketCap)} />
-                {/* 액면가: KRX 전용 */}
-                {isKRX && (
-                  <MetricRow
-                    label="액면가"
-                    value={
-                      (detail?.parValue ?? quote?.parValue) != null
-                        ? `${(detail?.parValue ?? quote?.parValue).toLocaleString()}원`
-                        : 'N/A'
-                    }
-                  />
-                )}
-                {/* 외국인 보유율: KRX 전용 */}
-                {isKRX && (
-                  <MetricRow
-                    label="외국인 보유율"
-                    value={detail?.foreignRate != null ? `${detail.foreignRate.toFixed(2)}%` : 'N/A'}
-                  />
-                )}
                 <MetricRow
                   label="거래량 (평균 20일)"
                   value={detail?.averageVolume != null ? formatNumber(detail.averageVolume) : 'N/A'}
@@ -409,7 +440,7 @@ export default function StockDetail() {
                 <MetricRow label="PBR (주가순자산비율)" value={fmtVal(detail?.priceToBook)} hint="1 미만이면 저평가" />
 
                 {/* ── KRX 전용: 주당 지표 ── */}
-                {isKRX ? (
+                {isKRX && (
                   <>
                     <MetricRow
                       label="EPS (주당순이익)"
@@ -425,31 +456,24 @@ export default function StockDetail() {
                       value={detail?.bps != null ? `${detail.bps.toLocaleString()}원` : 'N/A'}
                     />
                   </>
-                ) : (
-                  /* ── 미국 주식 전용: Yahoo 재무 지표 ── */
-                  <>
-                    <MetricRow label="ROE (자기자본이익률)" value={fmtPct(detail?.returnOnEquity)}   hint="높을수록 효율적" />
-                    <MetricRow label="부채비율"             value={fmtVal(detail?.debtToEquity, '%')} />
-                    <MetricRow label="매출 성장률"           value={fmtPct(detail?.revenueGrowth)} />
-                    <MetricRow label="이익 성장률"           value={fmtPct(detail?.earningsGrowth)} />
-                    <MetricRow label="유동비율"              value={fmtVal(detail?.currentRatio)}  hint="1 이상 안전" />
-                  </>
                 )}
 
-                {/* ── 공통: 컨센서스 ── */}
-                <MetricRow
-                  label="애널리스트 추천"
-                  value={detail?.recommendationKey
-                    ? ({ buy: '매수', hold: '중립', sell: '매도' }[detail.recommendationKey] ?? detail.recommendationKey.toUpperCase())
-                    : 'N/A'}
-                  hint={detail?.numberOfAnalystOpinions ? `분석가 ${detail.numberOfAnalystOpinions}명` : null}
-                />
-                <MetricRow
-                  label="목표가"
-                  value={detail?.targetMeanPrice != null
-                    ? formatCurrency(detail.targetMeanPrice, quote?.currency)
-                    : 'N/A'}
-                />
+                {/* ── 공통: 재무 비율 ── */}
+                <MetricRow label="ROE (자기자본이익률)" value={fmtPct(detail?.returnOnEquity)}   hint="높을수록 효율적" />
+                <MetricRow label="부채비율"             value={fmtVal(detail?.debtToEquity, '%')} />
+                {isKRX && detail?.operatingMargin != null && (
+                  <MetricRow label="영업이익률" value={fmtPct(detail.operatingMargin)} />
+                )}
+                {isKRX && detail?.netMargin != null && (
+                  <MetricRow label="순이익률"   value={fmtPct(detail.netMargin)} />
+                )}
+                <MetricRow label="매출 성장률"           value={fmtPct(detail?.revenueGrowth)} />
+                <MetricRow label="이익 성장률"           value={fmtPct(detail?.earningsGrowth)} />
+                <MetricRow label={isKRX ? "당좌비율" : "유동비율"}
+                           value={isKRX ? fmtVal(detail?.currentRatio, '%') : fmtVal(detail?.currentRatio)}
+                           hint={isKRX ? "100% 이상 안전" : "1 이상 안전"} />
+
+                {/* 컨센서스는 상단 카드로 이동 */}
               </div>
             )}
           </CardContent>

@@ -76,13 +76,46 @@ export const fetchNaverQuote = async (ticker) => {
 // ─── 2. 기업 상세 + 재무 지표 ───────────────────────────────────────────────
 
 export const fetchNaverProfile = async (ticker) => {
-  const { data } = await naverApi.get(`/api/stock/${ticker}/integration`)
+  // integration + finance/annual 병렬 호출
+  const [integrationRes, financeRes] = await Promise.all([
+    naverApi.get(`/api/stock/${ticker}/integration`),
+    naverApi.get(`/api/stock/${ticker}/finance/annual`).catch(() => ({ data: null })),
+  ])
+  const data  = integrationRes.data
   const infos = data.totalInfos || []
 
-  // 개발 모드 디버깅 (배포 시 자동 제거)
+  // ── finance/annual 에서 재무지표 추출 ─────────────────────────
+  const finData  = financeRes.data
+  const rowList  = finData?.financeInfo?.rowList || []
+  const trTitles = finData?.financeInfo?.trTitleList || []
+
+  // rowList에서 title로 row 찾기
+  const getRow = (title) => rowList.find(r => r.title === title)
+
+  // 가장 최근 실적 연도 키 찾기 (컨센서스 아닌 것 중 마지막)
+  const actualYears = trTitles.filter(t => t.isConsensus === 'N').map(t => t.key)
+  const latestYear  = actualYears[actualYears.length - 1]   // 예: "202512"
+  const prevYear    = actualYears[actualYears.length - 2]    // 예: "202412"
+
+  // row에서 특정 연도의 value 파싱
+  const getRowValue = (title, yearKey) => {
+    const row = getRow(title)
+    if (!row?.columns || !yearKey) return null
+    const cell = row.columns[yearKey]
+    if (!cell || cell.value === '-' || cell.value == null) return null
+    return parseNum(cell.value)
+  }
+
+  // 기업 개요 (corporationSummary)
+  const corpSummary = finData?.corporationSummary
+  const description = corpSummary
+    ? [corpSummary.comment1, corpSummary.comment2, corpSummary.comment3].filter(Boolean).join(' ')
+    : (data.companySummary || null)
+
+  // 개발 모드 디버깅
   if (import.meta.env.DEV) {
     console.log('[Naver] industryCode:', data.industryCode)
-    console.log('[Naver] totalInfos:', infos.map(i => `${i.code}="${i.value}"`).join(' | '))
+    console.log('[Naver] finance/annual years:', actualYears, 'latest:', latestYear)
   }
 
   // ── 섹터 / 업종 (industryCode → 정적 매핑 테이블 조회) ────────
@@ -152,12 +185,45 @@ export const fetchNaverProfile = async (ticker) => {
   const parValueFromInfos = parseNum(getInfo(infos, 'parValue') ?? getInfo(infos, 'faceValue'))
   const parValue = parValueFromInfos ?? getKrxParValue(ticker)
 
+  // ── finance/annual 재무 비율 (최신 실적 연도 기준) ──────────────
+  // ROE: "10.85" → 0.1085 (비율 형태)
+  const roeRaw = getRowValue('ROE', latestYear)
+  const returnOnEquity = roeRaw != null ? roeRaw / 100 : null
+
+  // 부채비율: "29.94" → 29.94 (% 그대로)
+  const debtToEquity = getRowValue('부채비율', latestYear)
+
+  // 당좌비율 (= 유동비율 대용): "183.27" → 183.27 (%)
+  const currentRatio = getRowValue('당좌비율', latestYear)
+
+  // 영업이익률: "13.07" → 0.1307
+  const operatingMarginRaw = getRowValue('영업이익률', latestYear)
+  const operatingMargin = operatingMarginRaw != null ? operatingMarginRaw / 100 : null
+
+  // 순이익률: "13.55" → 0.1355
+  const netMarginRaw = getRowValue('순이익률', latestYear)
+  const netMargin = netMarginRaw != null ? netMarginRaw / 100 : null
+
+  // 매출 성장률: (최신 매출 - 전년 매출) / 전년 매출
+  const latestRevenue = getRowValue('매출액', latestYear)
+  const prevRevenue   = getRowValue('매출액', prevYear)
+  const revenueGrowth = (latestRevenue != null && prevRevenue != null && prevRevenue > 0)
+    ? (latestRevenue - prevRevenue) / prevRevenue
+    : null
+
+  // 이익 성장률: (최신 당기순이익 - 전년) / 전년
+  const latestIncome = getRowValue('당기순이익', latestYear)
+  const prevIncome   = getRowValue('당기순이익', prevYear)
+  const earningsGrowth = (latestIncome != null && prevIncome != null && prevIncome > 0)
+    ? (latestIncome - prevIncome) / prevIncome
+    : null
+
   return {
     // 기업 개요
     sector,
     industry,
     website:       null,
-    description:   data.companySummary || null,
+    description,
     country:       'KR',
     parValue,                  // 액면가 (원)
 
@@ -184,12 +250,14 @@ export const fetchNaverProfile = async (ticker) => {
     cnsEps,
     bps,
 
-    // 아래는 Naver 기본 API에서 미제공 (항상 null)
-    returnOnEquity:          null,
-    debtToEquity:            null,
-    revenueGrowth:           null,
-    earningsGrowth:          null,
-    currentRatio:            null,
+    // 재무 비율 (finance/annual 기준)
+    returnOnEquity,        // ROE (0~1 소수)
+    debtToEquity,          // 부채비율 (%)
+    currentRatio,          // 당좌비율 (%)
+    operatingMargin,       // 영업이익률 (0~1 소수)
+    netMargin,             // 순이익률 (0~1 소수)
+    revenueGrowth,         // 매출 성장률 (0~1 소수)
+    earningsGrowth,        // 이익 성장률 (0~1 소수)
 
     // 컨센서스
     targetMeanPrice,
