@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Sun, Moon, Menu, LogOut, Bot } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -8,6 +8,7 @@ import { useWatchlistStore } from '../../store/watchlistStore'
 import { useJournalStore } from '../../store/journalStore'
 import { useCashFlowStore } from '../../store/cashFlowStore'
 import { useDailyPnlStore } from '../../store/dailyPnlStore'
+import { useUserAccounts } from '../../store/accountStore'
 import { Button } from '../ui/button'
 import ChatPanel from '../chat/ChatPanel'
 
@@ -21,6 +22,23 @@ export default function Header({ onToggleSidebar }) {
   const { clearCashFlows } = useCashFlowStore()
   const { clearAll: clearDailyPnl } = useDailyPnlStore()
   const [chatOpen, setChatOpen] = useState(false)
+
+  // AI 채팅 컨텍스트 (포트폴리오 + 관심종목 + 매매일지)
+  const { getSelectedHoldings, exchangeRate, accounts: portfolioAccounts } = usePortfolioStore()
+  const { watchlist } = useWatchlistStore()
+  const { entries: journalEntries } = useJournalStore()
+  const userAccounts = useUserAccounts()
+  const holdings = useMemo(() => getSelectedHoldings(), [portfolioAccounts])
+  const chatContext = useMemo(() => ({
+    holdings: holdings.map(h => ({
+      ticker: h.ticker, name: h.name, quantity: h.quantity,
+      avgPrice: h.avgPrice, currentPrice: h.currentPrice, market: h.market,
+    })),
+    exchangeRate,
+    watchlist: watchlist.map(w => ({ ticker: w.ticker, name: w.name, market: w.market })),
+    journalEntries,
+    accounts: userAccounts,
+  }), [holdings, exchangeRate, watchlist, journalEntries, userAccounts])
 
   const handleLogout = () => {
     clearAccounts()
@@ -94,7 +112,7 @@ export default function Header({ onToggleSidebar }) {
         </Button>
       </div>
       {/* AI 채팅 패널 */}
-      <ChatPanel open={chatOpen} onOpenChange={setChatOpen} />
+      <ChatPanel open={chatOpen} onOpenChange={setChatOpen} context={chatContext} />
     </header>
   )
 }

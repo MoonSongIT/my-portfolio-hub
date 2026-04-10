@@ -1,6 +1,6 @@
 // AI 분석 채팅 전용 페이지
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Send, Trash2, Bot } from 'lucide-react'
+import { Send, Trash2, Bot, Loader2 } from 'lucide-react'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { useJournalStore } from '../store/journalStore'
@@ -12,11 +12,12 @@ import { Button } from '../components/ui/button'
 
 export default function AIChat() {
   const [input, setInput] = useState('')
+  const [localLoading, setLocalLoading] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
   const {
-    messages, isLoading, error,
+    messages, error,
     addUserMessage, addAIMessage, setLoading, setError, clearHistory,
   } = useChatStore()
 
@@ -46,6 +47,9 @@ export default function AIChat() {
     accounts,        // ← 계좌 이름 치환용
   }), [holdings, exchangeRate, watchlist, journalEntries, accounts])
 
+  // isLoading 통합 (로컬 React state 사용)
+  const isLoading = localLoading
+
   // 자동 스크롤
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -62,6 +66,7 @@ export default function AIChat() {
 
     addUserMessage(msg)
     setInput('')
+    setLocalLoading(true)
     setLoading(true)
     setError(null)
 
@@ -70,6 +75,8 @@ export default function AIChat() {
       addAIMessage(result.text, result.agentType, result.agentInfo)
     } catch (err) {
       setError(err.message || '알 수 없는 오류가 발생했습니다.')
+    } finally {
+      setLocalLoading(false)
     }
   }
 
@@ -82,6 +89,13 @@ export default function AIChat() {
 
   return (
     <div className="flex h-full flex-col">
+      {/* 로딩 배너 (최상단, 절대 놓칠 수 없음) */}
+      {isLoading && (
+        <div className="bg-blue-600 text-white text-center py-3 text-sm font-bold animate-pulse shrink-0">
+          🔄 AI가 분석 중입니다... 잠시만 기다려 주세요
+        </div>
+      )}
+
       {/* 페이지 헤더 */}
       <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -147,6 +161,19 @@ export default function AIChat() {
         </div>
       )}
 
+      {/* 로딩 프로그레스 바 */}
+      {isLoading && (
+        <div className="h-1 w-full overflow-hidden bg-gray-200 dark:bg-gray-700">
+          <div className="h-full w-1/3 animate-[slideRight_1.2s_ease-in-out_infinite] bg-blue-500 rounded-full" />
+          <style>{`
+            @keyframes slideRight {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(400%); }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* 입력 영역 */}
       <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
@@ -165,8 +192,12 @@ export default function AIChat() {
             disabled={!input.trim() || isLoading}
             className="shrink-0 gap-1"
           >
-            <Send className="h-4 w-4" />
-            <span className="hidden sm:inline">전송</span>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">{isLoading ? '분석 중...' : '전송'}</span>
           </Button>
         </div>
         <p className="mt-2 text-center text-[10px] text-gray-400 dark:text-gray-500">

@@ -1,6 +1,6 @@
 // AI 채팅 패널 — 우측 슬라이드 + 드래그 리사이즈
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Trash2, Bot, X, GripVertical } from 'lucide-react'
+import { Send, Trash2, Bot, X, GripVertical, Loader2 } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
@@ -30,6 +30,7 @@ export default function ChatPanel({
   initialMessage = null,
 }) {
   const [input, setInput] = useState('')
+  const [localLoading, setLocalLoading] = useState(false)
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -38,7 +39,6 @@ export default function ChatPanel({
 
   const {
     messages,
-    isLoading,
     error,
     addUserMessage,
     addAIMessage,
@@ -46,6 +46,8 @@ export default function ChatPanel({
     setError,
     clearHistory,
   } = useChatStore()
+
+  const isLoading = localLoading
 
   // 최신 메시지로 자동 스크롤 (메시지 변경 시)
   useEffect(() => {
@@ -108,6 +110,7 @@ export default function ChatPanel({
 
     addUserMessage(msg)
     setInput('')
+    setLocalLoading(true)
     setLoading(true)
     setError(null)
 
@@ -116,6 +119,8 @@ export default function ChatPanel({
       addAIMessage(result.text, result.agentType, result.agentInfo)
     } catch (err) {
       setError(err.message || '알 수 없는 오류가 발생했습니다.')
+    } finally {
+      setLocalLoading(false)
     }
   }
 
@@ -220,6 +225,19 @@ export default function ChatPanel({
           </div>
         )}
 
+        {/* 로딩 프로그레스 바 */}
+        {isLoading && (
+          <div className="h-1 w-full overflow-hidden bg-gray-200 dark:bg-gray-700">
+            <div className="h-full w-1/3 animate-[slideRight_1.2s_ease-in-out_infinite] bg-blue-500 rounded-full" />
+            <style>{`
+              @keyframes slideRight {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(400%); }
+              }
+            `}</style>
+          </div>
+        )}
+
         {/* 입력 영역 */}
         <div className="border-t px-4 py-3 shrink-0">
           <div className="flex items-center gap-2">
@@ -239,7 +257,7 @@ export default function ChatPanel({
               disabled={!input.trim() || isLoading}
               className="shrink-0"
             >
-              <Send className="h-4 w-4" />
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
           {/* 면책 문구 */}

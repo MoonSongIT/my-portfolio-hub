@@ -8,10 +8,20 @@ import AgentBadge from './AgentBadge'
  */
 function LoadingDots() {
   return (
-    <div className="flex items-center gap-1 px-2 py-1">
-      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
-      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
-      <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+    <div className="flex items-center gap-2 px-1 py-1">
+      <span className="text-xs text-blue-400 dark:text-blue-300 font-medium">분석 중</span>
+      <span className="dot-1 h-2.5 w-2.5 rounded-full bg-blue-500" />
+      <span className="dot-2 h-2.5 w-2.5 rounded-full bg-blue-500" />
+      <span className="dot-3 h-2.5 w-2.5 rounded-full bg-blue-500" />
+      <style>{`
+        @keyframes dotBounce {
+          0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+          40% { opacity: 1; transform: translateY(-6px); }
+        }
+        .dot-1 { animation: dotBounce 1.4s ease-in-out 0s infinite; }
+        .dot-2 { animation: dotBounce 1.4s ease-in-out 0.2s infinite; }
+        .dot-3 { animation: dotBounce 1.4s ease-in-out 0.4s infinite; }
+      `}</style>
     </div>
   )
 }

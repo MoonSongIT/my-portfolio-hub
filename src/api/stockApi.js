@@ -106,6 +106,60 @@ export const fetchHistory = async (ticker, market = 'NASDAQ', range = '6mo', int
   })).filter(d => d.close != null)
 }
 
+// ─── 벤치마크 지수 히스토리 ─────────────────────────────────────
+// KOSPI → 네이버, S&P500 → Yahoo
+export const fetchBenchmarkHistory = async (range = '1mo') => {
+  const naverApi = axios.create({ baseURL: '/api/naver', timeout: 10000 })
+
+  // range → 네이버 pageSize 매핑
+  const rangeToDays = { '5d': 7, '1w': 7, '1mo': 25, '3mo': 65, '6mo': 130, '1y': 250 }
+  const days = rangeToDays[range] || 25
+  const pageSize = Math.min(days, 60)
+  const totalPages = Math.ceil(days / pageSize)
+
+  // KOSPI: 네이버 지수 API (페이지네이션)
+  const kospiPromise = (async () => {
+    try {
+      const pages = await Promise.all(
+        Array.from({ length: totalPages }, (_, i) =>
+          naverApi.get(`/api/index/KOSPI/price`, {
+            params: { pageSize, page: i + 1 },
+          }).then(r => r.data).catch(() => [])
+        )
+      )
+      return pages.flat()
+        .slice(0, days)
+        .map(d => ({
+          date: d.localTradedAt?.slice(0, 10) || '',
+          close: parseFloat(String(d.closePrice).replace(/,/g, '')),
+        }))
+        .filter(d => d.date && !isNaN(d.close))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    } catch { return [] }
+  })()
+
+  // S&P500: Yahoo Finance (^GSPC)
+  const sp500Promise = (async () => {
+    try {
+      const yahooRange = range === '1w' ? '5d' : range
+      const { data } = await yahooApi.get('/v8/finance/chart/%5EGSPC', {
+        params: { interval: '1d', range: yahooRange },
+      })
+      const result = data.chart.result?.[0]
+      if (!result) return []
+      const ts = result.timestamp || []
+      const q = result.indicators.quote?.[0] || {}
+      return ts.map((t, i) => ({
+        date: new Date(t * 1000).toISOString().split('T')[0],
+        close: q.close?.[i],
+      })).filter(d => d.close != null)
+    } catch { return [] }
+  })()
+
+  const [kospi, sp500] = await Promise.all([kospiPromise, sp500Promise])
+  return { KOSPI: kospi, SP500: sp500 }
+}
+
 // 4. 종목 검색 (한글 → 로컬 DB, 영문 → Yahoo Finance)
 export const fetchSearch = async (query) => {
   if (!query || query.length < 1) return []
