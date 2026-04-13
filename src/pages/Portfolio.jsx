@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { toast } from 'sonner'
 import { RefreshCw, Bot, X, TrendingUp, BarChart2, Loader2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
@@ -83,6 +84,9 @@ export default function Portfolio() {
     setSnapshotLoading(true)
     try {
       await snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
+      toast.success('오늘 손익 스냅샷 저장 완료')
+    } catch {
+      toast.error('오늘 손익 저장 실패. 다시 시도해주세요.')
     } finally {
       setSnapshotLoading(false)
     }
@@ -96,6 +100,9 @@ export default function Portfolio() {
       for (const h of uniqueHoldings) {
         await backfillHistory(h.ticker, h.accountId, h.market || 'KRX')
       }
+      toast.success(`전체 히스토리 로드 완료 (${uniqueHoldings.length}종목)`)
+    } catch {
+      toast.error('히스토리 로드 중 오류가 발생했습니다.')
     } finally {
       setBackfillLoading(false)
     }
@@ -120,6 +127,9 @@ export default function Portfolio() {
     setBackfillLoading(true)
     try {
       await backfillHistory(drawerTicker.ticker, drawerTicker.accountId, drawerTicker.market || 'KRX')
+      toast.success(`${drawerTicker.name} 히스토리 로드 완료`)
+    } catch {
+      toast.error(`${drawerTicker.name} 히스토리 로드 실패`)
     } finally {
       setBackfillLoading(false)
     }

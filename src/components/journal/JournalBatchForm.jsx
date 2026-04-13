@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
+import { toast } from 'sonner'
 import { useJournalStore } from '../../store/journalStore'
 import { useUserAccounts } from '../../store/accountStore'
+import { ensureHistory } from '../../api/dailyPnlService'
 import { KRX_STOCKS } from '../../data/krxStocks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Button } from '../ui/button'
@@ -103,6 +105,7 @@ export default function JournalBatchForm({ open, onClose }) {
 
   const handleSaveAll = () => {
     if (!validate()) return
+    const buyRows = []
     rows.forEach(row => {
       const price = Number(row.price)
       const quantity = Number(row.quantity)
@@ -121,6 +124,19 @@ export default function JournalBatchForm({ open, onClose }) {
         memo: row.memo.trim(),
         pnl: row.pnl !== '' ? Number(row.pnl) : null,
       })
+      if (row.action === 'buy') buyRows.push(row)
+    })
+    // 매수 항목 손익 히스토리 백필 (백그라운드, 비차단)
+    buyRows.forEach(row => {
+      ensureHistory(row.ticker.trim().toUpperCase(), accountId, row.market)
+        .then(results => {
+          if (results.length > 0) {
+            toast.success(`${row.name} 손익 히스토리 로드 완료 (${results.length}일)`)
+          }
+        })
+        .catch(() => {
+          toast.error(`${row.name} 손익 히스토리 로드 실패. 포트폴리오에서 수동으로 로드해주세요.`)
+        })
     })
     setRows([emptyRow()])
     setDate(today())

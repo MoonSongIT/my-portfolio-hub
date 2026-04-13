@@ -6,6 +6,7 @@ import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
+import { Toaster } from 'sonner'
 import Header from './components/common/Header'
 import Sidebar from './components/common/Sidebar'
 import ProtectedRoute from './components/common/ProtectedRoute'
@@ -65,6 +66,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <Toaster position="bottom-right" richColors closeButton />
       {/* PWA 새 버전 알림 배너 */}
       {needRefresh && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-blue-600 text-white text-sm px-4 py-3 rounded-xl shadow-lg">

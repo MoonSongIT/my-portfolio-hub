@@ -33,12 +33,12 @@ export default function Journal() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">투자 매매 일지</h1>
           <p className="text-sm text-gray-500 mt-1">매매 심리를 기록하고 패턴을 발견하세요</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button onClick={() => setEntryFormOpen(true)}>
             + 빠른 입력
           </Button>

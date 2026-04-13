@@ -298,21 +298,22 @@ export default function AccountSetupModal({ open, onClose }) {
               <label className="text-sm font-medium">
                 기본 통화 <span className="text-destructive">*</span>
               </label>
-              <Select
-                value={form.currency}
-                onValueChange={(val) => setForm({ ...form, currency: val })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CURRENCIES.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                {CURRENCIES.map((c) => (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => setForm({ ...form, currency: c.code })}
+                    className={`flex-1 py-2 px-3 rounded-md border text-sm font-medium transition-colors ${
+                      form.currency === c.code
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background text-foreground border-border hover:bg-muted'
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* 메모 */}

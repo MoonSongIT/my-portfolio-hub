@@ -42,24 +42,26 @@ export default function AvailableCashCard({ accountId = 'all', compact = false }
     setModalOpen(true)
   }
 
-  // 간소화 버전 (Dashboard용)
+  // 간소화 버전 (Dashboard용 — KPI 카드와 동일 스타일)
   if (compact) {
     return (
       <>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <Wallet size={16} className="text-blue-600 dark:text-blue-400" />
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-500 dark:text-gray-400">투자 가능 금액</span>
+              <div className={`p-2 rounded-lg ${isNegative ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}>
+                {isNegative
+                  ? <AlertCircle className="w-4 h-4 text-red-500" />
+                  : <Wallet className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                }
               </div>
-              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">투자 가능 금액</span>
             </div>
-            {isNegative && <AlertCircle size={16} className="text-red-500" />}
+            <p className={`text-2xl font-bold ${isNegative ? 'text-red-500' : 'text-blue-600 dark:text-blue-400'}`}>
+              {formatCurrencyShort(availableCash)}
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{accountLabel}</p>
           </div>
-          <p className={`text-xl font-bold ${isNegative ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}>
-            {formatCurrencyShort(availableCash)}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">{accountLabel}</p>
         </div>
         <CashFlowModal
           open={modalOpen}

@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
+import { toast } from 'sonner'
 import { useJournalStore } from '../../store/journalStore'
 import { useUserAccounts, useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
 import { useCashFlowStore } from '../../store/cashFlowStore'
+import { ensureHistory } from '../../api/dailyPnlService'
 import { KRX_STOCKS } from '../../data/krxStocks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Button } from '../ui/button'
@@ -184,6 +186,16 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
       updateEntry(editEntry.id, entry)
     } else {
       addEntry(entry)
+      // 신규 매수 시 과거 손익 데이터 백필 (백그라운드, 비차단)
+      if (entry.action === 'buy' && entry.accountId) {
+        ensureHistory(entry.ticker, entry.accountId, entry.market).then(results => {
+          if (results.length > 0) {
+            toast.success(`${entry.name} 손익 히스토리 로드 완료 (${results.length}일)`)
+          }
+        }).catch(() => {
+          toast.error(`${entry.name} 손익 히스토리 로드 실패. 포트폴리오에서 수동으로 로드해주세요.`)
+        })
+      }
     }
 
     onClose()

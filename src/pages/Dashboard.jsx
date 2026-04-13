@@ -1,9 +1,12 @@
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { TrendingUp, TrendingDown, Wallet, Briefcase, RefreshCw } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wallet, Briefcase, RefreshCw, Camera } from 'lucide-react'
+import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useUserAccounts } from '../store/accountStore'
+import { useDailyPnlStore } from '../store/dailyPnlStore'
+import { snapshotToday } from '../api/dailyPnlService'
 import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
 import {
   calculateTotalValue,
@@ -18,6 +21,7 @@ import AllocationPieChart from '../components/charts/AllocationPieChart'
 import ProfitLineChart from '../components/charts/ProfitLineChart'
 import AccountSelector from '../components/common/AccountSelector'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import AvailableCashCard from '../components/portfolio/AvailableCashCard'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table'
@@ -25,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 
 export default function Dashboard() {
   const queryClient = useQueryClient()
+  const [snapshotLoading, setSnapshotLoading] = useState(false)
   const {
     accounts, selectedAccountId, exchangeRate,
     getSelectedHoldings, getSelectedCash,
@@ -80,13 +85,27 @@ export default function Dashboard() {
     [holdings, exchangeRate]
   )
 
-  // 오늘 손익 (API previousClose 기반)
+  // dailyPnlStore 기반 오늘 손익
+  const getSnapshotsByDate = useDailyPnlStore(s => s.getSnapshotsByDate)
+  const snapshots          = useDailyPnlStore(s => s.snapshots)
+
   const dailyChange = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0]
+    const todaySnapshots = getSnapshotsByDate(today, selectedAccountId)
+
+    // ① dailyPnlStore 스냅샷 데이터가 있으면 우선 사용
+    if (todaySnapshots.length > 0) {
+      const snapshotPnl = todaySnapshots.reduce((sum, s) => sum + (s.dailyPnl || 0), 0)
+      const prevTotal = totalValue - snapshotPnl
+      return calcDailyChange(prevTotal, totalValue)
+    }
+
+    // ② 없으면 API previousClose 기반으로 fallback
     if (!batchData) return { amount: 0, rate: 0 }
     let todayPnL = 0
     batchData.forEach(r => {
       if (!r.success || !r.data) return
-      if (!r.data.previousClose || r.data.previousClose <= 0) return  // previousClose 없으면 스킵
+      if (!r.data.previousClose || r.data.previousClose <= 0) return
       const h = holdings.filter(h => h.ticker === r.ticker)
       h.forEach(holding => {
         const change = (r.data.currentPrice - r.data.previousClose) * holding.quantity
@@ -95,7 +114,7 @@ export default function Dashboard() {
     })
     const prevTotal = totalValue - todayPnL
     return calcDailyChange(prevTotal, totalValue)
-  }, [batchData, holdings, totalValue, exchangeRate])
+  }, [snapshots, selectedAccountId, batchData, holdings, totalValue, exchangeRate])
 
   const holdingsSub = useMemo(() => {
     if (selectedAccountId === 'all') {
@@ -118,6 +137,18 @@ export default function Dashboard() {
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['batchQuotes'] })
     queryClient.invalidateQueries({ queryKey: ['exchangeRate'] })
+  }
+
+  const handleSnapshot = async () => {
+    setSnapshotLoading(true)
+    try {
+      await snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
+      toast.success('오늘 손익 스냅샷 저장 완료')
+    } catch {
+      toast.error('손익 저장 실패. 다시 시도해주세요.')
+    } finally {
+      setSnapshotLoading(false)
+    }
   }
 
   const lastUpdateTime = lastUpdated
@@ -171,6 +202,14 @@ export default function Dashboard() {
             {lastUpdateTime && <span>업데이트 {lastUpdateTime}</span>}
             {rateData && <span className="text-xs">USD/KRW {Math.round(rateData.rate).toLocaleString()}</span>}
             <button
+              onClick={handleSnapshot}
+              disabled={snapshotLoading}
+              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              title="오늘 손익 저장"
+            >
+              <Camera className={`w-4 h-4 ${snapshotLoading ? 'animate-pulse' : ''}`} />
+            </button>
+            <button
               onClick={handleRefresh}
               className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               title="새로고침"
@@ -192,8 +231,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPI 카드 4개 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI 카드 5개 (4개 + 투자 가능 금액) - 동일 간격 가로 정렬 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon
           return (
@@ -213,6 +252,9 @@ export default function Dashboard() {
             </Card>
           )
         })}
+
+        {/* 5번째 카드: 투자 가능 금액 */}
+        <AvailableCashCard accountId={selectedAccountId} compact />
       </div>
 
       {/* 차트 영역 */}
