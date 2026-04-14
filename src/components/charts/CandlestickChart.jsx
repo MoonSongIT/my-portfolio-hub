@@ -246,18 +246,9 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
       }
 
       chart.timeScale().fitContent()
-
-      // 리사이징 대응
-      const handleResize = () => {
-        if (!containerRef.current) return
-        const w = containerRef.current.clientWidth
-        if (w > 0) chart.applyOptions({ width: w })
-      }
-      window.addEventListener('resize', handleResize)
       chartRef.current = chart
 
       return () => {
-        window.removeEventListener('resize', handleResize)
         try { chart.remove() } catch {}
         chartRef.current = null
       }
@@ -267,14 +258,16 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
     }
   }, [data, isDark, indicators])
 
-  // 언마운트 시 정리
+  // 리사이징 대응 — 별도 effect로 분리하여 중복 등록 방지
+  // chartRef를 통해 항상 현재 차트 인스턴스를 참조
   useEffect(() => {
-    return () => {
-      if (chartRef.current) {
-        try { chartRef.current.remove() } catch {}
-        chartRef.current = null
-      }
+    const handleResize = () => {
+      if (!containerRef.current || !chartRef.current) return
+      const w = containerRef.current.clientWidth
+      if (w > 0) chartRef.current.applyOptions({ width: w })
     }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
 
   if (error) {

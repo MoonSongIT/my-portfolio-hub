@@ -51,7 +51,7 @@ export function calculateBollingerBands(data, period = 20, multiplier = 2) {
       if (index < period - 1) return null
       const window = data.slice(index - period + 1, index + 1)
       const closes = window.map(c => c.close)
-      const middle = closes.reduce((a, b) => a + b, 0) / period
+      const middle = closes.reduce((a, b) => a + b, 0) / closes.length
       const stdDev = calcStdDev(closes)
       return {
         time: candle.time,
