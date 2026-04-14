@@ -5,6 +5,18 @@ import path from 'path'
 import YahooFinanceClass from 'yahoo-finance2'
 
 export default defineConfig(({ mode }) => {
+  // vitest 환경에서는 yahoo-finance2 임포트 스킵
+  if (mode === 'test') {
+    return {
+      test: {
+        environment: 'node',
+        include: ['src/**/*.test.js'],
+      },
+      resolve: {
+        alias: { '@': path.resolve(__dirname, './src') },
+      },
+    }
+  }
   // .env 파일의 모든 변수를 로드 (VITE_ 접두사 없는 것 포함)
   const env = loadEnv(mode, process.cwd(), '')
   const apiKey = env.ANTHROPIC_API_KEY
