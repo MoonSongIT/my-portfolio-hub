@@ -26,23 +26,23 @@ function SimpleMarkdown({ text }) {
   )
 }
 
-export default function InsightsCard({ entries = [], dateRange = '1m', holdings = [] }) {
+export default function InsightsCard({ entries = [], dateRange = '1m', holdings = [], reportContext = null }) {
   const [loading, setLoading] = useState(false)
   const [insight, setInsight] = useState(null)
   const [error, setError] = useState(null)
+
+  const periodLabel = dateRange === '1d' ? '오늘' : dateRange === '1w' ? '이번 주' : dateRange === '1m' ? '이번 달' : '올해'
 
   const handleGenerate = async () => {
     setLoading(true)
     setError(null)
     setInsight(null)
 
+    const context = reportContext ?? { holdings, period: dateRange, journalEntries: entries }
+
     const result = await sendToAgent(
-      `${dateRange === '1d' ? '오늘' : dateRange === '1w' ? '이번 주' : dateRange === '1m' ? '이번 달' : '올해'} 투자 성과 리포트를 생성해줘`,
-      {
-        holdings,
-        period: dateRange,
-        journalEntries: entries,
-      },
+      `${periodLabel} 투자 성과 리포트를 생성해줘. 주요 지표: 수익률 ${context.totalReturn?.toFixed(2) ?? '-'}%, KOSPI 대비 ${context.benchmarkDiff ?? '-'}%p, 거래 ${entries.length}건, 승률 ${context.winRate ?? '-'}%`,
+      context,
       'report'
     )
 
