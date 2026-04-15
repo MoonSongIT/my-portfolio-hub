@@ -5,6 +5,7 @@ import { useJournalStore } from '../../store/journalStore'
 import { calculateSMA, calculateBollingerBands, calculateRSI, calculateMACD, resampleOHLCV } from '../../utils/technicalIndicators'
 import TimeframeSelector from './TimeframeSelector'
 import IndicatorControls from './IndicatorControls'
+import PeriodSelector from './PeriodSelector'
 
 // ─── 차트 테마 옵션 ────────────────────────────────────────────────────────
 
@@ -122,13 +123,45 @@ function addRSILevels(chart, rsiData, paneIndex) {
 
 const DEFAULT_INDICATORS = { bb: false, rsi: false, macd: false }
 const DEFAULT_TIMEFRAME = '1D'
+const DEFAULT_PERIOD = 'ALL'
+
+const PERIOD_DAYS = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 }
+
+/**
+ * 차트 timeScale에 기간 visible range 적용
+ * @param {object} chart - lightweight-charts chart 인스턴스
+ * @param {string} period - '1M' | '3M' | '6M' | '1Y' | 'ALL'
+ * @param {Array}  chartData - 현재 표시 중인 OHLCV 배열
+ */
+function applyPeriod(chart, period, chartData) {
+  if (!chart || !chartData?.length) return
+  if (period === 'ALL') {
+    chart.timeScale().fitContent()
+    return
+  }
+  const days = PERIOD_DAYS[period]
+  if (!days) return
+  const last = chartData[chartData.length - 1].time
+  const toDate = new Date(last)
+  const fromDate = new Date(toDate)
+  fromDate.setDate(toDate.getDate() - days)
+  const fmt = d => d.toISOString().split('T')[0]
+  try {
+    chart.timeScale().setVisibleRange({ from: fmt(fromDate), to: fmt(toDate) })
+  } catch {
+    chart.timeScale().fitContent()
+  }
+}
 
 export default function CandlestickChart({ data = [], ticker = '' }) {
   const containerRef = useRef(null)
   const chartRef = useRef(null)
+  const chartDataRef = useRef([])   // period effect에서 chartData 접근용
+  const periodRef = useRef(DEFAULT_PERIOD)
   const [error, setError] = useState(null)
   const [timeframe, setTimeframe] = useState(DEFAULT_TIMEFRAME)
   const [indicators, setIndicators] = useState(DEFAULT_INDICATORS)
+  const [period, setPeriod] = useState(DEFAULT_PERIOD)
   const { theme } = useSettingsStore()
   const isDark = theme === 'dark'
   const entries = useJournalStore(s => s.entries)
@@ -320,8 +353,9 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
         paneIndex++
       }
 
-      chart.timeScale().fitContent()
+      chartDataRef.current = chartData
       chartRef.current = chart
+      applyPeriod(chart, periodRef.current, chartData)
 
       return () => {
         try { chart.remove() } catch {}
@@ -332,6 +366,12 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
       setError(err.message)
     }
   }, [data, isDark, indicators, timeframe, entries, ticker])
+
+  // 기간 선택 effect — 차트 재생성 없이 visible range만 변경
+  useEffect(() => {
+    periodRef.current = period
+    applyPeriod(chartRef.current, period, chartDataRef.current)
+  }, [period])
 
   // 리사이징 대응 — 별도 effect로 분리하여 중복 등록 방지
   // chartRef를 통해 항상 현재 차트 인스턴스를 참조
@@ -366,8 +406,12 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
     <div className="w-full">
       {/* 컨트롤 바 */}
       <div className="flex items-center justify-between px-1 pb-2 flex-wrap gap-2">
-        {/* 타임프레임 */}
-        <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+        {/* 타임프레임 + 기간 선택 */}
+        <div className="flex items-center gap-3">
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+          <span className="w-px h-4 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+          <PeriodSelector value={period} onChange={setPeriod} />
+        </div>
 
         {/* 지표 컨트롤 */}
         <IndicatorControls active={indicators} onToggle={handleIndicatorToggle} />
