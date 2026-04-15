@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts'
 import { useSettingsStore } from '../../store/settingsStore'
-import { calculateSMA, calculateBollingerBands, calculateRSI, calculateMACD } from '../../utils/technicalIndicators'
+import { calculateSMA, calculateBollingerBands, calculateRSI, calculateMACD, resampleOHLCV } from '../../utils/technicalIndicators'
 import TimeframeSelector from './TimeframeSelector'
 import IndicatorControls from './IndicatorControls'
 
@@ -86,8 +86,8 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
       chartRef.current = null
     }
 
-    // lightweight-charts 형식으로 변환
-    const chartData = data
+    // lightweight-charts 형식으로 변환 + timeframe에 따라 리샘플링
+    const dailyData = data
       .filter(d => d.open != null && d.close != null)
       .map(d => ({
         time: d.date,
@@ -95,7 +95,11 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
         high: d.high,
         low: d.low,
         close: d.close,
+        volume: d.volume || 0,
       }))
+
+    // timeframe에 따라 리샘플링
+    const chartData = timeframe === '1D' ? dailyData : resampleOHLCV(dailyData, timeframe)
 
     if (chartData.length === 0) return
 
@@ -164,10 +168,10 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
       }
 
       // ── 거래량 히스토그램 (pane 0 overlay, 하단 20%) ───────────────────
-      const volumeData = data
+      const volumeData = chartData
         .filter(d => d.volume != null && d.volume > 0)
         .map(d => ({
-          time: d.date,
+          time: d.time,
           value: d.volume,
           color: d.close >= d.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
         }))
@@ -256,7 +260,7 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
       console.error('[CandlestickChart] 차트 생성 실패:', err)
       setError(err.message)
     }
-  }, [data, isDark, indicators])
+  }, [data, isDark, indicators, timeframe])
 
   // 리사이징 대응 — 별도 effect로 분리하여 중복 등록 방지
   // chartRef를 통해 항상 현재 차트 인스턴스를 참조

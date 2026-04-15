@@ -186,3 +186,76 @@ export function calculateMACD(data, fastPeriod = 12, slowPeriod = 26, signalPeri
 
   return result
 }
+
+// ─── 주봉/월봉 리샘플링 ──────────────────────────────────────────────────────
+
+/**
+ * OHLCV 데이터를 주봉/월봉으로 리샘플링
+ * @param {Array<{time, open, high, low, close, volume}>} candles - 일봉 OHLCV 배열
+ * @param {string} timeframe - '1D' | '1W' | '1M' (기본값: '1D')
+ * @returns {Array<{time, open, high, low, close, volume}>} 리샘플된 OHLCV 배열
+ *
+ * @example
+ * const dailyCandles = [
+ *   { time: '2026-04-01', open: 100, high: 105, low: 99, close: 102, volume: 1000 },
+ *   ...
+ * ]
+ * const weeklyCandles = resampleOHLCV(dailyCandles, '1W')
+ */
+export function resampleOHLCV(candles, timeframe = '1D') {
+  if (!candles || candles.length === 0) return []
+  if (timeframe === '1D') return candles
+
+  const result = []
+  let current = null
+
+  for (const candle of candles) {
+    const time = new Date(candle.time)
+    const year = time.getFullYear()
+    const month = time.getMonth()
+    const date = time.getDate()
+    const day = time.getDay()
+
+    // 주봉: ISO 주(월요일 기준)의 시작일
+    let groupKey
+    if (timeframe === '1W') {
+      // ISO 주 번호 계산 (월요일 = 1, 일요일 = 0)
+      const dayOffset = day === 0 ? 6 : day - 1
+      const weekStart = new Date(time)
+      weekStart.setDate(date - dayOffset)
+      groupKey = weekStart.toISOString().split('T')[0]
+    } else if (timeframe === '1M') {
+      // 월의 첫 거래일
+      groupKey = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    } else {
+      return candles // 지원하지 않는 timeframe
+    }
+
+    // 같은 그룹의 첫 번째 candle인 경우
+    if (!current || current.groupKey !== groupKey) {
+      if (current) result.push(current.ohlcv)
+      current = {
+        groupKey,
+        ohlcv: {
+          time: candle.time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume || 0,
+        },
+      }
+    } else {
+      // 같은 그룹 내에서 OHLCV 업데이트
+      current.ohlcv.close = candle.close
+      current.ohlcv.high = Math.max(current.ohlcv.high, candle.high)
+      current.ohlcv.low = Math.min(current.ohlcv.low, candle.low)
+      current.ohlcv.volume += candle.volume || 0
+    }
+  }
+
+  // 마지막 그룹 추가
+  if (current) result.push(current.ohlcv)
+
+  return result
+}
