@@ -165,10 +165,22 @@ export default function Reports() {
   }, [comparisonData])
 
   const handleExportPNG = async () => {
-    if (reportRef.current) await exportAsPNG(reportRef.current, 'portfolio-report')
+    if (!reportRef.current) return
+    try {
+      await exportAsPNG(reportRef.current, 'portfolio-report')
+    } catch (e) {
+      console.error('[Export PNG]', e)
+      alert(`PNG 저장 실패: ${e.message}`)
+    }
   }
   const handleExportPDF = async () => {
-    if (reportRef.current) await exportAsPDF(reportRef.current, 'portfolio-report')
+    if (!reportRef.current) return
+    try {
+      await exportAsPDF(reportRef.current, 'portfolio-report')
+    } catch (e) {
+      console.error('[Export PDF]', e)
+      alert(`PDF 저장 실패: ${e.message}`)
+    }
   }
 
   // ReportAgent에 전달할 강화된 컨텍스트
