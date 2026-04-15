@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { createChart, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts'
+import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts'
 import { useSettingsStore } from '../../store/settingsStore'
+import { useJournalStore } from '../../store/journalStore'
 import { calculateSMA, calculateBollingerBands, calculateRSI, calculateMACD, resampleOHLCV } from '../../utils/technicalIndicators'
 import TimeframeSelector from './TimeframeSelector'
 import IndicatorControls from './IndicatorControls'
@@ -32,6 +33,66 @@ function getThemeOptions(isDark) {
     },
     crosshair: { mode: 0 },
   }
+}
+
+// ─── 매매 일지 마커 헬퍼 ─────────────────────────────────────────────────────
+
+/**
+ * 엔트리 날짜를 chartData의 캔들 시간에 매핑
+ * 주봉/월봉일 때는 해당 날짜를 포함하는 캔들(이전 최근 캔들)을 반환
+ */
+function findCandleTime(entryDate, chartData) {
+  if (chartData.find(d => d.time === entryDate)) return entryDate
+  const earlier = chartData.filter(d => d.time <= entryDate)
+  return earlier.length > 0 ? earlier[earlier.length - 1].time : null
+}
+
+/**
+ * 매매 일지 엔트리 배열을 lightweight-charts 마커 배열로 변환
+ * 같은 캔들에 여러 거래가 있으면 매수/매도별로 하나씩 병합
+ */
+function buildMarkers(entries, chartData) {
+  if (!entries?.length || !chartData?.length) return []
+
+  const grouped = new Map()
+  for (const entry of entries) {
+    if (!entry.date || !entry.price || !entry.quantity) continue
+    const time = findCandleTime(entry.date, chartData)
+    if (!time) continue
+    if (!grouped.has(time)) grouped.set(time, { buys: [], sells: [] })
+    if (entry.action === 'buy') grouped.get(time).buys.push(entry)
+    else if (entry.action === 'sell') grouped.get(time).sells.push(entry)
+  }
+
+  const markers = []
+  for (const [time, { buys, sells }] of grouped) {
+    if (buys.length > 0) {
+      const qty = buys.reduce((s, e) => s + (e.quantity || 0), 0)
+      const psych = buys.length === 1 && buys[0].psychology ? ` | ${buys[0].psychology}` : ''
+      markers.push({
+        time,
+        position: 'belowBar',
+        color: '#26a69a',
+        shape: 'arrowUp',
+        text: `매수 ${qty}주${psych}`,
+        size: 1,
+      })
+    }
+    if (sells.length > 0) {
+      const qty = sells.reduce((s, e) => s + (e.quantity || 0), 0)
+      const psych = sells.length === 1 && sells[0].psychology ? ` | ${sells[0].psychology}` : ''
+      markers.push({
+        time,
+        position: 'aboveBar',
+        color: '#ef5350',
+        shape: 'arrowDown',
+        text: `매도 ${qty}주${psych}`,
+        size: 1,
+      })
+    }
+  }
+
+  return markers.sort((a, b) => a.time.localeCompare(b.time))
 }
 
 // ─── RSI 과매수/과매도 기준선 ────────────────────────────────────────────────
@@ -70,6 +131,7 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
   const [indicators, setIndicators] = useState(DEFAULT_INDICATORS)
   const { theme } = useSettingsStore()
   const isDark = theme === 'dark'
+  const entries = useJournalStore(s => s.entries)
 
   // 지표 토글
   const handleIndicatorToggle = useCallback((key, value) => {
@@ -127,6 +189,15 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
         wickDownColor: '#ef5350',
       }, 0)
       candleSeries.setData(chartData)
+
+      // ── 매매 일지 마커 ─────────────────────────────────────────────
+      if (ticker) {
+        const tickerEntries = entries.filter(e => e.ticker === ticker)
+        const markers = buildMarkers(tickerEntries, chartData)
+        if (markers.length > 0) {
+          createSeriesMarkers(candleSeries, markers)
+        }
+      }
 
       // 메인 패널 스트레치
       chart.panes()[0].setStretchFactor(activeCount === 0 ? 4 : 3)
@@ -260,7 +331,7 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
       console.error('[CandlestickChart] 차트 생성 실패:', err)
       setError(err.message)
     }
-  }, [data, isDark, indicators, timeframe])
+  }, [data, isDark, indicators, timeframe, entries, ticker])
 
   // 리사이징 대응 — 별도 effect로 분리하여 중복 등록 방지
   // chartRef를 통해 항상 현재 차트 인스턴스를 참조
