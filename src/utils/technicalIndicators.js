@@ -210,6 +210,11 @@ export function resampleOHLCV(candles, timeframe = '1D') {
   let current = null
 
   for (const candle of candles) {
+    // 필수 필드 검증
+    if (candle.open == null || candle.close == null || candle.high == null || candle.low == null) {
+      continue
+    }
+
     const time = new Date(candle.time)
     const year = time.getFullYear()
     const month = time.getMonth()
