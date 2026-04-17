@@ -40,6 +40,38 @@ const parseRatio = (str) => {
   return isNaN(n) ? null : n
 }
 
+// ─── 액면가: Naver Finance 데스크탑 HTML 파싱 ───────────────────────────────
+// 조사 결과: m.stock.naver.com 모바일 API(basic/integration) 에는 액면가 필드 없음
+// finance.naver.com 데스크탑 페이지의 서버사이드 렌더링 HTML에만 존재
+// 패턴: <th scope="row">액면가<span ...>...</th><td><em>500</em>원
+
+const naverPcApi = axios.create({
+  baseURL: '/api/naver-pc',
+  timeout: 8000,
+})
+
+// 캐시: { ticker → parValue } (세션 중 중복 요청 방지)
+const _parValueCache = {}
+
+export const fetchNaverParValue = async (ticker) => {
+  if (_parValueCache[ticker] !== undefined) return _parValueCache[ticker]
+
+  try {
+    const { data: html } = await naverPcApi.get(`/item/main.naver`, {
+      params: { code: ticker },
+      responseType: 'text',
+    })
+    // 액면가 th 이후 첫 번째 <em>숫자</em>원 추출
+    const match = html.match(/액면가[\s\S]{0,200}?<em>([\d,]+)<\/em>원/)
+    const val = match ? parseFloat(match[1].replace(/,/g, '')) : null
+    _parValueCache[ticker] = val
+    return val
+  } catch {
+    _parValueCache[ticker] = null
+    return null
+  }
+}
+
 // ─── 1. 실시간 시세 ─────────────────────────────────────────────────────────
 
 export const fetchNaverQuote = async (ticker) => {
@@ -49,9 +81,8 @@ export const fetchNaverQuote = async (ticker) => {
   const change       = parseNum(data.compareToPreviousClosePrice)
   const prevClose    = (change != null && currentPrice != null) ? currentPrice - change : null
 
-  // 액면가: basic API에 있으면 사용, 없으면 정적 테이블 폴백
-  const parValueFromApi = data.parValue != null ? parseNum(data.parValue) : null
-  const parValue = parValueFromApi ?? getKrxParValue(ticker)
+  // 액면가: 정적 테이블 우선, 없으면 데스크탑 HTML 파싱 (비동기, quote에서는 캐시 활용)
+  const parValue = getKrxParValue(ticker) ?? await fetchNaverParValue(ticker)
 
   return {
     ticker,
@@ -112,12 +143,6 @@ export const fetchNaverProfile = async (ticker) => {
     ? [corpSummary.comment1, corpSummary.comment2, corpSummary.comment3].filter(Boolean).join(' ')
     : (data.companySummary || null)
 
-  // 개발 모드 디버깅
-  if (import.meta.env.DEV) {
-    console.log('[Naver] industryCode:', data.industryCode)
-    console.log('[Naver] finance/annual years:', actualYears, 'latest:', latestYear)
-  }
-
   // ── 섹터 / 업종 (industryCode → 정적 매핑 테이블 조회) ────────
   const industryCode = data.industryCode      // 예: "278"
   const industry = getIndustryName(industryCode)   // 예: "반도체와반도체장비"
@@ -164,12 +189,14 @@ export const fetchNaverProfile = async (ticker) => {
     }
   } catch { /* 실패 시 오늘 거래량 유지 */ }
 
-  // ── 애널리스트 컨센서스 (integration 응답에 포함됨) ─────────────
+  // ── 애널리스트 컨센서스 (integration → 폴백: consensus/items 엔드포인트) ──
   let targetMeanPrice = null
   let recommendationKey = null
   let numberOfAnalystOpinions = null
+
   const cs = data.consensusInfo
   if (cs) {
+    // integration 응답에 직접 포함된 경우
     // consensusInfo: { recommMean: "4.00", priceTargetMean: "286,000" }
     targetMeanPrice = parseNum(cs.priceTargetMean)
     const recomm = parseFloat(cs.recommMean)
@@ -179,11 +206,34 @@ export const fetchNaverProfile = async (ticker) => {
       else if (recomm >= 2.5) recommendationKey = 'hold'
       else                    recommendationKey = 'sell'
     }
+  } else {
+    // integration에 없으면 별도 컨센서스 엔드포인트 시도
+    try {
+      const cnsRes = await naverApi.get(`/api/stock/${ticker}/consensus`, {
+        params: { page: 1, pageSize: 1 },
+      })
+      const cnsData = cnsRes.data
+
+      // 응답 구조 예: { targetPrice: "286,000", opinion: "4.0", count: 12 }
+      // 또는 배열 형태: [{ targetPriceMean: "286,000", opinionMean: "4.0", count: 12 }]
+      const cnsItem = Array.isArray(cnsData) ? cnsData[0] : cnsData
+      if (cnsItem) {
+        const rawTarget = cnsItem.targetPriceMean ?? cnsItem.targetPrice ?? cnsItem.priceTargetMean
+        targetMeanPrice = parseNum(rawTarget)
+        const rawOpinion = cnsItem.opinionMean ?? cnsItem.opinion ?? cnsItem.recommMean
+        const recomm = parseFloat(rawOpinion)
+        if (!isNaN(recomm)) {
+          if      (recomm >= 3.5) recommendationKey = 'buy'
+          else if (recomm >= 2.5) recommendationKey = 'hold'
+          else                    recommendationKey = 'sell'
+        }
+        numberOfAnalystOpinions = cnsItem.count ?? cnsItem.analystCount ?? null
+      }
+    } catch { /* 컨센서스 폴백 실패 시 null 유지 */ }
   }
 
-  // 액면가: integration API 혹은 totalInfos에 있으면 사용, 없으면 정적 테이블
-  const parValueFromInfos = parseNum(getInfo(infos, 'parValue') ?? getInfo(infos, 'faceValue'))
-  const parValue = parValueFromInfos ?? getKrxParValue(ticker)
+  // 액면가: 정적 테이블 우선, 없으면 데스크탑 HTML 파싱 (캐시 공유)
+  const parValue = getKrxParValue(ticker) ?? await fetchNaverParValue(ticker)
 
   // ── finance/annual 재무 비율 (최신 실적 연도 기준) ──────────────
   // ROE: "10.85" → 0.1085 (비율 형태)

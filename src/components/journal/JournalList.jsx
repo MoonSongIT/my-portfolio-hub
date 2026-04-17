@@ -122,7 +122,7 @@ export default function JournalList({ filterAccountId = '전체' }) {
 function EntryCard({ entry, accountLabel, onEdit, onDelete }) {
   const isProfit = entry.pnl > 0
   const isLoss = entry.pnl < 0
-  const currency = entry.market === 'KRX' ? 'KRW' : 'USD'
+  const currency = (entry.market === 'NYSE' || entry.market === 'NASDAQ') ? 'USD' : 'KRW'
 
   return (
     <div className="flex items-start justify-between bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">

@@ -215,11 +215,11 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
 
       // ── 메인 차트: 캔들스틱 (pane 0) ────────────────────────────────────
       const candleSeries = chart.addSeries(CandlestickSeries, {
-        upColor: '#26a69a',
-        downColor: '#ef5350',
+        upColor: '#ff4d4d',
+        downColor: '#4d94ff',
         borderVisible: false,
-        wickUpColor: '#26a69a',
-        wickDownColor: '#ef5350',
+        wickUpColor: '#ff4d4d',
+        wickDownColor: '#4d94ff',
       }, 0)
       candleSeries.setData(chartData)
 
@@ -443,8 +443,8 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
           </>
         )}
         <span className="flex items-center gap-1 ml-auto text-gray-400">
-          양봉&nbsp;<span className="w-3 h-3 rounded-sm bg-[#26a69a] inline-block" />
-          &nbsp;음봉&nbsp;<span className="w-3 h-3 rounded-sm bg-[#ef5350] inline-block" />
+          양봉&nbsp;<span className="w-3 h-3 rounded-sm bg-[#ff4d4d] inline-block" />
+          &nbsp;음봉&nbsp;<span className="w-3 h-3 rounded-sm bg-[#4d94ff] inline-block" />
         </span>
       </div>
 

@@ -92,7 +92,7 @@ export default function Watchlist() {
       market: item.market,
       currentPrice: 0,
       change: 0,
-      currency: item.market === 'KRX' ? 'KRW' : 'USD',
+      currency: (item.market === 'NYSE' || item.market === 'NASDAQ') ? 'USD' : 'KRW',
       sector: 'IT',
     })
     setSearchQuery('')

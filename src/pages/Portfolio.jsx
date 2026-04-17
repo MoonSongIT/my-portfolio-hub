@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { RefreshCw, Bot, X, TrendingUp, BarChart2, Loader2 } from 'lucide-react'
+import { RefreshCw, Bot, X, TrendingUp, BarChart2, Loader2, ExternalLink } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -20,6 +21,7 @@ import { Button } from '../components/ui/button'
 import ChatPanel from '../components/chat/ChatPanel'
 
 export default function Portfolio() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const {
     accounts, selectedAccountId, exchangeRate,
@@ -280,6 +282,13 @@ export default function Portfolio() {
                 <p className="font-bold text-gray-900 dark:text-gray-100 text-lg">{drawerTicker.name}</p>
                 <p className="text-xs text-gray-500">{drawerTicker.ticker} · {drawerTicker.market}</p>
               </div>
+              <button
+                onClick={() => navigate(`/research/${drawerTicker.ticker}?market=${drawerTicker.market}`)}
+                className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-500"
+                title="상세 차트 보기"
+              >
+                <ExternalLink className="w-5 h-5" />
+              </button>
               <button
                 onClick={() => setDrawerTicker(null)}
                 className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"

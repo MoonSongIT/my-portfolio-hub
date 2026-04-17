@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { useJournalStore } from '../store/journalStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
 import { useDailyPnlStore } from '../store/dailyPnlStore'
+import { DEMO_USER, seedDemoData } from '../utils/demoData'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
-import { BarChart2, Eye, EyeOff } from 'lucide-react'
+import { BarChart2, Eye, EyeOff, Play } from 'lucide-react'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -20,6 +21,7 @@ export default function Login() {
   const { loadFromDB: loadCashFlows, clearCashFlows } = useCashFlowStore()
   const { loadFromDB: loadDailyPnl, clearAll: clearDailyPnl } = useDailyPnlStore()
 
+  const isLoggedIn = useAuthStore(s => s.isLoggedIn)
   const [mode, setMode] = useState('login') // 'login' | 'register'
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -27,6 +29,9 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+
+  // 이미 로그인된 상태이고 로딩 중이 아니면 홈으로 리다이렉트
+  if (isLoggedIn && !loading) return <Navigate to="/" replace />
 
   const clearError = () => setError('')
 
@@ -79,6 +84,60 @@ export default function Login() {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       mode === 'login' ? handleLogin() : handleRegister()
+    }
+  }
+
+  const handleDemoLogin = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      // 1. 데모 사용자 등록 (없으면 추가)
+      const { users } = useAuthStore.getState()
+      if (!users.find(u => u.email === DEMO_USER.email)) {
+        useAuthStore.setState({
+          users: [...users, {
+            id: DEMO_USER.id,
+            name: DEMO_USER.name,
+            email: DEMO_USER.email,
+            password: DEMO_USER.password,
+            createdAt: new Date('2026-02-16').toISOString(),
+          }],
+        })
+      }
+
+      // 2. 로그인
+      const success = login(DEMO_USER.email, DEMO_USER.password)
+      if (!success) {
+        setError('데모 로그인에 실패했습니다')
+        setLoading(false)
+        return
+      }
+
+      // 3. 기존 데이터 초기화 + 로드
+      const userId = useAuthStore.getState().currentUser.id
+      clearEntries()
+      clearCashFlows()
+      clearDailyPnl()
+      loadUserAccounts(userId)
+      loadUserWatchlist(userId)
+      await loadJournal(userId)
+      await loadCashFlows(userId)
+      await loadDailyPnl(userId)
+
+      // 4. 데모 데이터 시드 (최초 1회)
+      await seedDemoData()
+
+      // 5. 시드 후 데이터 리로드 (IndexedDB 반영)
+      await loadJournal(userId)
+      await loadCashFlows(userId)
+
+      setLoading(false)
+      navigate('/')
+    } catch (err) {
+      console.error('[Demo] 데모 로그인 실패:', err)
+      setError('데모 데이터 생성 중 오류가 발생했습니다')
+      setLoading(false)
     }
   }
 
@@ -188,6 +247,22 @@ export default function Login() {
             </p>
           </CardContent>
         </Card>
+
+        {/* 데모 로그인 */}
+        <div className="mt-4">
+          <Button
+            variant="outline"
+            onClick={handleDemoLogin}
+            disabled={loading}
+            className="w-full border-dashed border-2 border-emerald-400 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+          >
+            <Play size={16} className="mr-2" />
+            {loading ? '데모 데이터 생성 중...' : '데모 계정으로 체험하기'}
+          </Button>
+          <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-2">
+            2개월간의 샘플 거래 데이터로 앱을 체험합니다
+          </p>
+        </div>
       </div>
     </div>
   )

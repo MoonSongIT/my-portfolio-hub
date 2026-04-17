@@ -202,6 +202,17 @@ export default defineConfig(({ mode }) => {
           'Referer': 'https://m.stock.naver.com',
         },
       },
+      '/api/naver-pc': {
+        target: 'https://finance.naver.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/naver-pc/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Referer': 'https://finance.naver.com',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Accept-Language': 'ko-KR,ko;q=0.9',
+        },
+      },
     },
   },
   build: {

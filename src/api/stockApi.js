@@ -17,14 +17,16 @@ const yahooV10Api = axios.create({
 export const toYahooTicker = (ticker, market) => {
   if (ticker.includes('.')) return ticker
   if (market === 'KRX') return `${ticker}.KS`
+  if (market === 'KOSDAQ') return `${ticker}.KQ`
   return ticker
 }
 
 // 1. 실시간 시세 (단일 종목)
 export const fetchQuote = async (ticker, market = 'NASDAQ') => {
-  // 한국 주식은 네이버 파이낸스 사용
-  if (market === 'KRX') {
-    return fetchNaverQuote(ticker)
+  // 한국 주식은 네이버 파이낸스 사용 (KRX + KOSDAQ)
+  if (market === 'KRX' || market === 'KOSDAQ') {
+    const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
+    return fetchNaverQuote(pureTicker)
   }
 
   const yahooTicker = toYahooTicker(ticker, market)
@@ -80,9 +82,10 @@ export const fetchBatchQuotes = async (holdings) => {
 
 // 3. 가격 히스토리
 export const fetchHistory = async (ticker, market = 'NASDAQ', range = '6mo', interval = '1d') => {
-  // 한국 주식은 네이버 파이낸스 사용
-  if (market === 'KRX') {
-    return fetchNaverHistory(ticker, range)
+  // 한국 주식은 네이버 파이낸스 사용 (KRX + KOSDAQ)
+  if (market === 'KRX' || market === 'KOSDAQ') {
+    const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
+    return fetchNaverHistory(pureTicker, range)
   }
 
   const yahooTicker = toYahooTicker(ticker, market)
@@ -194,10 +197,11 @@ export const fetchSearch = async (query) => {
 
 // 5. 기업 상세 + 재무 지표
 export const fetchProfile = async (ticker, market = 'NASDAQ') => {
-  // 한국 주식은 네이버 파이낸스 사용
-  if (market === 'KRX') {
+  // 한국 주식은 네이버 파이낸스 사용 (KRX + KOSDAQ)
+  if (market === 'KRX' || market === 'KOSDAQ') {
     try {
-      return await fetchNaverProfile(ticker)
+      const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
+      return await fetchNaverProfile(pureTicker)
     } catch {
       return {}
     }

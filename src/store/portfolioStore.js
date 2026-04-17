@@ -144,7 +144,7 @@ export const usePortfolioStore = create(
         return holdings.map(h => {
           // accountStore에서 직접 조회 (name 필드 사용)
           const account = accountStore.accounts.find(a => a.id === h.accountId)
-          const currency = h.market === 'KRX' ? 'KRW' : 'USD'
+          const currency = (h.market === 'NYSE' || h.market === 'NASDAQ') ? 'USD' : 'KRW'
           return {
             ...h,
             currentPrice: prices[h.ticker] ?? h.avgPrice,

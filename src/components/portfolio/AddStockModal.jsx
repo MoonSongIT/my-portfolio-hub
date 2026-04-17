@@ -82,7 +82,7 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
       ticker: item.ticker,
       name: item.name,
       market: item.market,
-      currency: item.market === 'KRX' ? 'KRW' : 'USD',
+      currency: (item.market === 'NYSE' || item.market === 'NASDAQ') ? 'USD' : 'KRW',
     }))
     setSearchQuery('')
     setShowSearch(false)
@@ -92,7 +92,7 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
     setForm(prev => ({
       ...prev,
       market,
-      currency: market === 'KRX' ? 'KRW' : 'USD',
+      currency: (market === 'NYSE' || market === 'NASDAQ') ? 'USD' : 'KRW',
     }))
   }
 
