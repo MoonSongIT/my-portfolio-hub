@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
+import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
@@ -22,6 +23,7 @@ const Reports   = lazy(() => import('./pages/Reports'))
 const StockDetail = lazy(() => import('./pages/StockDetail'))
 const AIChat    = lazy(() => import('./pages/AIChat'))
 const CashFlow  = lazy(() => import('./pages/CashFlow'))
+const Settings  = lazy(() => import('./pages/Settings'))
 const Login     = lazy(() => import('./pages/Login'))
 
 function App() {
@@ -63,6 +65,11 @@ function App() {
     loadCashFlowsFromDB(userId)
     loadDailyPnlFromDB(userId)
   }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 앱 시작 시 1회 DB 자동 정리 (24시간 경과 시에만 실행)
+  useEffect(() => {
+    runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <BrowserRouter>
@@ -111,6 +118,7 @@ function App() {
                           <Route path="/reports" element={<Reports />} />
                           <Route path="/ai-chat" element={<AIChat />} />
                           <Route path="/cashflow" element={<CashFlow />} />
+                          <Route path="/settings" element={<Settings />} />
                           <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                       </Suspense>

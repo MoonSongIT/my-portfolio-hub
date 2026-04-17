@@ -7,6 +7,7 @@ export const useSettingsStore = create(
     language: 'ko',
     currency: 'KRW',
     benchmarkIndex: 'KOSPI', // 'KOSPI' | 'SP500'
+    lastCleanupDate: null,   // 마지막 DB 자동 정리 날짜 (ISO string)
 
     setTheme: (theme) => set({ theme }),
     toggleTheme: () => set((state) => ({
@@ -15,6 +16,7 @@ export const useSettingsStore = create(
     setLanguage: (language) => set({ language }),
     setCurrency: (currency) => set({ currency }),
     setBenchmark: (benchmarkIndex) => set({ benchmarkIndex }),
+    setLastCleanupDate: (date) => set({ lastCleanupDate: date }),
   }),
   { name: 'settings-storage' })
 )

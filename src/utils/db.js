@@ -55,6 +55,16 @@ db.version(5).stores({
   tx.table('dailyPnl').clear()
 })
 
+// v6: 알림 히스토리 테이블 추가
+db.version(6).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
@@ -199,4 +209,26 @@ export async function getDailyPnlByUser(userId) {
 
 export async function clearDailyPnl() {
   return db.dailyPnl.clear()
+}
+
+// ─── alertHistory CRUD ───
+
+export async function addAlertHistory(entry) {
+  return db.alertHistory.add({
+    ...entry,
+    triggeredAt: entry.triggeredAt || new Date().toISOString(),
+    isRead: false,
+  })
+}
+
+export async function getAllAlertHistory() {
+  return db.alertHistory.orderBy('triggeredAt').reverse().toArray()
+}
+
+export async function markAlertRead(id) {
+  return db.alertHistory.update(id, { isRead: true })
+}
+
+export async function deleteOldAlertHistory(beforeDate) {
+  return db.alertHistory.where('triggeredAt').below(beforeDate).delete()
 }

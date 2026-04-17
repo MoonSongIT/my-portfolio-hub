@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Briefcase, BookOpen, Search, Eye, BarChart3, Bot, Wallet, X } from 'lucide-react'
+import { Home, Briefcase, BookOpen, Search, Eye, BarChart3, Bot, Wallet, Settings, X } from 'lucide-react'
 
 const menu = [
   { label: '대시보드', path: '/', icon: Home },
@@ -10,6 +10,10 @@ const menu = [
   { label: '관심종목', path: '/watchlist', icon: Eye },
   { label: '리포트', path: '/reports', icon: BarChart3 },
   { label: 'AI 분석', path: '/ai-chat', icon: Bot },
+]
+
+const bottomMenu = [
+  { label: '설정', path: '/settings', icon: Settings },
 ]
 
 export default function Sidebar({ open, onClose }) {
@@ -28,7 +32,7 @@ export default function Sidebar({ open, onClose }) {
       {/* 사이드바 */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-50
-        w-64 bg-gray-900 text-white p-6 shadow-lg
+        w-64 bg-gray-900 text-white p-6 shadow-lg flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${open ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0
@@ -43,7 +47,7 @@ export default function Sidebar({ open, onClose }) {
           </button>
         </div>
 
-        <nav className="space-y-2">
+        <nav className="space-y-2 flex-1">
           {menu.map((item) => {
             const Icon = item.icon
             const isActive = location.pathname === item.path
@@ -64,6 +68,29 @@ export default function Sidebar({ open, onClose }) {
             )
           })}
         </nav>
+
+        {/* 하단 메뉴 (설정) */}
+        <div className="mt-auto pt-4 border-t border-gray-700 space-y-1">
+          {bottomMenu.map((item) => {
+            const Icon = item.icon
+            const isActive = location.pathname === item.path
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={onClose}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition ${
+                  isActive
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-800 text-gray-300'
+                }`}
+              >
+                <Icon size={20} />
+                <span>{item.label}</span>
+              </Link>
+            )
+          })}
+        </div>
       </aside>
     </>
   )
