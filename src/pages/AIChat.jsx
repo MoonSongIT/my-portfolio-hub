@@ -1,6 +1,7 @@
 // AI 분석 채팅 전용 페이지
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Send, Trash2, Bot, Loader2 } from 'lucide-react'
+import { Send, Trash2, Bot, Loader2, WifiOff } from 'lucide-react'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { useJournalStore } from '../store/journalStore'
@@ -13,6 +14,7 @@ import { Button } from '../components/ui/button'
 export default function AIChat() {
   const [input, setInput] = useState('')
   const [localLoading, setLocalLoading] = useState(false)
+  const { isOnline } = useOnlineStatus()
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -62,7 +64,7 @@ export default function AIChat() {
 
   async function handleSend(text) {
     const msg = text?.trim()
-    if (!msg || isLoading) return
+    if (!msg || isLoading || !isOnline) return
 
     addUserMessage(msg)
     setInput('')
@@ -154,6 +156,14 @@ export default function AIChat() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* 오프라인 안내 */}
+      {!isOnline && (
+        <div className="mx-6 mb-1 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>오프라인 상태에서는 AI 분석을 사용할 수 없습니다. 인터넷 연결 후 이용해 주세요.</span>
+        </div>
+      )}
+
       {/* 에러 메시지 */}
       {error && (
         <div className="mx-6 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
@@ -183,13 +193,13 @@ export default function AIChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isLoading}
-            placeholder={isLoading ? 'AI가 분석 중입니다...' : '질문을 입력하세요... (예: 삼성전자 분석해줘)'}
+            disabled={isLoading || !isOnline}
+            placeholder={!isOnline ? '오프라인 상태입니다...' : isLoading ? 'AI가 분석 중입니다...' : '질문을 입력하세요... (예: 삼성전자 분석해줘)'}
             className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
           />
           <Button
             onClick={() => handleSend(input)}
-            disabled={!input.trim() || isLoading}
+            disabled={!input.trim() || isLoading || !isOnline}
             className="shrink-0 gap-1"
           >
             {isLoading ? (

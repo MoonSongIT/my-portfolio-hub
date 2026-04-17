@@ -10,6 +10,7 @@ import { useAuthStore } from './store/authStore'
 import { Toaster } from 'sonner'
 import Header from './components/common/Header'
 import Sidebar from './components/common/Sidebar'
+import OfflineBanner from './components/common/OfflineBanner'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import LoadingSpinner from './components/common/LoadingSpinner'
 
@@ -106,6 +107,7 @@ function App() {
                   <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
                   <div className="flex-1 flex flex-col overflow-hidden">
                     <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+                    <OfflineBanner />
                     <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
                       <Suspense fallback={<LoadingSpinner />}>
                         <Routes>
