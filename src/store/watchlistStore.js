@@ -50,6 +50,13 @@ export const useWatchlistStore = create(
       alerts: state.alerts.filter(a => a.id !== alertId),
     })),
 
+    // 관심종목 메모 업데이트
+    updateWatchlistMemo: (ticker, memo) => set((state) => ({
+      watchlist: state.watchlist.map(item =>
+        item.ticker === ticker ? { ...item, memo } : item
+      ),
+    })),
+
     // 현재 가격과 알림 조건 체크 → 조건 충족 알림 배열 반환
     checkAlerts: (priceMap) => {
       const { alerts } = get()

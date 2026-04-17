@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
 import {
   fetchQuote,
   fetchBatchQuotes,
@@ -83,7 +83,29 @@ export function useStockDetail(ticker, market, options = {}) {
   })
 }
 
-// 6. 환율 (USD/KRW)
+// 6. 관심종목 스파크라인 — 1개월 히스토리 병렬 페칭 (1시간 캐시)
+export function useWatchlistSparklines(watchlist) {
+  const queries = watchlist.map(item => ({
+    queryKey: ['sparkline', item.ticker, item.market],
+    queryFn: () => fetchHistory(item.ticker, item.market, '1mo'),
+    staleTime: 60 * 60 * 1000, // 1시간 캐시 (스파크라인은 자주 새로고침 불필요)
+    retry: 1,
+  }))
+
+  const results = useQueries({ queries })
+
+  // ticker → history 데이터 맵 반환
+  const sparklineMap = {}
+  results.forEach((result, i) => {
+    if (result.data && watchlist[i]) {
+      sparklineMap[watchlist[i].ticker] = result.data
+    }
+  })
+
+  return sparklineMap
+}
+
+// 7. 환율 (USD/KRW)
 export function useExchangeRate(options = {}) {
   return useQuery({
     queryKey: ['exchangeRate'],
