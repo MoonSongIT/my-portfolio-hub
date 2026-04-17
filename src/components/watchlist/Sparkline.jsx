@@ -24,7 +24,8 @@ export default function Sparkline({ data, width = 88, height = 36, positive }) {
     })
     .join(' ')
 
-  const color = positive ? '#10b981' : '#ef4444'
+  // 한국 주식 관례: 상승(양수) = 빨간색, 하락(음수) = 초록색
+  const color = positive ? '#ef4444' : '#10b981'
   const fillId = `spark-fill-${positive ? 'pos' : 'neg'}`
 
   // 마지막 포인트 좌표 (dot 표시용)

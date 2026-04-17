@@ -416,11 +416,12 @@ export default function Watchlist() {
                       {stock.currentPrice > 0 ? formatCurrency(stock.currentPrice, stock.currency) : '---'}
                     </p>
                     <div className="flex items-center gap-1 mt-1">
-                      {isPositive
-                        ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-                        : <TrendingDown className="w-3.5 h-3.5 text-red-500" />
+                      {/* 한국 주식 관례: 상승=빨강, 하락=초록 */}
+                  {isPositive
+                        ? <TrendingUp className="w-3.5 h-3.5 text-red-500" />
+                        : <TrendingDown className="w-3.5 h-3.5 text-emerald-500" />
                       }
-                      <span className={`text-sm font-semibold ${isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                      <span className={`text-sm font-semibold ${isPositive ? 'text-red-500 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                         {stock.change != null ? formatPercent(stock.change) : '---'}
                       </span>
                       <AlertBadge changePercent={stock.change} />
@@ -504,7 +505,7 @@ export default function Watchlist() {
                         {stock.currentPrice > 0 ? formatCurrency(stock.currentPrice, stock.currency) : '---'}
                       </TableCell>
                       <TableCell className="text-right">
-                        <span className={`font-semibold ${isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
+                        <span className={`font-semibold ${isPositive ? 'text-red-500' : 'text-emerald-600'}`}>
                           {stock.change != null ? formatPercent(stock.change) : '---'}
                         </span>
                         <AlertBadge changePercent={stock.change} />
