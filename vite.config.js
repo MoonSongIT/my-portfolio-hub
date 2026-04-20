@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react-swc'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import YahooFinanceClass from 'yahoo-finance2'
+import { handleDartList } from './server/dartHandler.js'
+import { handleEdgarFilings } from './server/edgarHandler.js'
+import { handleAgenticRequest } from './server/agenticHandler.js'
 
 export default defineConfig(({ mode }) => {
   // vitest 환경에서는 yahoo-finance2 임포트 스킵
@@ -50,6 +53,36 @@ export default defineConfig(({ mode }) => {
             res.writeHead(200, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ _error: err.message }))
           }
+        })
+      },
+    },
+    // DART OpenAPI 프록시 미들웨어 — 한국 공시 조회
+    {
+      name: 'dart-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/dart/list')) return next()
+          await handleDartList(req, res, env.DART_API_KEY || '')
+        })
+      },
+    },
+    // SEC EDGAR 프록시 미들웨어 — 미국 공시 조회
+    {
+      name: 'edgar-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/edgar/filings')) return next()
+          await handleEdgarFilings(req, res)
+        })
+      },
+    },
+    // Claude Tool Use 아겐틱 루프 미들웨어 (/api/claude/agentic)
+    {
+      name: 'agentic-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (req.method !== 'POST' || !req.url?.startsWith('/api/claude/agentic')) return next()
+          await handleAgenticRequest(req, res, apiKey, env.DART_API_KEY || '')
         })
       },
     },

@@ -1,7 +1,7 @@
 // Anthropic Claude API 호출 — 서버사이드 프록시 경유
 import axios from 'axios'
 import { routeToAgent, AGENT_LABELS } from '../agents/orchestrator.js'
-import { RESEARCH_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
+import { RESEARCH_PROMPT, RESEARCH_TOOL_USE_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
 import { REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
@@ -98,9 +98,18 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
         systemPrompt = buildJournalCoachPrompt(journalContext)
         break
       }
-      case 'research':
-        contextText = buildResearchContext(context.stockData || null)
+      case 'research': {
+        // researchBundle(오케스트레이터 결과) 우선, 없으면 stockData 단독으로 하위호환
+        const bundle = context.researchBundle
+          ?? (context.stockData ? { stockData: context.stockData } : null)
+        contextText = buildResearchContext(bundle)
+
+        // 번들 없이 채팅에서 직접 질문한 경우 → Tool Use 경로로 자동 전환
+        if (!bundle) {
+          return sendResearchWithToolUse(userMessage)
+        }
         break
+      }
       case 'portfolio':
         contextText = buildPortfolioContext(context.holdings || [], context.exchangeRate || null)
         break
@@ -219,6 +228,38 @@ ${toSummarize.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}
   } catch {
     // 요약 실패 시 최근 10개만 반환
     return messages.slice(-10)
+  }
+}
+
+/**
+ * Tool Use 방식 종목 분석 (Phase C)
+ * Claude가 필요한 데이터를 도구로 직접 조회 — 프리패치 없이 선택적 fetch
+ *
+ * @param {string} userMessage - 사용자 질문
+ * @param {string} [ticker]    - 티커 힌트 (옵션 — 프롬프트에 포함)
+ * @param {string} [market]    - 시장 힌트 (옵션)
+ * @returns {Promise<{text: string, agentType: string, agentInfo: object}>}
+ */
+export async function sendResearchWithToolUse(userMessage, ticker, market) {
+  const agentInfo = AGENT_LABELS.research || AGENT_LABELS.portfolio
+  const maxTokens = AGENT_MAX_TOKENS.research
+
+  // 티커/시장 정보를 메시지 앞에 힌트로 제공
+  const messageWithHint = ticker && market
+    ? `분석 대상: ${ticker} (시장: ${market})\n\n${userMessage}`
+    : userMessage
+
+  try {
+    const response = await claudeApi.post('/claude/agentic', {
+      systemPrompt: RESEARCH_TOOL_USE_PROMPT,
+      messages:     [{ role: 'user', content: messageWithHint }],
+      maxTokens,
+    })
+
+    const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
+    return { text, agentType: 'research', agentInfo }
+  } catch (error) {
+    return { text: getErrorMessage(error), agentType: 'research', agentInfo }
   }
 }
 
