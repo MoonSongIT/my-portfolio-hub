@@ -65,6 +65,17 @@ db.version(6).stores({
   alertHistory:   '++id, ticker, type, triggeredAt, isRead',
 })
 
+// v7: AI 채팅 히스토리 테이블 추가
+db.version(7).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, createdAt',
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
@@ -231,4 +242,56 @@ export async function markAlertRead(id) {
 
 export async function deleteOldAlertHistory(beforeDate) {
   return db.alertHistory.where('triggeredAt').below(beforeDate).delete()
+}
+
+// ─── chatHistory CRUD ───
+
+/**
+ * 채팅 세션 저장
+ * @param {{ sessionId, userId, agentType, title, messages, startedAt, updatedAt }} session
+ */
+export async function saveChatSession(session) {
+  return db.chatHistory.put({
+    ...session,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+/**
+ * 사용자의 채팅 세션 목록 조회 (최신순)
+ */
+export async function getChatSessionsByUser(userId) {
+  return db.chatHistory
+    .where('userId').equals(userId)
+    .reverse()
+    .sortBy('updatedAt')
+}
+
+/**
+ * 특정 세션 조회
+ */
+export async function getChatSessionById(sessionId) {
+  return db.chatHistory.where('sessionId').equals(sessionId).first()
+}
+
+/**
+ * 오래된 채팅 세션 삭제 (90일 이상)
+ */
+export async function deleteOldChatSessions(beforeDate) {
+  return db.chatHistory.where('updatedAt').below(beforeDate).delete()
+}
+
+// ─── reports 사용자별 조회 ───
+
+export async function getReportsByUser(userId) {
+  return db.reports.where('userId').equals(userId).reverse().sortBy('createdAt')
+}
+
+export async function getLatestReportByType(type, userId) {
+  const results = await db.reports
+    .where('[type+userId]')
+    .equals([type, userId])
+    .reverse()
+    .sortBy('createdAt')
+  return results[0] || null
 }

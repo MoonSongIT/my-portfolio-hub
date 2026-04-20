@@ -5,7 +5,7 @@ import { RESEARCH_PROMPT, buildResearchContext } from '../agents/researchAgent.j
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
 import { REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
-import { buildJournalCoachPrompt, buildJournalContext } from '../agents/journalCoachAgent.js'
+import { buildJournalCoachPrompt, buildJournalContext, buildCompressedJournalContext } from '../agents/journalCoachAgent.js'
 
 /**
  * axios 인스턴스 — 프록시 서버 경유
@@ -27,6 +27,19 @@ const AGENT_PROMPTS = {
   report: REPORT_PROMPT,
 }
 
+/**
+ * 에이전트별 max_tokens 설정
+ * - journal / report: 긴 분석 필요 → 4096
+ * - research: 중간 → 3072
+ * - portfolio / alert: 짧은 요약 → 2048
+ */
+const AGENT_MAX_TOKENS = {
+  journal: 4096,
+  report: 4096,
+  research: 3072,
+  portfolio: 2048,
+  alert: 2048,
+}
 
 /**
  * 에러 메시지 생성 (HTTP 상태코드별)
@@ -68,6 +81,7 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
   // 에이전트 라우팅
   const agentType = forceAgent || routeToAgent(userMessage)
   const agentInfo = AGENT_LABELS[agentType] || AGENT_LABELS.portfolio
+  const maxTokens = AGENT_MAX_TOKENS[agentType] || 2048
 
   // 컨텍스트 빌드 & 시스템 프롬프트 결정
   let contextText = ''
@@ -76,7 +90,11 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
   try {
     switch (agentType) {
       case 'journal': {
-        const journalContext = buildJournalContext(context.journalEntries || [], context.accounts || [])
+        const entries = context.journalEntries || []
+        // 200건 초과 시 압축 컨텍스트 사용
+        const journalContext = entries.length > 200
+          ? buildCompressedJournalContext(entries, context.accounts || [])
+          : buildJournalContext(entries, context.accounts || [])
         systemPrompt = buildJournalCoachPrompt(journalContext)
         break
       }
@@ -109,6 +127,7 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
       const response = await claudeApi.post('/claude', {
         systemPrompt,
         messages: [{ role: 'user', content: combinedMessage }],
+        maxTokens,
       })
 
       const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
@@ -139,22 +158,67 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
 }
 
 /**
- * 대화 히스토리 포함 메시지 전송
+ * 대화 히스토리 포함 멀티턴 메시지 전송
  * @param {Array<{role: string, content: string}>} messages - 대화 히스토리
  * @param {string} systemPrompt - 시스템 프롬프트
+ * @param {string} [agentType='journal'] - 에이전트 타입 (max_tokens 결정용)
  * @returns {Promise<{text: string}>}
  */
-export async function sendWithHistory(messages, systemPrompt) {
+export async function sendWithHistory(messages, systemPrompt, agentType = 'journal') {
+  const maxTokens = AGENT_MAX_TOKENS[agentType] || 4096
   try {
     const response = await claudeApi.post('/claude', {
       systemPrompt,
       messages,
+      maxTokens,
     })
 
     const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
     return { text }
   } catch (error) {
     return { text: getErrorMessage(error) }
+  }
+}
+
+/**
+ * 10턴 초과 시 이전 대화를 요약하여 압축된 컨텍스트 반환
+ * @param {Array<{role: string, content: string}>} messages - 전체 대화 기록
+ * @param {string} systemPrompt - 현재 에이전트 시스템 프롬프트
+ * @returns {Promise<Array<{role: string, content: string}>>} 압축된 메시지 배열
+ */
+export async function summarizeAndCompressHistory(messages, systemPrompt) {
+  // 10턴(메시지 20개) 미만이면 그대로 반환
+  if (messages.length <= 20) return messages
+
+  // 요약할 이전 대화 (최근 4개 메시지 제외)
+  const toSummarize = messages.slice(0, -4)
+  const recent = messages.slice(-4)
+
+  const summaryPrompt = `다음은 AI 투자 코치와의 대화 기록입니다.
+핵심 내용만 3~5줄로 요약해주세요. 투자 패턴, 분석 결과, 개선 제안 위주로 작성하세요.
+
+대화 기록:
+${toSummarize.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}`).join('\n\n')}
+
+위 대화의 핵심 요약:`
+
+  try {
+    const response = await claudeApi.post('/claude', {
+      systemPrompt,
+      messages: [{ role: 'user', content: summaryPrompt }],
+      maxTokens: 512,
+    })
+    const summary = response.data?.content?.[0]?.text || ''
+
+    // 요약 + 최근 4개 메시지로 압축
+    return [
+      { role: 'user', content: `[이전 대화 요약]\n${summary}` },
+      { role: 'assistant', content: '이전 대화 내용을 확인했습니다. 계속 도움드리겠습니다.' },
+      ...recent,
+    ]
+  } catch {
+    // 요약 실패 시 최근 10개만 반환
+    return messages.slice(-10)
   }
 }
 

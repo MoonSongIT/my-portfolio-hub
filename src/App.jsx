@@ -7,7 +7,9 @@ import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
-import { Toaster } from 'sonner'
+import { getReportsByUser } from './utils/db'
+import { shouldGenerateWeeklyReport } from './agents/reportAgent'
+import { Toaster, toast } from 'sonner'
 import Header from './components/common/Header'
 import Sidebar from './components/common/Sidebar'
 import OfflineBanner from './components/common/OfflineBanner'
@@ -71,6 +73,38 @@ function App() {
   useEffect(() => {
     runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 로그인 후 주간 리포트 알림 (지난주 리포트가 있으면 확인 토스트)
+  useEffect(() => {
+    const userId = currentUser?.id
+    if (!userId) return
+
+    const checkWeeklyReport = async () => {
+      try {
+        const reports = await getReportsByUser(userId)
+        const weeklyReports = reports.filter(r => r.type === 'weekly')
+        const latest = weeklyReports[0] || null
+
+        if (latest && !shouldGenerateWeeklyReport(latest.generatedAt)) {
+          // 이번 주에 이미 리포트가 있으면 알림 — Reports 페이지로 유도
+          setTimeout(() => {
+            toast.info('📊 지난 주간 리포트가 있습니다.', {
+              description: latest.title,
+              action: {
+                label: '확인하기',
+                onClick: () => window.location.href = '/reports',
+              },
+              duration: 8000,
+            })
+          }, 2000) // 앱 로딩 후 2초 뒤 표시
+        }
+      } catch (err) {
+        console.warn('[App] 주간 리포트 확인 실패:', err)
+      }
+    }
+
+    checkWeeklyReport()
+  }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <BrowserRouter>

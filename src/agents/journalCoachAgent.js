@@ -1,6 +1,20 @@
 // 매매 심리 분석 코치 에이전트 — JournalCoachAgent
 
 /**
+ * 면책 문구 풀 (랜덤 선택)
+ */
+const DISCLAIMER_POOL = [
+  '이 분석은 참고용이며 투자 결정의 책임은 본인에게 있습니다.',
+  '본 내용은 투자 참고 자료이며, 모든 투자 결정과 그 결과는 투자자 본인의 책임입니다.',
+  '위 분석은 데이터 기반 참고 정보로, 실제 투자에 따른 손익은 투자자 본인이 부담합니다.',
+  '이 내용은 투자 심리 코칭 목적이며, 특정 종목에 대한 투자 권유가 아닙니다. 투자 결정은 본인이 직접 판단하세요.',
+]
+
+function getRandomDisclaimer() {
+  return DISCLAIMER_POOL[Math.floor(Math.random() * DISCLAIMER_POOL.length)]
+}
+
+/**
  * JournalCoachAgent 시스템 프롬프트 빌더
  * @param {string} journalContext - buildJournalContext()로 생성된 컨텍스트 문자열
  * @returns {string} 시스템 프롬프트
@@ -22,8 +36,81 @@ ${journalContext}
 - 직접 매수/매도 권유 금지
 - 공감적 어조 유지 (비판보다 성장 관점)
 - 데이터가 부족하면 "더 많은 기록이 쌓이면 더 정확한 분석이 가능합니다"라고 안내
-- 면책 문구 필수: "이 분석은 참고용이며 투자 결정의 책임은 본인에게 있습니다."
+- 면책 문구 필수: "${getRandomDisclaimer()}"
 - 응답은 반드시 한국어로 작성하세요.`
+}
+
+/**
+ * 대규모 entries를 요약 통계 + 최근 기록으로 압축 (토큰 최적화)
+ * 200건 초과 시 자동 발동
+ * @param {Array} entries
+ * @param {Array} accounts
+ * @returns {string}
+ */
+export function buildCompressedJournalContext(entries, accounts = []) {
+  if (!entries || entries.length === 0) {
+    return '\n[매매 일지 데이터 없음 — 아직 기록된 거래가 없습니다]\n'
+  }
+
+  // 200건 이하는 일반 컨텍스트 사용
+  if (entries.length <= 200) return buildJournalContext(entries, accounts)
+
+  const getAccountName = (accountId) => {
+    if (!accountId) return '기본 계좌'
+    const acc = accounts.find(a => a.id === accountId)
+    return acc ? acc.name : '기본 계좌'
+  }
+
+  // 전체 통계 요약
+  const totalBuy = entries.filter(e => e.action === 'buy').length
+  const totalSell = entries.filter(e => e.action === 'sell').length
+  const pnlEntries = entries.filter(e => e.pnl !== null && e.pnl !== undefined)
+  const totalPnl = pnlEntries.reduce((s, e) => s + e.pnl, 0)
+  const winCount = pnlEntries.filter(e => e.pnl > 0).length
+  const winRate = pnlEntries.length > 0 ? ((winCount / pnlEntries.length) * 100).toFixed(1) : 'N/A'
+
+  // 심리 유형별 집계
+  const psychologyMap = {}
+  entries.forEach(e => {
+    if (!psychologyMap[e.psychology]) psychologyMap[e.psychology] = { count: 0, pnl: 0, pnlCount: 0 }
+    psychologyMap[e.psychology].count += 1
+    if (e.pnl !== null && e.pnl !== undefined) {
+      psychologyMap[e.psychology].pnl += e.pnl
+      psychologyMap[e.psychology].pnlCount += 1
+    }
+  })
+
+  const psychologySummary = Object.entries(psychologyMap)
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(([psy, stat]) => {
+      const avg = stat.pnlCount > 0
+        ? `평균손익 ${stat.pnl >= 0 ? '+' : ''}${Math.round(stat.pnl / stat.pnlCount).toLocaleString()}원`
+        : '손익 없음'
+      return `  - ${psy}: ${stat.count}건 (${avg})`
+    }).join('\n')
+
+  // 최근 20건만 상세 기록
+  const recent = [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20)
+  const entryLines = recent.map(e => {
+    const action = e.action === 'buy' ? '매수' : '매도'
+    const accountName = getAccountName(e.accountId)
+    const pnlStr = e.pnl !== null && e.pnl !== undefined
+      ? ` | 손익: ${e.pnl >= 0 ? '+' : ''}${e.pnl.toLocaleString()}원` : ''
+    return `  [${e.date}][${accountName}] ${action} ${e.name}(${e.ticker}) | 심리: ${e.psychology}${pnlStr}`
+  }).join('\n')
+
+  return [
+    '\n[매매 일지 압축 요약 — 전체 데이터 기반]',
+    `총 거래 건수: ${entries.length}건 (매수 ${totalBuy} / 매도 ${totalSell})`,
+    `실현손익 합계: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}원 | 승률: ${winRate}%`,
+    '',
+    '[심리 유형별 통계 (전체 기간)]',
+    psychologySummary,
+    '',
+    '[최근 거래 기록 (20건)]',
+    entryLines,
+    '',
+  ].join('\n')
 }
 
 /**
