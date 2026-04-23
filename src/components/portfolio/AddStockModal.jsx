@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { usePortfolioStore } from '../../store/portfolioStore'
+import { useUserAccounts } from '../../store/accountStore'
 import { SECTORS, MARKETS } from '../../data/samplePortfolio'
 import { useStockSearch, useStockPrice } from '../../hooks/useStockData'
 import { useDebounce } from '../../hooks/useDebounce'
 import { formatCurrency } from '../../utils/formatters'
+import { getByTicker, stockMasterDb } from '../../utils/stockMasterDb'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { AlertTriangle } from 'lucide-react'
 
 const INITIAL_FORM = {
   accountId: '',
@@ -23,11 +26,19 @@ const INITIAL_FORM = {
 }
 
 export default function AddStockModal({ open, onClose, editStock = null }) {
-  const { accounts, addHolding, updateHolding } = usePortfolioStore()
+  const { addHolding, updateHolding } = usePortfolioStore()
+  const rawAccounts = useUserAccounts()
+  const accounts = useMemo(() => rawAccounts.map(a => ({
+    id: a.id,
+    accountName: a.name,
+    accountType: a.type,
+    holdings: [],
+  })), [rawAccounts])
   const [form, setForm] = useState(INITIAL_FORM)
   const [errors, setErrors] = useState({})
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
+  const [masterWarn, setMasterWarn] = useState(false) // 마스터 DB 미존재 경고
   const isEdit = !!editStock
 
   const debouncedSearch = useDebounce(searchQuery, 300)
@@ -63,6 +74,7 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
     }
     setErrors({})
     setSearchQuery('')
+    setMasterWarn(false)
   }, [editStock, open, accounts])
 
   // 실시간 가격 자동 반영
@@ -82,17 +94,31 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
       ticker: item.ticker,
       name: item.name,
       market: item.market,
-      currency: item.market === 'KRX' ? 'KRW' : 'USD',
+      currency: (item.market === 'NYSE' || item.market === 'NASDAQ') ? 'USD' : 'KRW',
     }))
     setSearchQuery('')
     setShowSearch(false)
+    setMasterWarn(false) // 검색 선택 시 경고 해제 (마스터 DB 결과이므로)
+  }
+
+  // 티커 직접 입력 시 마스터 DB 검증
+  // DB가 비어있으면(미동기화) 경고 없이 통과, DB에 데이터가 있을 때만 검증
+  const handleTickerBlur = async () => {
+    const ticker = form.ticker.trim().toUpperCase()
+    if (!ticker || isEdit) return
+    try {
+      const total = await stockMasterDb.stocks.count()
+      if (total === 0) { setMasterWarn(false); return }
+      const found = await getByTicker(ticker)
+      setMasterWarn(!found)
+    } catch { setMasterWarn(false) }
   }
 
   const handleMarketChange = (market) => {
     setForm(prev => ({
       ...prev,
       market,
-      currency: market === 'KRX' ? 'KRW' : 'USD',
+      currency: (market === 'NYSE' || market === 'NASDAQ') ? 'USD' : 'KRW',
     }))
   }
 
@@ -193,6 +219,19 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
                   ))}
                 </div>
               )}
+              {showSearch && debouncedSearch && searchResults?.length === 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg px-3 py-2">
+                  <p className="text-sm text-gray-400">검색 결과가 없습니다</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 마스터 DB 미존재 경고 배너 */}
+          {masterWarn && !isEdit && (
+            <div className="flex items-start gap-2 rounded-md border border-yellow-300 bg-yellow-50 dark:border-yellow-700 dark:bg-yellow-900/20 px-3 py-2 text-xs text-yellow-800 dark:text-yellow-300">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>검증되지 않은 종목입니다. 설정 페이지에서 종목 DB를 업데이트하면 더 정확한 정보를 확인할 수 있습니다.</span>
             </div>
           )}
 
@@ -202,7 +241,11 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">티커</label>
               <Input
                 value={form.ticker}
-                onChange={(e) => setForm(prev => ({ ...prev, ticker: e.target.value }))}
+                onChange={(e) => {
+                  setForm(prev => ({ ...prev, ticker: e.target.value }))
+                  setMasterWarn(false)
+                }}
+                onBlur={handleTickerBlur}
                 placeholder="005930"
                 disabled={isEdit}
                 className="mt-1"

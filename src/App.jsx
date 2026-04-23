@@ -2,13 +2,19 @@ import { lazy, Suspense, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
+import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
+import { migrateFromLegacy } from './utils/stockMasterMigrate'
+import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
-import { Toaster } from 'sonner'
+import { getReportsByUser } from './utils/db'
+import { shouldGenerateWeeklyReport } from './agents/reportAgent'
+import { Toaster, toast } from 'sonner'
 import Header from './components/common/Header'
 import Sidebar from './components/common/Sidebar'
+import OfflineBanner from './components/common/OfflineBanner'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import LoadingSpinner from './components/common/LoadingSpinner'
 
@@ -22,10 +28,12 @@ const Reports   = lazy(() => import('./pages/Reports'))
 const StockDetail = lazy(() => import('./pages/StockDetail'))
 const AIChat    = lazy(() => import('./pages/AIChat'))
 const CashFlow  = lazy(() => import('./pages/CashFlow'))
+const Settings  = lazy(() => import('./pages/Settings'))
 const Login     = lazy(() => import('./pages/Login'))
 
 function App() {
   const { theme } = useSettingsStore()
+  const refreshCounts = useStockMasterStore(s => s.refreshCounts)
   const { loadFromDB } = useJournalStore()
   const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
   const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
@@ -64,6 +72,56 @@ function App() {
     loadDailyPnlFromDB(userId)
   }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 앱 시작 시 1회 DB 자동 정리 (24시간 경과 시에만 실행)
+  useEffect(() => {
+    runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 앱 시작 시 1회: LocalStorage(stock-db-v1) → IndexedDB(StockMasterDB) 마이그레이션
+  useEffect(() => {
+    migrateFromLegacy()
+      .then(() => refreshCounts())   // 마이그레이션 완료 후 카운트 갱신
+      .catch(err => {
+        console.error('[App] 종목 마스터 DB 마이그레이션 실패:', err)
+        toast.warning('종목 DB 마이그레이션 실패', {
+          description: '설정 → 종목 DB 관리에서 전체 업데이트를 실행해 주세요.',
+          duration: 10000,
+        })
+      })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 로그인 후 주간 리포트 알림 (지난주 리포트가 있으면 확인 토스트)
+  useEffect(() => {
+    const userId = currentUser?.id
+    if (!userId) return
+
+    const checkWeeklyReport = async () => {
+      try {
+        const reports = await getReportsByUser(userId)
+        const weeklyReports = reports.filter(r => r.type === 'weekly')
+        const latest = weeklyReports[0] || null
+
+        if (latest && !shouldGenerateWeeklyReport(latest.generatedAt)) {
+          // 이번 주에 이미 리포트가 있으면 알림 — Reports 페이지로 유도
+          setTimeout(() => {
+            toast.info('📊 지난 주간 리포트가 있습니다.', {
+              description: latest.title,
+              action: {
+                label: '확인하기',
+                onClick: () => window.location.href = '/reports',
+              },
+              duration: 8000,
+            })
+          }, 2000) // 앱 로딩 후 2초 뒤 표시
+        }
+      } catch (err) {
+        console.warn('[App] 주간 리포트 확인 실패:', err)
+      }
+    }
+
+    checkWeeklyReport()
+  }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <BrowserRouter>
       <Toaster position="bottom-right" richColors closeButton />
@@ -99,6 +157,7 @@ function App() {
                   <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
                   <div className="flex-1 flex flex-col overflow-hidden">
                     <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+                    <OfflineBanner />
                     <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
                       <Suspense fallback={<LoadingSpinner />}>
                         <Routes>
@@ -111,6 +170,7 @@ function App() {
                           <Route path="/reports" element={<Reports />} />
                           <Route path="/ai-chat" element={<AIChat />} />
                           <Route path="/cashflow" element={<CashFlow />} />
+                          <Route path="/settings" element={<Settings />} />
                           <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                       </Suspense>

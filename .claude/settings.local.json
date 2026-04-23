@@ -47,7 +47,15 @@
       "Bash(node -e \"const p=require\\(''./node_modules/lightweight-charts/package.json''\\);console.log\\(p.version\\)\")",
       "Bash(node -e \"const lc=require\\(''./node_modules/lightweight-charts''\\);console.log\\(Object.keys\\(lc\\).join\\('',''\\)\\)\")",
       "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | Select-Object -First 1 OwningProcess\")",
-      "Bash(powershell -Command \"Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 5173 }\")"
+      "Bash(powershell -Command \"Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 5173 }\")",
+      "Bash(curl -s -X POST http://localhost:5173/api/claude -H \"Content-Type: application/json\" -d '{\"\"\"\"systemPrompt\"\"\"\":\"\"\"\"테스트용 시스템 프롬프트입니다. 한국어로 짧게 답해주세요.\"\"\"\",\"\"\"\"messages\"\"\"\":[{\"\"\"\"role\"\"\"\":\"\"\"\"user\"\"\"\",\"\"\"\"content\"\"\"\":\"\"\"\"안녕하세요\"\"\"\"}]}')",
+      "Bash(git commit:*)",
+      "Bash(curl -s http://localhost:5173/)",
+      "mcp__Context7__resolve-library-id",
+      "Bash(npx vitest:*)",
+      "Bash(npm test:*)",
+      "Bash(ls \"C:\\\\Users\\\\dohay\\\\ClaudeWork\\\\my-portfolio-hub\\\\docs\"\" 2>/dev/null || echo \"docs folder not found \")",
+      "Bash(pkill -f \"npm run dev\")"
     ]
   }
 }
