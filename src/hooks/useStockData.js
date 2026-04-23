@@ -7,6 +7,7 @@ import {
   fetchProfile,
   fetchExchangeRate,
 } from '../api/stockApi'
+import { useStockDbStore } from '../store/stockDbStore'
 
 // 장중 여부 판단
 const isKRXOpen = () => {
@@ -50,13 +51,16 @@ export function useBatchQuotes(holdings, options = {}) {
   })
 }
 
-// 3. 종목 검색
+// 3. 종목 검색 — 마스터 DB(IDB) 우선, 구형 downloadedStocks 폴백
 export function useStockSearch(query, options = {}) {
+  const getAllStocks = useStockDbStore(s => s.getAllStocks)
+  const downloadedStocks = getAllStocks()
   return useQuery({
     queryKey: ['stockSearch', query],
-    queryFn: () => fetchSearch(query),
+    queryFn: () => fetchSearch(query, downloadedStocks),
     enabled: !!query && query.length >= 1,
-    staleTime: 60 * 1000,
+    // 마스터 DB(IDB) 기반이므로 네트워크 불필요 — 5분 캐시
+    staleTime: 5 * 60 * 1000,
     ...options,
   })
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { sampleWatchlistByUser } from '../data/sampleWatchlist'
+import { getByTicker } from '../utils/stockMasterDb'
 
 export const useWatchlistStore = create(
   persist((set, get) => ({
@@ -22,6 +23,36 @@ export const useWatchlistStore = create(
       watchlist: [...state.watchlist, { ...item, addedAt: new Date().toISOString() }]
         .filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
     })),
+
+    /**
+     * 마스터 DB 검증 후 관심종목 추가
+     * @returns {{ added: boolean, warn: boolean, message?: string }}
+     */
+    addToWatchlistValidated: async (item) => {
+      // 마스터 DB에서 티커 존재 확인 (IDB 미준비 시 warn 없이 추가)
+      let warn = false
+      try {
+        const found = await getByTicker(item.ticker)
+        if (!found) warn = true
+      } catch { /* IDB 미준비 — 검증 스킵 */ }
+
+      const { watchlist } = useWatchlistStore.getState()
+      const alreadyExists = watchlist.some(w => w.ticker === item.ticker)
+      if (alreadyExists) {
+        return { added: false, warn: false, message: '이미 관심종목에 추가된 종목입니다.' }
+      }
+
+      useWatchlistStore.getState().addToWatchlist(item)
+
+      if (warn) {
+        return {
+          added: true,
+          warn: true,
+          message: '마스터 DB에 없는 종목입니다. 설정 페이지에서 종목 DB를 업데이트하면 더 정확한 정보를 제공합니다.',
+        }
+      }
+      return { added: true, warn: false }
+    },
 
     // 관심종목 삭제 (연결 알림도 함께 삭제)
     removeFromWatchlist: (ticker) => set((state) => ({
