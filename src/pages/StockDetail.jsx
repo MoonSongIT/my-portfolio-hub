@@ -1,6 +1,7 @@
-import { useState, useMemo, Component } from 'react'
+import { useState, useMemo, useEffect, Component } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon } from 'lucide-react'
+import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon, Loader2 } from 'lucide-react'
+import { useResearchBundle } from '../hooks/useResearchBundle'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart,
 } from 'recharts'
@@ -88,6 +89,9 @@ export default function StockDetail() {
   const [range, setRange] = useState('6mo')
   const [chartType, setChartType] = useState('line') // 'line' | 'candle'
   const [chatOpen, setChatOpen] = useState(false)
+  const [bundleEnabled, setBundleEnabled] = useState(false)
+  const [pendingOpen, setPendingOpen] = useState(false)
+  const [chatContext, setChatContext] = useState(null)
 
   const { data: quote, isLoading: quoteLoading, isError: quoteError } = useStockPrice(ticker, market)
   const { data: detail, isLoading: detailLoading } = useStockDetail(ticker, market)
@@ -95,6 +99,53 @@ export default function StockDetail() {
 
   const { watchlist, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const isWatched = watchlist.some(w => w.ticker === ticker)
+
+  // 이미 로드된 데이터 재사용 (번들 조립 시 중복 fetch 방지)
+  const prefetched = useMemo(() => ({
+    quote:   quote  ?? null,
+    detail:  detail ?? null,
+    history: history?.length ? history : null,
+  }), [quote, detail, history])
+
+  // 폴백: 번들 수집 실패 시 기본 stockData만으로 패널 열기
+  const fallback = useMemo(() => ({
+    stockData: {
+      symbol: ticker,
+      name: quote?.name,
+      currentPrice: quote?.currentPrice,
+      changePercent: quote?.changePercent,
+      market,
+      marketCap: detail?.marketCap,
+      per: detail?.trailingPE,
+      pbr: detail?.priceToBook,
+      high52w: detail?.fiftyTwoWeekHigh,
+      low52w: detail?.fiftyTwoWeekLow,
+      volume: detail?.averageVolume,
+    },
+  }), [ticker, market, quote, detail])
+
+  // React Query 캐싱 훅 — 5분 staleTime, 10분 gcTime (T10: 재질문 시 캐시 HIT)
+  const {
+    data: researchBundle,
+    isLoading: bundleLoading,
+  } = useResearchBundle(ticker, market, { enabled: bundleEnabled, prefetched })
+
+  // 번들 로드 완료(또는 오류) → 채팅 패널 오픈
+  useEffect(() => {
+    if (!pendingOpen) return
+    if (bundleLoading) return
+    setChatContext(researchBundle ? { researchBundle } : fallback)
+    setChatOpen(true)
+    setPendingOpen(false)
+    setBundleEnabled(false)
+  }, [pendingOpen, bundleLoading, researchBundle, fallback])
+
+  // AI 분석 버튼 클릭 — React Query로 번들 트리거 (캐시 HIT 시 즉시 응답)
+  const handleOpenAIChat = () => {
+    if (bundleLoading) return
+    setBundleEnabled(true)
+    setPendingOpen(true)
+  }
 
   const toggleWatchlist = () => {
     if (isWatched) {
@@ -172,11 +223,15 @@ export default function StockDetail() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setChatOpen(true)}
-            className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950"
+            onClick={handleOpenAIChat}
+            disabled={bundleLoading}
+            className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950 disabled:opacity-70"
           >
-            <Bot className="w-4 h-4" />
-            AI 분석
+            {bundleLoading
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Bot className="w-4 h-4" />
+            }
+            {bundleLoading ? '데이터 수집 중...' : 'AI 분석'}
           </Button>
           <Button
             variant={isWatched ? 'outline' : 'default'}
@@ -480,25 +535,11 @@ export default function StockDetail() {
         </Card>
       </div>
 
-      {/* AI 채팅 패널 */}
+      {/* AI 채팅 패널 — researchBundle 포함 컨텍스트 주입 */}
       <ChatPanel
         open={chatOpen}
         onOpenChange={setChatOpen}
-        context={{
-          stockData: {
-            symbol: ticker,
-            name: quote?.name,
-            currentPrice: quote?.currentPrice,
-            changePercent: quote?.changePercent,
-            market,
-            marketCap: detail?.marketCap,
-            per: detail?.trailingPE,
-            pbr: detail?.priceToBook,
-            high52w: detail?.fiftyTwoWeekHigh,
-            low52w: detail?.fiftyTwoWeekLow,
-            volume: detail?.averageVolume,
-          },
-        }}
+        context={chatContext ?? {}}
         forceAgent="research"
         initialMessage={`${quote?.name || ticker} 종합 분석해줘`}
       />

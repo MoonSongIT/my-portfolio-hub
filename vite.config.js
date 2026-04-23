@@ -6,6 +6,8 @@ import YahooFinanceClass from 'yahoo-finance2'
 import { handleDartList } from './server/dartHandler.js'
 import { handleEdgarFilings } from './server/edgarHandler.js'
 import { handleAgenticRequest } from './server/agenticHandler.js'
+import { handleStockUpdate } from './server/stockUpdateHandler.js'
+import { handleStockMaster } from './server/stockMaster/index.js'
 
 export default defineConfig(({ mode }) => {
   // vitest 환경에서는 yahoo-finance2 임포트 스킵
@@ -73,6 +75,38 @@ export default defineConfig(({ mode }) => {
         server.middlewares.use(async (req, res, next) => {
           if (!req.url?.startsWith('/api/edgar/filings')) return next()
           await handleEdgarFilings(req, res)
+        })
+      },
+    },
+    // 종목 DB 업데이트 미들웨어 (/api/stock-update) — 하위호환 유지
+    {
+      name: 'stock-update-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/stock-update')) return next()
+          await handleStockUpdate(req, res)
+        })
+      },
+    },
+    // 종목 마스터 DB 미들웨어 (/api/stock-master, /api/stock-master/manifest)
+    {
+      name: 'stock-master-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/stock-master')) return next()
+          try {
+            await handleStockMaster(req, res)
+          } catch (err) {
+            console.error('[StockMaster] 핸들러 예외:', err.message)
+            if (!res.writableEnded) {
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                rows: [], count: 0,
+                errors: [err.message],
+                collectedAt: new Date().toISOString(),
+              }))
+            }
+          }
         })
       },
     },
@@ -190,6 +224,24 @@ export default defineConfig(({ mode }) => {
             },
           },
           {
+            // DART 공시 API → StaleWhileRevalidate (30분 캐시)
+            urlPattern: /\/api\/dart\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'dart-disclosure-cache',
+              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 30 }, // 30분
+            },
+          },
+          {
+            // SEC EDGAR 공시 API → StaleWhileRevalidate (30분 캐시)
+            urlPattern: /\/api\/edgar\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'edgar-disclosure-cache',
+              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 30 }, // 30분
+            },
+          },
+          {
             // 로컬 API 프록시 → NetworkFirst
             urlPattern: /^http:\/\/localhost:3001\/.*/i,
             handler: 'NetworkFirst',
@@ -233,6 +285,15 @@ export default defineConfig(({ mode }) => {
         headers: {
           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
           'Referer': 'https://m.stock.naver.com',
+        },
+      },
+      '/api/krx-data': {
+        target: 'http://data.krx.co.kr',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/krx-data/, ''),
+        headers: {
+          'Referer': 'http://data.krx.co.kr',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
       },
       '/api/naver-pc': {

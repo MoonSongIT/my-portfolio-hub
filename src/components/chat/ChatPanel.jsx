@@ -1,5 +1,5 @@
 // AI 채팅 패널 — 우측 슬라이드 + 드래그 리사이즈
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Trash2, Bot, X, GripVertical, Loader2 } from 'lucide-react'
 import {
   Sheet,
@@ -38,7 +38,8 @@ export default function ChatPanel({
   const isDragging = useRef(false)
 
   const {
-    messages,
+    sessions,
+    currentSessionId,
     error,
     addUserMessage,
     addAIMessage,
@@ -46,6 +47,11 @@ export default function ChatPanel({
     setError,
     clearHistory,
   } = useChatStore()
+
+  const messages = useMemo(() => {
+    const session = sessions?.find(s => s.id === currentSessionId)
+    return session?.messages || []
+  }, [sessions, currentSessionId])
 
   const isLoading = localLoading
 

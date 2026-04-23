@@ -6,24 +6,42 @@ const naverApi = axios.create({ baseURL: '/api/naver', timeout: 8000 })
 
 const NEWS_COUNT = 8
 
+/** 1초 대기 유틸 */
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
 /**
  * Yahoo Finance 뉴스 (글로벌 종목)
  * 기존 /api/yahoo 프록시 재활용 — 추가 서버 설정 불필요
+ * 레이트 리밋(429) 발생 시 1초 대기 후 1회 재시도
  */
 async function fetchNewsYahoo(ticker) {
-  try {
-    const { data } = await yahooApi.get('/v1/finance/search', {
-      params: { q: ticker, newsCount: NEWS_COUNT, quotesCount: 0, listsCount: 0 },
-    })
+  const params = { q: ticker, newsCount: NEWS_COUNT, quotesCount: 0, listsCount: 0 }
+
+  const tryFetch = async () => {
+    const { data } = await yahooApi.get('/v1/finance/search', { params })
     return (data.news || []).map(n => ({
-      title: n.title || '',
+      title:     n.title || '',
       publisher: n.publisher || '',
-      link: n.link || '',
+      link:      n.link || '',
       date: n.providerPublishTime
         ? new Date(n.providerPublishTime * 1000).toISOString().split('T')[0]
         : null,
     })).filter(n => n.title)
-  } catch {
+  }
+
+  try {
+    return await tryFetch()
+  } catch (err) {
+    // 429 레이트 리밋 → 1초 대기 후 1회 재시도
+    if (err?.response?.status === 429) {
+      console.warn('[NewsAPI] Yahoo 429 레이트 리밋 — 1초 후 재시도')
+      await sleep(1000)
+      try {
+        return await tryFetch()
+      } catch {
+        return []
+      }
+    }
     return []
   }
 }

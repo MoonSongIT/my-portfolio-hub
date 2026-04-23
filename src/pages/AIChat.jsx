@@ -84,8 +84,9 @@ export default function AIChat() {
   }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 세션이 없으면 기본 세션 생성
+  // getState()로 최신 상태를 읽어 StrictMode 이중 실행 시 중복 생성 방지
   useEffect(() => {
-    if (sessions.length === 0) {
+    if (useChatStore.getState().sessions.length === 0) {
       createSession('journal')
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

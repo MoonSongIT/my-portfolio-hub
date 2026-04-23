@@ -76,6 +76,18 @@ db.version(7).stores({
   chatHistory:    '++id, sessionId, userId, agentType, createdAt',
 })
 
+// v8: chatHistory updatedAt 인덱스 추가 (정렬 최적화용)
+// primary key(++id) 유지 — saveChatSession에서 delete+add로 upsert 처리
+db.version(8).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
@@ -247,24 +259,25 @@ export async function deleteOldAlertHistory(beforeDate) {
 // ─── chatHistory CRUD ───
 
 /**
- * 채팅 세션 저장
+ * 채팅 세션 저장 (upsert: 기존 sessionId 삭제 후 재삽입)
+ * ++id primary key에서 put()은 항상 INSERT하므로 delete+add로 upsert 처리
  * @param {{ sessionId, userId, agentType, title, messages, startedAt, updatedAt }} session
  */
 export async function saveChatSession(session) {
-  return db.chatHistory.put({
-    ...session,
-    updatedAt: new Date().toISOString(),
-  })
+  const record = { ...session, updatedAt: new Date().toISOString() }
+  await db.chatHistory.where('sessionId').equals(session.sessionId).delete()
+  return db.chatHistory.add(record)
 }
 
 /**
  * 사용자의 채팅 세션 목록 조회 (최신순)
  */
 export async function getChatSessionsByUser(userId) {
-  return db.chatHistory
+  const sessions = await db.chatHistory
     .where('userId').equals(userId)
-    .reverse()
-    .sortBy('updatedAt')
+    .toArray()
+  // sortBy()는 cursor-level .reverse()를 무시하므로 JS에서 직접 정렬
+  return sessions.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
 }
 
 /**

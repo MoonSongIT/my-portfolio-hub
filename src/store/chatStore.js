@@ -34,21 +34,6 @@ export const useChatStore = create(
       error: null,
       lastAgentType: null,
 
-      // ─── 세션 헬퍼 ───
-
-      /** 현재 활성 세션 반환 */
-      get currentSession() {
-        const { sessions, currentSessionId } = get()
-        return sessions.find(s => s.id === currentSessionId) || null
-      },
-
-      /** 현재 세션의 messages 반환 (없으면 빈 배열) */
-      get messages() {
-        const { sessions, currentSessionId } = get()
-        const session = sessions.find(s => s.id === currentSessionId)
-        return session?.messages || []
-      },
-
       // ─── 세션 관리 액션 ───
 
       /**
@@ -232,15 +217,17 @@ export const useChatStore = create(
       },
     }),
     {
-      name: 'chat-sessions',
+      name: 'chat-sessions-v2',  // v2: 이전 손상된 데이터 무시하고 초기화
       // 최근 5개 세션, 각 세션 최근 50개 메시지만 localStorage에 저장
       partialize: (state) => ({
         currentSessionId: state.currentSessionId,
         lastAgentType: state.lastAgentType,
-        sessions: state.sessions.slice(0, 5).map(s => ({
-          ...s,
-          messages: s.messages.slice(-50),
-        })),
+        sessions: Array.isArray(state.sessions)
+          ? state.sessions.slice(0, 5).map(s => ({
+              ...s,
+              messages: Array.isArray(s.messages) ? s.messages.slice(-50) : [],
+            }))
+          : [],
       }),
     }
   )

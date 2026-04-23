@@ -2,16 +2,21 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts'
+import { toast } from 'sonner'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useJournalStore } from '../store/journalStore'
+import { useAuthStore } from '../store/authStore'
 import { EXCHANGE_RATE } from '../data/samplePortfolio'
 import { fetchBenchmarkHistory } from '../api/stockApi'
+import { sendToAgent } from '../api/claudeApi'
 import {
   calculatePortfolioReturn, calculateTotalPnL,
   filterByDateRange, calculateWinRate,
 } from '../utils/calculator'
 import { formatPercent, formatShortDate, formatCurrencyShort } from '../utils/formatters'
 import { exportAsPNG, exportAsPDF } from '../utils/exportReport'
+import { saveScheduledReport, shouldGenerateWeeklyReport } from '../agents/reportAgent'
+import { getLatestReportByType } from '../utils/db'
 import AccountSelector from '../components/common/AccountSelector'
 import TradeHistoryTable from '../components/reports/TradeHistoryTable'
 import InsightsCard from '../components/reports/InsightsCard'
@@ -21,7 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import {
   TrendingUp, TrendingDown, BarChart2, Target, Loader2,
-  Download, ChevronDown,
+  Download, ChevronDown, CalendarCheck, CheckCircle2, AlertCircle,
 } from 'lucide-react'
 
 const DATE_RANGES = [
@@ -109,9 +114,11 @@ function ExportMenu({ onPNG, onPDF }) {
 export default function Reports() {
   const { accounts, selectedAccountId, getSelectedHoldings } = usePortfolioStore()
   const { entries } = useJournalStore()
+  const currentUser = useAuthStore(s => s.currentUser)
   const [dateRange, setDateRange] = useState('1m')
   const [benchmark, setBenchmark] = useState({ KOSPI: [], SP500: [] })
   const [benchLoading, setBenchLoading] = useState(false)
+  const [weeklyStatus, setWeeklyStatus] = useState('idle') // 'idle' | 'loading' | 'saved' | 'exists' | 'error'
   const reportRef = useRef(null)
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
@@ -163,6 +170,46 @@ export default function Reports() {
     if (last['KOSPI'] == null) return null
     return (last['내 포트폴리오'] - last['KOSPI']).toFixed(2)
   }, [comparisonData])
+
+  const handleSaveWeeklyReport = async () => {
+    const userId = currentUser?.id
+    if (!userId) {
+      toast.error('로그인이 필요합니다.')
+      return
+    }
+
+    // 이번 주에 이미 저장된 리포트가 있는지 확인
+    const latest = await getLatestReportByType('weekly', userId)
+    if (latest && !shouldGenerateWeeklyReport(latest.generatedAt)) {
+      setWeeklyStatus('exists')
+      toast.info('이번 주 리포트가 이미 저장되어 있습니다.', { description: latest.title })
+      return
+    }
+
+    setWeeklyStatus('loading')
+    const result = await sendToAgent(
+      '이번 주 투자 성과 주간 리포트를 생성해줘.',
+      { holdings, period: 'weekly', journalEntries: filteredEntries, totalReturn, totalPnL, winRate,
+        benchmarkDiff: benchmarkDiff ? parseFloat(benchmarkDiff) : null },
+      'report'
+    )
+
+    const isError = !result.text || result.text.startsWith('오류') || result.text.startsWith('네트워크') || result.text.startsWith('응답')
+    if (isError) {
+      setWeeklyStatus('error')
+      toast.error('리포트 생성 실패', { description: result.text })
+      return
+    }
+
+    try {
+      await saveScheduledReport('weekly', result.text, userId)
+      setWeeklyStatus('saved')
+      toast.success('주간 리포트가 저장되었습니다.')
+    } catch {
+      setWeeklyStatus('error')
+      toast.error('IndexedDB 저장 실패')
+    }
+  }
 
   const handleExportPNG = async () => {
     if (!reportRef.current) return
@@ -361,19 +408,59 @@ export default function Reports() {
 
         {/* AI 인사이트 탭 */}
         <TabsContent value="insights">
-          <Card className="border border-gray-200 dark:border-gray-700">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">AI 인사이트</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <InsightsCard
-                entries={filteredEntries}
-                dateRange={dateRange}
-                holdings={holdings}
-                reportContext={reportContext}
-              />
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            {/* 주간 리포트 저장 카드 */}
+            <Card className="border border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-900/10">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-full bg-blue-100 dark:bg-blue-900 p-2">
+                      <CalendarCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">주간 리포트 저장</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {weeklyStatus === 'saved' && '이번 주 리포트가 저장되었습니다.'}
+                        {weeklyStatus === 'exists' && '이번 주 리포트가 이미 존재합니다.'}
+                        {weeklyStatus === 'error' && '생성 중 오류가 발생했습니다. 다시 시도해주세요.'}
+                        {(weeklyStatus === 'idle' || weeklyStatus === 'loading') && 'AI가 이번 주 성과를 분석해 IndexedDB에 저장합니다.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {weeklyStatus === 'saved' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                    {weeklyStatus === 'exists' && <CheckCircle2 className="w-4 h-4 text-blue-500" />}
+                    {weeklyStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                    <button
+                      onClick={handleSaveWeeklyReport}
+                      disabled={weeklyStatus === 'loading'}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {weeklyStatus === 'loading'
+                        ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 생성 중...</>
+                        : <><CalendarCheck className="w-3.5 h-3.5" /> 주간 리포트 저장</>
+                      }
+                    </button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* AI 인사이트 카드 */}
+            <Card className="border border-gray-200 dark:border-gray-700">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">AI 인사이트</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <InsightsCard
+                  entries={filteredEntries}
+                  dateRange={dateRange}
+                  holdings={holdings}
+                  reportContext={reportContext}
+                />
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

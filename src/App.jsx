@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
+import { migrateFromLegacy } from './utils/stockMasterMigrate'
+import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
@@ -31,6 +33,7 @@ const Login     = lazy(() => import('./pages/Login'))
 
 function App() {
   const { theme } = useSettingsStore()
+  const refreshCounts = useStockMasterStore(s => s.refreshCounts)
   const { loadFromDB } = useJournalStore()
   const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
   const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
@@ -72,6 +75,19 @@ function App() {
   // 앱 시작 시 1회 DB 자동 정리 (24시간 경과 시에만 실행)
   useEffect(() => {
     runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 앱 시작 시 1회: LocalStorage(stock-db-v1) → IndexedDB(StockMasterDB) 마이그레이션
+  useEffect(() => {
+    migrateFromLegacy()
+      .then(() => refreshCounts())   // 마이그레이션 완료 후 카운트 갱신
+      .catch(err => {
+        console.error('[App] 종목 마스터 DB 마이그레이션 실패:', err)
+        toast.warning('종목 DB 마이그레이션 실패', {
+          description: '설정 → 종목 DB 관리에서 전체 업데이트를 실행해 주세요.',
+          duration: 10000,
+        })
+      })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 로그인 후 주간 리포트 알림 (지난주 리포트가 있으면 확인 토스트)

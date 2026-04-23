@@ -16,12 +16,31 @@ const api = axios.create({
  * @param {number} [days=30] - 조회 기간 (일)
  * @returns {Promise<Array<{ date: string, title: string, url: string, kind: string }>>}
  */
+// DART 일일 호출 횟수 모니터링 (일일 40,000건 제한 대응)
+let dartCallCount = 0
+let dartCallDate  = new Date().toDateString()
+
+function trackDartCall() {
+  const today = new Date().toDateString()
+  if (dartCallDate !== today) {
+    dartCallCount = 0
+    dartCallDate  = today
+  }
+  dartCallCount++
+  if (dartCallCount >= 35_000) {
+    console.warn(`[DisclosureAPI] DART 일일 호출 ${dartCallCount}건 — 40,000건 한도 근접`)
+  } else {
+    console.debug(`[DisclosureAPI] DART 호출 #${dartCallCount} (일일 40,000건 한도)`)
+  }
+}
+
 export async function fetchDisclosures(ticker, market, days = 30) {
   const isKorean  = market === 'KRX' || market === 'KOSDAQ'
   const cleanTicker = ticker.replace(/\.(KS|KQ)$/i, '')
 
   try {
     if (isKorean) {
+      trackDartCall()
       const res = await api.get('/dart/list', { params: { ticker: cleanTicker, days } })
       return res.data?.items ?? []
     } else {
