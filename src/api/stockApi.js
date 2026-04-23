@@ -20,6 +20,12 @@ function exchangeToMarket(exchange) {
   return EXCHANGE_TO_MARKET[exchange] ?? exchange
 }
 
+// exchange 우선순위 (낮을수록 우선) — 동일 ticker가 여러 exchange에 있을 때 대표 선정
+const EXCHANGE_PRIORITY = {
+  KOSPI: 0, KOSDAQ: 1, KRX_ETF: 2, NXT: 3,
+  NASDAQ: 4, NYSE: 5, AMEX: 6, US_ETF: 7,
+}
+
 /** StockMasterRow → fetchSearch 반환 형식으로 변환 */
 function masterRowToSearchResult(row) {
   return {
@@ -31,6 +37,23 @@ function masterRowToSearchResult(row) {
     market:   exchangeToMarket(row.exchange),
     currency: row.currency,
   }
+}
+
+/**
+ * ticker 기준 중복 제거 — 같은 ticker가 KOSPI/NXT 등 복수 exchange에 있을 때
+ * exchange 우선순위(KOSPI > KOSDAQ > ... > NXT)로 대표 1개만 유지
+ */
+function dedupeByTicker(results) {
+  const best = new Map()
+  for (const r of results) {
+    const prev = best.get(r.ticker)
+    const prevPriority = prev ? (EXCHANGE_PRIORITY[prev.exchange] ?? 99) : Infinity
+    const currPriority = EXCHANGE_PRIORITY[r.exchange] ?? 99
+    if (!prev || currPriority < prevPriority) {
+      best.set(r.ticker, r)
+    }
+  }
+  return Array.from(best.values())
 }
 
 const yahooApi = axios.create({
@@ -203,8 +226,9 @@ export const fetchSearch = async (query, downloadedStocks = []) => {
   // ── 1순위: 마스터 DB (IndexedDB) ─────────────────────────────────
   let masterResults = []
   try {
-    const rows = await searchByQuery(q, { limit: 20 })
-    masterResults = rows.map(masterRowToSearchResult)
+    // limit을 넉넉히 잡아 ticker 중복 제거 후에도 충분한 결과 확보
+    const rows = await searchByQuery(q, { limit: 60 })
+    masterResults = dedupeByTicker(rows.map(masterRowToSearchResult))
   } catch { /* IDB 미준비(최초 설치) 시 폴백으로 계속 */ }
 
   if (masterResults.length >= 5) return masterResults.slice(0, 20)
