@@ -362,7 +362,9 @@ KIS_ACCOUNT_NO=여기에_계좌번호_입력
 | Phase 2 | 포트폴리오 UI + **투자 매매 일지** 구현 (Zustand+Immer, Recharts) | ✅ 완료 |
 | Phase 3 | 실시간 주가 API 연동 (TanStack Query + Yahoo Finance)              | ✅ 완료 |
 | Phase 4 | Claude AI 에이전트 탑재 + **일지 연동 코치 기능**                  | ✅ 완료 |
-| Phase 5 | 차트·리포트 고도화 (lightweight-charts, PWA, IndexedDB)    | 🔄 Sprint 1 완료 (2026-04-14) |
+| Phase 5 | 차트·리포트 고도화 (lightweight-charts, PWA, IndexedDB)    | ✅ 완료 |
+| Phase 6 | AI 종목 종합분석 + 에이전트 고도화                          | ✅ 완료 |
+| Phase 7 | 종목 마스터 DB (IDB Dexie, DART/NASDAQ Trader, 앱 전역 연결) | ✅ 완료 (2026-04-23) |
 
 ---
 

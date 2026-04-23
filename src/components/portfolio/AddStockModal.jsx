@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { usePortfolioStore } from '../../store/portfolioStore'
+import { useUserAccounts } from '../../store/accountStore'
 import { SECTORS, MARKETS } from '../../data/samplePortfolio'
 import { useStockSearch, useStockPrice } from '../../hooks/useStockData'
 import { useDebounce } from '../../hooks/useDebounce'
 import { formatCurrency } from '../../utils/formatters'
-import { getByTicker } from '../../utils/stockMasterDb'
+import { getByTicker, stockMasterDb } from '../../utils/stockMasterDb'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../ui/dialog'
@@ -25,7 +26,14 @@ const INITIAL_FORM = {
 }
 
 export default function AddStockModal({ open, onClose, editStock = null }) {
-  const { accounts, addHolding, updateHolding } = usePortfolioStore()
+  const { addHolding, updateHolding } = usePortfolioStore()
+  const rawAccounts = useUserAccounts()
+  const accounts = useMemo(() => rawAccounts.map(a => ({
+    id: a.id,
+    accountName: a.name,
+    accountType: a.type,
+    holdings: [],
+  })), [rawAccounts])
   const [form, setForm] = useState(INITIAL_FORM)
   const [errors, setErrors] = useState({})
   const [searchQuery, setSearchQuery] = useState('')
@@ -94,10 +102,13 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
   }
 
   // 티커 직접 입력 시 마스터 DB 검증
+  // DB가 비어있으면(미동기화) 경고 없이 통과, DB에 데이터가 있을 때만 검증
   const handleTickerBlur = async () => {
     const ticker = form.ticker.trim().toUpperCase()
     if (!ticker || isEdit) return
     try {
+      const total = await stockMasterDb.stocks.count()
+      if (total === 0) { setMasterWarn(false); return }
       const found = await getByTicker(ticker)
       setMasterWarn(!found)
     } catch { setMasterWarn(false) }

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { RefreshCw, Bot, X, TrendingUp, BarChart2, Loader2, ExternalLink } from 'lucide-react'
+import { RefreshCw, Bot, X, TrendingUp, BarChart2, Loader2, ExternalLink, Plus } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -12,6 +12,7 @@ import { calculateTotalValue, calculatePortfolioReturn, calculateTotalPnL } from
 import { formatCurrency, formatPercent, formatCurrencyShort } from '../utils/formatters'
 import { snapshotToday, backfillHistory } from '../api/dailyPnlService'
 import PortfolioTable from '../components/portfolio/PortfolioTable'
+import AddStockModal from '../components/portfolio/AddStockModal'
 import AllocationPieChart from '../components/charts/AllocationPieChart'
 import DailyPnlChart from '../components/charts/DailyPnlChart'
 import HoldingPnlTimeline from '../components/charts/HoldingPnlTimeline'
@@ -33,6 +34,7 @@ export default function Portfolio() {
   const snapshots = useDailyPnlStore(s => s.snapshots)
 
   const [chatOpen, setChatOpen] = useState(false)
+  const [addStockOpen, setAddStockOpen] = useState(false)
   // 종목 상세 드로어
   const [drawerTicker, setDrawerTicker] = useState(null) // { ticker, accountId, name, market }
   // 스냅샷 작업 상태
@@ -223,7 +225,13 @@ export default function Portfolio() {
                 <span className="ml-2 text-sm font-normal text-gray-400">{accounts.length}개 계좌</span>
               )}
             </CardTitle>
-            <p className="text-xs text-gray-400">종목 행 클릭 → 손익 차트</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-gray-400">종목 행 클릭 → 손익 차트</p>
+              <Button size="sm" onClick={() => setAddStockOpen(true)} className="gap-1 h-7 text-xs">
+                <Plus className="w-3.5 h-3.5" />
+                종목 추가
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -341,6 +349,9 @@ export default function Portfolio() {
           </div>
         </div>
       )}
+
+      {/* 종목 추가 모달 */}
+      <AddStockModal open={addStockOpen} onClose={() => setAddStockOpen(false)} />
 
       {/* AI 채팅 패널 */}
       <ChatPanel
