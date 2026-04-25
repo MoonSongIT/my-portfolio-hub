@@ -56,6 +56,17 @@ function dedupeByTicker(results) {
   return Array.from(best.values())
 }
 
+// ─── 범위 확장 유틸 ──────────────────────────────────────────────────────────
+
+export const RANGE_ORDER = ['1mo', '3mo', '6mo', '1y', '2y', '5y']
+
+/** 현재 로드된 range → 다음 단계 range 반환, 최대 범위(5y) 초과 시 null */
+export const getNextRange = (currentRange) => {
+  const idx = RANGE_ORDER.indexOf(currentRange)
+  if (idx === -1 || idx >= RANGE_ORDER.length - 1) return null
+  return RANGE_ORDER[idx + 1]
+}
+
 const yahooApi = axios.create({
   baseURL: '/api/yahoo',
   timeout: 10000,
@@ -135,17 +146,24 @@ export const fetchBatchQuotes = async (holdings) => {
 }
 
 // 3. 가격 히스토리
-export const fetchHistory = async (ticker, market = 'NASDAQ', range = '6mo', interval = '1d') => {
+// fromDate (YYYY-MM-DD): 지정 시 Yahoo는 period1(Unix ts)로 변환, Naver는 range 그대로 사용
+export const fetchHistory = async (ticker, market = 'NASDAQ', range = '6mo', interval = '1d', fromDate = null) => {
   // 한국 주식은 네이버 파이낸스 사용 (KRX + KOSDAQ)
   if (market === 'KRX' || market === 'KOSDAQ') {
     const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
     return fetchNaverHistory(pureTicker, range)
+    // Naver API는 절대 날짜 파라미터 미지원 — range 기반으로만 동작
   }
 
   const yahooTicker = toYahooTicker(ticker, market)
-  const { data } = await yahooApi.get(`/v8/finance/chart/${yahooTicker}`, {
-    params: { interval, range },
-  })
+  const params = { interval }
+  if (fromDate) {
+    params.period1 = Math.floor(new Date(fromDate).getTime() / 1000)
+    params.period2 = Math.floor(Date.now() / 1000)
+  } else {
+    params.range = range
+  }
+  const { data } = await yahooApi.get(`/v8/finance/chart/${yahooTicker}`, { params })
 
   const result = data.chart.result?.[0]
   if (!result) throw new Error(`히스토리 데이터 없음: ${ticker}`)
