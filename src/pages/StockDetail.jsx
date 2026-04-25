@@ -105,23 +105,23 @@ export default function StockDetail() {
   const { watchlist, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const isWatched = watchlist.some(w => w.ticker === ticker)
 
-  // history 로드 완료 시 allHistory 초기화
-  useEffect(() => {
-    if (history?.length) {
-      setAllHistory(history)
-      setLoadedRange(range)
-    }
-  }, [history])
-
-  // range 변경 시 누적 히스토리 리셋 (사용자가 명시적으로 기간 변경)
+  // history/range 동기화 — range 변경과 history 도착을 한 effect에서 처리
+  // (별도 effect로 분리하면 실행 순서로 인해 history가 [] 로 덮어쓰여지는 버그 발생)
   const prevRangeRef = useRef(range)
   useEffect(() => {
-    if (prevRangeRef.current !== range) {
-      prevRangeRef.current = range
+    const rangeChanged = prevRangeRef.current !== range
+    prevRangeRef.current = range
+
+    if (history?.length) {
+      // 새 history 도착 (캐시 hit 또는 fetch 완료) → 즉시 적용
+      setAllHistory(history)
+      setLoadedRange(range)
+    } else if (rangeChanged) {
+      // range 바뀌었지만 아직 history 미도착 → 이전 데이터 클리어 (loading 상태로 진입)
       setAllHistory([])
       setLoadedRange(null)
     }
-  }, [range])
+  }, [history, range])
 
   const isMaxRange = loadedRange === RANGE_ORDER[RANGE_ORDER.length - 1]
 
