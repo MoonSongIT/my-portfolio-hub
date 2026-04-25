@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { Loader2 } from 'lucide-react'
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useJournalStore } from '../../store/journalStore'
@@ -28,6 +29,10 @@ function getThemeOptions(isDark) {
       timeVisible: false,
       secondsVisible: false,
       borderColor: isDark ? '#4b5563' : '#e5e7eb',
+      rightOffset: 5,            // 최신 캔들 우측 여백 (가독성)
+      fixRightEdge: true,        // 최신 데이터가 항상 오른쪽 엣지에 고정 (스크롤 한계)
+      fixLeftEdge: false,        // 좌측 드래그로 과거 데이터 로딩 트리거 허용
+      rightBarStaysOnScroll: true, // 스크롤 시 우측 바 위치 유지
     },
     rightPriceScale: {
       borderColor: isDark ? '#4b5563' : '#e5e7eb',
@@ -132,11 +137,17 @@ const PERIOD_DAYS = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 }
  * @param {object} chart - lightweight-charts chart 인스턴스
  * @param {string} period - '1M' | '3M' | '6M' | '1Y' | 'ALL'
  * @param {Array}  chartData - 현재 표시 중인 OHLCV 배열
+ * @param {object|null} savedRange - 이전 logical range (동적 데이터 추가 시 줌 유지)
  */
-function applyPeriod(chart, period, chartData) {
+function applyPeriod(chart, period, chartData, savedRange = null) {
   if (!chart || !chartData?.length) return
   if (period === 'ALL') {
-    chart.timeScale().fitContent()
+    if (savedRange) {
+      // 동적 데이터 추가 후: 줌 유지 + 최신 데이터를 오른쪽에 고정
+      chart.timeScale().scrollToRealTime()
+    } else {
+      chart.timeScale().fitContent()
+    }
     return
   }
   const days = PERIOD_DAYS[period]
@@ -153,11 +164,28 @@ function applyPeriod(chart, period, chartData) {
   }
 }
 
-export default function CandlestickChart({ data = [], ticker = '' }) {
+export default function CandlestickChart({
+  data = [],
+  ticker = '',
+  onNeedMoreData = null,
+  isFetchingMore = false,
+  isMaxRange = false,
+}) {
   const containerRef = useRef(null)
   const chartRef = useRef(null)
   const chartDataRef = useRef([])   // period effect에서 chartData 접근용
   const periodRef = useRef(DEFAULT_PERIOD)
+  const isFetchingMoreRef = useRef(false)
+  const isMaxRangeRef = useRef(false)
+  const onNeedMoreDataRef = useRef(null)
+  const hasTriggeredRef = useRef(false)
+  const savedRangeRef = useRef(null)   // 동적 데이터 추가 시 이전 zoom level 보존
+  const prevTickerRef = useRef(null)   // ticker 변경 감지 (range 초기화 용)
+
+  // refs를 매 렌더마다 최신 props로 동기화 (stale closure 방지)
+  isFetchingMoreRef.current = isFetchingMore
+  isMaxRangeRef.current = isMaxRange
+  onNeedMoreDataRef.current = onNeedMoreData
   const [error, setError] = useState(null)
   const [timeframe, setTimeframe] = useState(DEFAULT_TIMEFRAME)
   const [indicators, setIndicators] = useState(DEFAULT_INDICATORS)
@@ -174,8 +202,23 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
   // 차트 빌드 함수 (data, isDark, indicators 변경 시 재생성)
   useEffect(() => {
     if (!containerRef.current || data.length === 0) return
+    hasTriggeredRef.current = false  // 새 데이터 로드 시 트리거 플래그 리셋
 
-    // 이전 차트 정리
+    // ticker가 바뀌면 저장된 range 초기화 (새 종목은 fitContent로 시작)
+    const tickerChanged = prevTickerRef.current !== null && prevTickerRef.current !== ticker
+    prevTickerRef.current = ticker
+
+    // 이전 차트 정리 전에 현재 logical range 저장 (동적 데이터 추가 시 줌 유지)
+    if (chartRef.current && !tickerChanged) {
+      try {
+        savedRangeRef.current = chartRef.current.timeScale().getVisibleLogicalRange()
+      } catch {
+        savedRangeRef.current = null
+      }
+    } else {
+      savedRangeRef.current = null
+    }
+
     if (chartRef.current) {
       try { chartRef.current.remove() } catch {}
       chartRef.current = null
@@ -355,9 +398,29 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
 
       chartDataRef.current = chartData
       chartRef.current = chart
-      applyPeriod(chart, periodRef.current, chartData)
+      applyPeriod(chart, periodRef.current, chartData, savedRangeRef.current)
+      savedRangeRef.current = null
+
+      // 왼쪽 경계 스크롤 감지 → 이전 데이터 로딩 요청 (300ms 디바운스)
+      let debounceTimer = null
+      const handleRangeChange = (logicalRange) => {
+        if (!logicalRange) return
+        if (isFetchingMoreRef.current || isMaxRangeRef.current) return
+        if (hasTriggeredRef.current) return
+        const visibleBars = logicalRange.to - logicalRange.from
+        if (logicalRange.from < visibleBars * 0.1) {
+          hasTriggeredRef.current = true
+          clearTimeout(debounceTimer)
+          debounceTimer = setTimeout(() => {
+            onNeedMoreDataRef.current?.()
+          }, 300)
+        }
+      }
+      chart.timeScale().subscribeVisibleLogicalRangeChange(handleRangeChange)
 
       return () => {
+        clearTimeout(debounceTimer)
+        try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleRangeChange) } catch {}
         try { chart.remove() } catch {}
         chartRef.current = null
       }
@@ -449,7 +512,20 @@ export default function CandlestickChart({ data = [], ticker = '' }) {
       </div>
 
       {/* 차트 컨테이너 */}
-      <div ref={containerRef} style={{ width: '100%' }} />
+      <div className="relative">
+        {isFetchingMore && (
+          <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-white/90 dark:bg-gray-800/90 rounded-md px-2 py-1 text-xs text-gray-600 dark:text-gray-300 shadow">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            이전 데이터 로딩 중...
+          </div>
+        )}
+        {isMaxRange && !isFetchingMore && (
+          <div className="absolute top-2 left-2 z-10 bg-gray-100 dark:bg-gray-700 rounded-md px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+            최대 조회 범위 (5년)
+          </div>
+        )}
+        <div ref={containerRef} style={{ width: '100%' }} />
+      </div>
     </div>
   )
 }

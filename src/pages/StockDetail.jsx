@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, Component } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef, Component } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon, Loader2 } from 'lucide-react'
 import { useResearchBundle } from '../hooks/useResearchBundle'
@@ -6,6 +6,8 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart,
 } from 'recharts'
 import { useStockPrice, useStockDetail, useStockHistory } from '../hooks/useStockData'
+import { fetchHistory, RANGE_ORDER, getNextRange } from '../api/stockApi'
+import { mergeOhlcvArrays } from '../utils/mergeHistory'
 import CandlestickChart from '../components/charts/CandlestickChart'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { formatCurrency, formatPercent, formatNumber, formatLargeNumber, formatShortDate } from '../utils/formatters'
@@ -87,6 +89,9 @@ export default function StockDetail() {
   const navigate = useNavigate()
 
   const [range, setRange] = useState('6mo')
+  const [allHistory, setAllHistory] = useState([])
+  const [loadedRange, setLoadedRange] = useState(null)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [chartType, setChartType] = useState('line') // 'line' | 'candle'
   const [chatOpen, setChatOpen] = useState(false)
   const [bundleEnabled, setBundleEnabled] = useState(false)
@@ -99,6 +104,41 @@ export default function StockDetail() {
 
   const { watchlist, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const isWatched = watchlist.some(w => w.ticker === ticker)
+
+  // history/range 동기화 — range 변경과 history 도착을 한 effect에서 처리
+  // (별도 effect로 분리하면 실행 순서로 인해 history가 [] 로 덮어쓰여지는 버그 발생)
+  const prevRangeRef = useRef(range)
+  useEffect(() => {
+    const rangeChanged = prevRangeRef.current !== range
+    prevRangeRef.current = range
+
+    if (history?.length) {
+      // 새 history 도착 (캐시 hit 또는 fetch 완료) → 즉시 적용
+      setAllHistory(history)
+      setLoadedRange(range)
+    } else if (rangeChanged) {
+      // range 바뀌었지만 아직 history 미도착 → 이전 데이터 클리어 (loading 상태로 진입)
+      setAllHistory([])
+      setLoadedRange(null)
+    }
+  }, [history, range])
+
+  const isMaxRange = loadedRange === RANGE_ORDER[RANGE_ORDER.length - 1]
+
+  const handleNeedMoreData = useCallback(async () => {
+    const nextRange = getNextRange(loadedRange)
+    if (!nextRange || isFetchingMore) return
+    setIsFetchingMore(true)
+    try {
+      const olderData = await fetchHistory(ticker, market, nextRange)
+      setAllHistory(prev => mergeOhlcvArrays(prev, olderData))
+      setLoadedRange(nextRange)
+    } catch {
+      // 이전 데이터 로딩 실패 시 무시 (현재 데이터 유지)
+    } finally {
+      setIsFetchingMore(false)
+    }
+  }, [ticker, market, loadedRange, isFetchingMore])
 
   // 이미 로드된 데이터 재사용 (번들 조립 시 중복 fetch 방지)
   const prefetched = useMemo(() => ({
@@ -165,13 +205,14 @@ export default function StockDetail() {
 
   // 차트 Y축 범위
   const chartDomain = useMemo(() => {
-    if (!history?.length) return ['auto', 'auto']
-    const closes = history.map(d => d.close).filter(Boolean)
+    const src = allHistory.length > 0 ? allHistory : (history ?? [])
+    if (!src.length) return ['auto', 'auto']
+    const closes = src.map(d => d.close).filter(Boolean)
     const min = Math.min(...closes)
     const max = Math.max(...closes)
     const margin = (max - min) * 0.05
     return [min - margin, max + margin]
-  }, [history])
+  }, [allHistory, history])
 
   if (quoteLoading) return <div className="p-6"><LoadingSpinner /></div>
 
@@ -395,12 +436,19 @@ export default function StockDetail() {
           <ChartErrorBoundary resetKey={`${chartType}-${range}`}>
             {historyLoading ? (
               <LoadingSpinner />
-            ) : history?.length > 0 ? (
+            ) : allHistory.length > 0 ? (
               chartType === 'candle' ? (
-                <CandlestickChart data={history} ticker={ticker} timeframe={range} />
+                <CandlestickChart
+                  data={allHistory}
+                  ticker={ticker}
+                  timeframe={range}
+                  onNeedMoreData={handleNeedMoreData}
+                  isFetchingMore={isFetchingMore}
+                  isMaxRange={isMaxRange}
+                />
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={history} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <AreaChart data={allHistory} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                     <defs>
                       <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
