@@ -29,6 +29,10 @@ function getThemeOptions(isDark) {
       timeVisible: false,
       secondsVisible: false,
       borderColor: isDark ? '#4b5563' : '#e5e7eb',
+      rightOffset: 5,            // 최신 캔들 우측 여백 (가독성)
+      fixRightEdge: true,        // 최신 데이터가 항상 오른쪽 엣지에 고정 (스크롤 한계)
+      fixLeftEdge: false,        // 좌측 드래그로 과거 데이터 로딩 트리거 허용
+      rightBarStaysOnScroll: true, // 스크롤 시 우측 바 위치 유지
     },
     rightPriceScale: {
       borderColor: isDark ? '#4b5563' : '#e5e7eb',
