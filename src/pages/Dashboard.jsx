@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { TrendingUp, TrendingDown, Wallet, Briefcase, RefreshCw, Camera } from 'lucide-react'
 import { toast } from 'sonner'
@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useUserAccounts } from '../store/accountStore'
 import { useDailyPnlStore } from '../store/dailyPnlStore'
-import { snapshotToday } from '../api/dailyPnlService'
+import { snapshotToday, backfillHistory } from '../api/dailyPnlService'
 import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
 import {
   calculateTotalValue,
@@ -17,6 +17,7 @@ import {
   calculateReturn,
 } from '../utils/calculator'
 import { formatCurrency, formatPercent, formatCurrencyShort } from '../utils/formatters'
+import { aggregatePortfolioHistory } from '../utils/portfolioAggregator'
 import AllocationPieChart from '../components/charts/AllocationPieChart'
 import ProfitLineChart from '../components/charts/ProfitLineChart'
 import AccountSelector from '../components/common/AccountSelector'
@@ -30,6 +31,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 export default function Dashboard() {
   const queryClient = useQueryClient()
   const [snapshotLoading, setSnapshotLoading] = useState(false)
+  const [chartPeriod, setChartPeriod] = useState(30)
+  const autoSnapshotRan = useRef(false)
   const {
     accounts, selectedAccountId, exchangeRate,
     getSelectedHoldings, getSelectedCash,
@@ -85,9 +88,37 @@ export default function Dashboard() {
     [holdings, exchangeRate]
   )
 
-  // dailyPnlStore 기반 오늘 손익
-  const getSnapshotsByDate = useDailyPnlStore(s => s.getSnapshotsByDate)
-  const snapshots          = useDailyPnlStore(s => s.snapshots)
+  // dailyPnlStore
+  const getSnapshotsByDate  = useDailyPnlStore(s => s.getSnapshotsByDate)
+  const snapshots           = useDailyPnlStore(s => s.snapshots)
+  const hasSnapshotToday    = useDailyPnlStore(s => s.hasSnapshotToday)
+  const allSnapshots        = useMemo(() => Object.values(snapshots), [snapshots])
+
+  // 수익률 추이 데이터 집계
+  const portfolioHistory = useMemo(
+    () => aggregatePortfolioHistory(allSnapshots, chartPeriod, exchangeRate),
+    [allSnapshots, chartPeriod, exchangeRate]
+  )
+
+  // 마운트 시 스냅샷 없으면 자동 저장 + 과거 데이터 백필 (silent)
+  useEffect(() => {
+    if (autoSnapshotRan.current) return
+    autoSnapshotRan.current = true
+    if (holdings.length === 0) return
+
+    if (!hasSnapshotToday()) {
+      snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
+        .catch(() => {})
+    }
+
+    // 스냅샷이 전혀 없는 종목은 과거 데이터 백필
+    holdings.forEach(h => {
+      const existing = Object.values(snapshots).filter(s => s.ticker === h.ticker && s.accountId === h.accountId)
+      if (existing.length === 0) {
+        backfillHistory(h.ticker, h.accountId, h.market || 'KRX').catch(() => {})
+      }
+    })
+  }, [holdings.length])
 
   const dailyChange = useMemo(() => {
     const today = new Date().toISOString().split('T')[0]
@@ -273,7 +304,12 @@ export default function Dashboard() {
             <CardTitle className="text-lg">수익률 추이</CardTitle>
           </CardHeader>
           <CardContent>
-            <ProfitLineChart />
+            <ProfitLineChart
+              data={portfolioHistory}
+              period={chartPeriod}
+              onPeriodChange={setChartPeriod}
+              isLoading={snapshotLoading}
+            />
           </CardContent>
         </Card>
       </div>
