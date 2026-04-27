@@ -365,6 +365,7 @@ KIS_ACCOUNT_NO=여기에_계좌번호_입력
 | Phase 5 | 차트·리포트 고도화 (lightweight-charts, PWA, IndexedDB)    | ✅ 완료 |
 | Phase 6 | AI 종목 종합분석 + 에이전트 고도화                          | ✅ 완료 |
 | Phase 7 | 종목 마스터 DB (IDB Dexie, DART/NASDAQ Trader, 앱 전역 연결) | ✅ 완료 (2026-04-23) |
+| Phase 8 | 차트 동적 로딩 + 대시보드 수익률 추이 구현 | ✅ 완료 (2026-04-27) |
 
 ---
 
