@@ -123,6 +123,14 @@ export const usePortfolioStore = create(
         state.exchangeRate = rate
       }),
 
+      // import 확정 후 호출 — holdings는 getSelectedHoldings에서 동적 계산되므로
+      // lastUpdated만 갱신해 UI 리렌더를 유도한다
+      recomputeFromJournal: () => {
+        set((state) => {
+          state.lastUpdated = new Date().toISOString()
+        })
+      },
+
       // ─── 파생 데이터 (journalStore 기반) ───
 
       /**

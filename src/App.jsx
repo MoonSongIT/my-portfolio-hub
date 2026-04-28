@@ -30,6 +30,7 @@ const AIChat    = lazy(() => import('./pages/AIChat'))
 const CashFlow  = lazy(() => import('./pages/CashFlow'))
 const Settings  = lazy(() => import('./pages/Settings'))
 const Login     = lazy(() => import('./pages/Login'))
+const ImportHts = lazy(() => import('./pages/ImportHts'))
 
 function App() {
   const { theme } = useSettingsStore()
@@ -171,6 +172,7 @@ function App() {
                           <Route path="/ai-chat" element={<AIChat />} />
                           <Route path="/cashflow" element={<CashFlow />} />
                           <Route path="/settings" element={<Settings />} />
+                          <Route path="/import/hts" element={<ImportHts />} />
                           <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                       </Suspense>
