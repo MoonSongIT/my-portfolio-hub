@@ -55,27 +55,43 @@ export function toNumber(value) {
   return isNaN(n) ? 0 : n
 }
 
-// 유진투자증권 HTS 고정 컬럼 인덱스 (row0: 메인헤더, row1: 서브헤더, row2~: 데이터)
-const EUGENE_COL = {
-  date: 0,
-  name: 1,
-  type: 2,
-  buyPrice: 3,
-  buyQty: 4,
-  buyAmount: 5,
-  sellPrice: 6,
-  sellQty: 7,
-  sellAmount: 8,
-  tradingCost: 9,
-  realizedPnl: 10,
-  realizedRate: 11,
-  commission: 12,
-  tax: 13,
-  ticker: 14,
+/**
+ * 메인헤더·서브헤더 행으로 컬럼 인덱스를 동적 탐지
+ * 서브헤더의 "가격" 첫 번째 → buyPrice, 두 번째 → sellPrice
+ * 메인헤더의 "종목코드" → ticker
+ */
+function detectEugeneColumns(mainHeader, subHeader) {
+  const priceCols = subHeader
+    .map((v, i) => (String(v).trim() === '가격' ? i : -1))
+    .filter((i) => i >= 0)
+
+  const buyPriceCol = priceCols[0] ?? 3
+  const sellPriceCol = priceCols[1] ?? 6
+  const afterSell = sellPriceCol + 3
+
+  const tickerCol = mainHeader.findIndex((v) => String(v).includes('종목코드'))
+
+  return {
+    date: 0,
+    name: 1,
+    type: 2,
+    buyPrice: buyPriceCol,
+    buyQty: buyPriceCol + 1,
+    buyAmount: buyPriceCol + 2,
+    sellPrice: sellPriceCol,
+    sellQty: sellPriceCol + 1,
+    sellAmount: sellPriceCol + 2,
+    tradingCost: afterSell,
+    realizedPnl: afterSell + 1,
+    realizedRate: afterSell + 2,
+    commission: afterSell + 3,
+    tax: afterSell + 4,
+    ticker: tickerCol >= 0 ? tickerCol : afterSell + 5,
+  }
 }
 
-function shouldSkip(row) {
-  const name = String(row[EUGENE_COL.name] ?? '').trim()
+function shouldSkip(row, col) {
+  const name = String(row[col.name] ?? '').trim()
   if (!name) return true
   return SKIP_PATTERNS.some((p) => p.test(name))
 }
@@ -84,22 +100,22 @@ function shouldSkip(row) {
  * 유진 HTS 단일 데이터 행 → 정규화된 거래 엔트리
  * buyQty > 0 → buy, 그 외 → sell
  */
-export function parseEugeneRow(row) {
-  const date = normalizeDate(row[EUGENE_COL.date])
-  const name = String(row[EUGENE_COL.name] ?? '').trim()
-  const ticker = normalizeTicker(row[EUGENE_COL.ticker])
+export function parseEugeneRow(row, col) {
+  const date = normalizeDate(row[col.date])
+  const name = String(row[col.name] ?? '').trim()
+  const ticker = normalizeTicker(row[col.ticker])
 
-  const buyQty = toNumber(row[EUGENE_COL.buyQty])
-  const sellQty = toNumber(row[EUGENE_COL.sellQty])
+  const buyQty = toNumber(row[col.buyQty])
+  const sellQty = toNumber(row[col.sellQty])
   const isBuy = buyQty > 0
 
   let price = isBuy
-    ? toNumber(row[EUGENE_COL.buyPrice])
-    : toNumber(row[EUGENE_COL.sellPrice])
+    ? toNumber(row[col.buyPrice])
+    : toNumber(row[col.sellPrice])
   let quantity = isBuy ? buyQty : sellQty
   const amount = isBuy
-    ? toNumber(row[EUGENE_COL.buyAmount])
-    : toNumber(row[EUGENE_COL.sellAmount])
+    ? toNumber(row[col.buyAmount])
+    : toNumber(row[col.sellAmount])
 
   // price=0이고 amount·qty가 모두 양수이면 단가를 역산 (금액/수량)
   if (price === 0 && quantity > 0 && amount > 0) {
@@ -118,11 +134,11 @@ export function parseEugeneRow(row) {
     price,
     quantity,
     amount,
-    commission: toNumber(row[EUGENE_COL.commission]),
-    tax: toNumber(row[EUGENE_COL.tax]),
-    tradingCost: toNumber(row[EUGENE_COL.tradingCost]),
-    realizedPnl: toNumber(row[EUGENE_COL.realizedPnl]),
-    realizedRate: toNumber(row[EUGENE_COL.realizedRate]),
+    commission: toNumber(row[col.commission]),
+    tax: toNumber(row[col.tax]),
+    tradingCost: toNumber(row[col.tradingCost]),
+    realizedPnl: toNumber(row[col.realizedPnl]),
+    realizedRate: toNumber(row[col.realizedRate]),
     market: 'KRX',
     source: 'eugene-hts',
   }
@@ -154,12 +170,15 @@ export async function parseHtsWorkbook(file) {
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
 
     const headerIdx = findHeaderRowIndex(rows)
+    const mainHeader = rows[headerIdx] ?? []
+    const subHeader = rows[headerIdx + 1] ?? []
+    const col = detectEugeneColumns(mainHeader, subHeader)
     const dataRows = rows.slice(headerIdx + 2) // 메인헤더 + 서브헤더 건너뜀
 
     const entries = []
     for (const row of dataRows) {
-      if (shouldSkip(row)) continue
-      const entry = parseEugeneRow(row)
+      if (shouldSkip(row, col)) continue
+      const entry = parseEugeneRow(row, col)
       if (!entry.date || !entry.name) continue
       entries.push(entry)
     }
