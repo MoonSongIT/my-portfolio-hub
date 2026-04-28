@@ -7,6 +7,53 @@ const naverApi = axios.create({
   timeout: 10000,
 })
 
+// ─── 요청 throttle + 재시도 (m.stock.naver.com Rate Limit 대응) ─────────────
+const CONCURRENCY = 1
+const DELAY_MS = 800
+
+let _activeCount = 0
+const _queue = []
+
+function _next() {
+  if (_activeCount >= CONCURRENCY || _queue.length === 0) return
+  const { fn, resolve, reject } = _queue.shift()
+  _activeCount++
+  fn()
+    .then(resolve)
+    .catch(reject)
+    .finally(() => {
+      _activeCount--
+      setTimeout(_next, DELAY_MS)
+    })
+}
+
+function throttled(fn) {
+  return new Promise((resolve, reject) => {
+    _queue.push({ fn, resolve, reject })
+    _next()
+  })
+}
+
+// 409/429 응답 시 최대 MAX_RETRY 회 재시도 (지수 백오프)
+const MAX_RETRY = 2
+async function withRetry(fn) {
+  let lastErr
+  for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const status = err?.response?.status
+      if ((status === 409 || status === 429) && attempt < MAX_RETRY) {
+        await new Promise(r => setTimeout(r, 1200 * (attempt + 1)))
+        lastErr = err
+        continue
+      }
+      throw err
+    }
+  }
+  throw lastErr
+}
+
 // ─── 파싱 유틸 ─────────────────────────────────────────────────────────────
 
 // totalInfos 배열에서 code 로 value 추출
@@ -74,34 +121,35 @@ export const fetchNaverParValue = async (ticker) => {
 
 // ─── 1. 실시간 시세 ─────────────────────────────────────────────────────────
 
-export const fetchNaverQuote = async (ticker) => {
-  const { data } = await naverApi.get(`/api/stock/${ticker}/basic`)
+export const fetchNaverQuote = (ticker) => {
+  if (!ticker) return Promise.reject(new Error('ticker 없음'))
+  return throttled(() => withRetry(async () => {
+    const { data } = await naverApi.get(`/api/stock/${ticker}/basic`)
 
-  const currentPrice = parseNum(data.closePrice)
-  const change       = parseNum(data.compareToPreviousClosePrice)
-  const prevClose    = (change != null && currentPrice != null) ? currentPrice - change : null
+    const currentPrice = parseNum(data.closePrice)
+    const change       = parseNum(data.compareToPreviousClosePrice)
+    const prevClose    = (change != null && currentPrice != null) ? currentPrice - change : null
+    const parValue     = getKrxParValue(ticker) ?? null  // HTTP 파싱 제거 (항상 404)
 
-  // 액면가: 정적 테이블 우선, 없으면 데스크탑 HTML 파싱 (비동기, quote에서는 캐시 활용)
-  const parValue = getKrxParValue(ticker) ?? await fetchNaverParValue(ticker)
-
-  return {
-    ticker,
-    yahooTicker: ticker,
-    name:          data.stockName || ticker,
-    currentPrice,
-    previousClose: prevClose,
-    change,
-    changePercent: parseNum(data.fluctuationsRatio),
-    volume:        parseNum(data.accumulatedTradingVolume),
-    currency:      'KRW',
-    exchangeName:  'KRX',
-    marketState:   data.marketStatus === 'OPEN' ? 'REGULAR' : 'CLOSED',
-    timestamp:     Date.now(),
-    fiftyTwoWeekHigh: null,   // integration API 에서 보완
-    fiftyTwoWeekLow:  null,
-    marketCap:        null,
-    parValue,                 // 액면가 (원)
-  }
+    return {
+      ticker,
+      yahooTicker: ticker,
+      name:          data.stockName || ticker,
+      currentPrice,
+      previousClose: prevClose,
+      change,
+      changePercent: parseNum(data.fluctuationsRatio),
+      volume:        parseNum(data.accumulatedTradingVolume),
+      currency:      'KRW',
+      exchangeName:  'KRX',
+      marketState:   data.marketStatus === 'OPEN' ? 'REGULAR' : 'CLOSED',
+      timestamp:     Date.now(),
+      fiftyTwoWeekHigh: null,
+      fiftyTwoWeekLow:  null,
+      marketCap:        null,
+      parValue,
+    }
+  }))
 }
 
 // ─── 2. 기업 상세 + 재무 지표 ───────────────────────────────────────────────
@@ -337,21 +385,20 @@ const rangeToDays = (range) => {
 
 const MAX_PAGE_SIZE = 60
 
-export const fetchNaverHistory = async (ticker, range = '6mo') => {
+export const fetchNaverHistory = (ticker, range = '6mo') => {
+  if (!ticker) return Promise.resolve([])
+  return throttled(async () => {
   const totalDays = rangeToDays(range)
   const totalPages = Math.ceil(totalDays / MAX_PAGE_SIZE)
 
-  // 페이지별 병렬 요청
-  const pagePromises = []
+  // 페이지별 순차 요청 (throttle 내부이므로 병렬 불필요)
+  const pages = []
   for (let p = 1; p <= totalPages; p++) {
-    pagePromises.push(
-      naverApi.get(`/api/stock/${ticker}/price`, {
-        params: { pageSize: MAX_PAGE_SIZE, page: p },
-      }).then(res => res.data).catch(() => [])
-    )
+    const data = await naverApi.get(`/api/stock/${ticker}/price`, {
+      params: { pageSize: MAX_PAGE_SIZE, page: p },
+    }).then(res => res.data).catch(() => [])
+    pages.push(data)
   }
-  const pages = await Promise.all(pagePromises)
-
   // 전체 데이터 합치기 (각 페이지: 최신→과거 순)
   const allItems = pages.flatMap(data =>
     Array.isArray(data) ? data : (data?.priceInfos || [])
@@ -374,4 +421,5 @@ export const fetchNaverHistory = async (ticker, range = '6mo') => {
   result.sort((a, b) => a.date.localeCompare(b.date))
 
   return result
+  })
 }

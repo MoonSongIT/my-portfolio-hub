@@ -17,11 +17,9 @@ const FIELD_LABELS = {
 const REQUIRED_FIELDS = ['date', 'ticker', 'action', 'price', 'quantity']
 
 export default function ImportColumnMapper() {
-  const { parsedSheets, selectedSheet, setSelectedSheet } = useImportStore((s) => ({
-    parsedSheets: s.parsedSheets,
-    selectedSheet: s.selectedSheet,
-    setSelectedSheet: s.setSelectedSheet,
-  }))
+  const parsedSheets = useImportStore((s) => s.parsedSheets)
+  const selectedSheet = useImportStore((s) => s.selectedSheet)
+  const setSelectedSheet = useImportStore((s) => s.setSelectedSheet)
 
   const currentSheet = parsedSheets.find((s) => s.sheetName === selectedSheet)
   const sampleEntry = currentSheet?.entries?.[0] ?? {}

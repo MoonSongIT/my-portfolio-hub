@@ -16,7 +16,10 @@ export default function Journal() {
   const [chatOpen, setChatOpen] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState('전체')
 
-  const { entries, getProfitByPsychology, getSummaryStats, recalculateSellPnl } = useJournalStore()
+  const entries = useJournalStore((s) => s.entries)
+  const getProfitByPsychology = useJournalStore((s) => s.getProfitByPsychology)
+  const getSummaryStats = useJournalStore((s) => s.getSummaryStats)
+  const recalculateSellPnl = useJournalStore((s) => s.recalculateSellPnl)
   const accounts = useUserAccounts()
   const exchangeRate = usePortfolioStore(s => s.exchangeRate)
 

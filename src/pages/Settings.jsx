@@ -5,9 +5,14 @@ import { useSettingsStore } from '../store/settingsStore'
 import StorageInfo from '../components/common/StorageInfo'
 import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
+import { useJournalStore } from '../store/journalStore'
+import { useAuthStore } from '../store/authStore'
+import { db } from '../utils/db'
 
 export default function Settings() {
   const { theme, toggleTheme, benchmarkIndex, setBenchmark } = useSettingsStore()
+  const loadFromDB = useJournalStore((s) => s.loadFromDB)
+  const currentUser = useAuthStore((s) => s.currentUser)
 
   const fileInputRef = useRef(null)
 
@@ -15,6 +20,31 @@ export default function Settings() {
   const [importProgress, setImportProgress] = useState(null)
   const [confirmOpen, setConfirmOpen]       = useState(false)
   const [pendingFile, setPendingFile]       = useState(null)
+  const [cleaning, setCleaning]             = useState(false)
+
+  async function handleCleanHtsNoAccount() {
+    if (!currentUser?.id) return
+    setCleaning(true)
+    try {
+      const targets = await db.transactions
+        .where('userId').equals(currentUser.id)
+        .filter((t) => t.source === 'eugene-hts' && !t.accountId)
+        .toArray()
+
+      if (targets.length === 0) {
+        toast.info('삭제할 항목이 없습니다.')
+        return
+      }
+
+      await db.transactions.bulkDelete(targets.map((t) => t.id))
+      await loadFromDB(currentUser.id)
+      toast.success(`${targets.length}건 삭제 완료`)
+    } catch (err) {
+      toast.error('삭제 실패: ' + (err?.message ?? '알 수 없는 오류'))
+    } finally {
+      setCleaning(false)
+    }
+  }
 
   // ─── 내보내기 ───
   const handleExport = async () => {
@@ -176,6 +206,26 @@ export default function Settings() {
 
         {/* 저장소 현황 */}
         <StorageInfo />
+      </section>
+
+      {/* ─── HTS import 정리 ─── */}
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">데이터 정리</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-800 px-5 py-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">계좌 미연결 HTS import 항목 삭제</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              계좌가 연결되지 않은 유진투자증권 HTS import 거래내역을 모두 삭제합니다.
+            </p>
+          </div>
+          <button
+            onClick={handleCleanHtsNoAccount}
+            disabled={cleaning}
+            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40 transition"
+          >
+            {cleaning ? '삭제 중…' : '계좌 미연결 HTS 항목 삭제'}
+          </button>
+        </div>
       </section>
 
       {/* ─── 앱 정보 ─── */}

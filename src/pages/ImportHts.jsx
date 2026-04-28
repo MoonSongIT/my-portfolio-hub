@@ -66,12 +66,10 @@ export default function ImportHts() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [applyResult, setApplyResult] = useState(null)
 
-  const { parsedSheets, selectedSheet, setPreviewRows, reset } = useImportStore((s) => ({
-    parsedSheets: s.parsedSheets,
-    selectedSheet: s.selectedSheet,
-    setPreviewRows: s.setPreviewRows,
-    reset: s.reset,
-  }))
+  const parsedSheets = useImportStore((s) => s.parsedSheets)
+  const selectedSheet = useImportStore((s) => s.selectedSheet)
+  const setPreviewRows = useImportStore((s) => s.setPreviewRows)
+  const reset = useImportStore((s) => s.reset)
   const entries = useJournalStore((s) => s.entries)
 
   // 파일 파싱 완료 시 자동으로 컬럼 확인 단계로 이동

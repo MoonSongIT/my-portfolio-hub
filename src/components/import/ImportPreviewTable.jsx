@@ -22,11 +22,9 @@ function StatusBadge({ isDuplicate, isExcluded }) {
 }
 
 export default function ImportPreviewTable() {
-  const { previewRows, togglePreviewRow, excludeAllDuplicates } = useImportStore((s) => ({
-    previewRows: s.previewRows,
-    togglePreviewRow: s.togglePreviewRow,
-    excludeAllDuplicates: s.excludeAllDuplicates,
-  }))
+  const previewRows = useImportStore((s) => s.previewRows)
+  const togglePreviewRow = useImportStore((s) => s.togglePreviewRow)
+  const excludeAllDuplicates = useImportStore((s) => s.excludeAllDuplicates)
 
   const [page, setPage] = useState(0)
 
@@ -80,6 +78,8 @@ export default function ImportPreviewTable() {
               <th className="px-3 py-2.5 text-right font-medium text-gray-600">단가</th>
               <th className="px-3 py-2.5 text-right font-medium text-gray-600">수량</th>
               <th className="px-3 py-2.5 text-right font-medium text-gray-600">금액</th>
+              <th className="px-3 py-2.5 text-right font-medium text-gray-600">수수료</th>
+              <th className="px-3 py-2.5 text-right font-medium text-gray-600">세금</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -121,6 +121,12 @@ export default function ImportPreviewTable() {
                   </td>
                   <td className="px-3 py-2 text-right text-gray-700">
                     {entry.amount?.toLocaleString('ko-KR')}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-500">
+                    {entry.commission ? entry.commission.toLocaleString('ko-KR') : '-'}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-500">
+                    {entry.tax ? entry.tax.toLocaleString('ko-KR') : '-'}
                   </td>
                 </tr>
               )
