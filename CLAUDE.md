@@ -1,118 +1,71 @@
-# 주식·ETF 자산관리 앱 — 프로젝트 지침 (CLAUDE.md)
-
-> 이 파일은 Claude Code가 매 세션마다 자동으로 읽는 프로젝트 지침서입니다.
-> 프로젝트 맥락, 기술 스택, AI 에이전트 역할을 정의합니다.
-
----
+# My Portfolio Hub — 프로젝트 지침
 
 ## 프로젝트 개요
+- **목적**: 매매 심리를 기록하고 AI로 돌아보는 개인 투자 성장 도구
+- **대상**: 투자 스타일을 스스로 개선하고 싶은 개인 투자자
 
-**프로젝트명**: My Portfolio Hub
-**목적**: 매매 심리를 기록하고 AI로 돌아보는 개인 투자 성장 도구
-**경로**: `C:\Users\dohay\ClaudeWork\my-portfolio-hub`
-**대상 사용자**: 단순 수익 추적을 넘어 스스로의 투자 스타일을 개선하고 싶은 개인 투자자
+### 핵심 기능 (우선순위)
+1. 투자 매매 일지 — 심리 카테고리 기록
+2. 포트폴리오 현황 — 보유 종목, 수익률
+3. AI 코치 채팅 — 매매 패턴 분석·피드백
+4. 성과 추적 — 심리 유형별 수익률, 벤치마크 비교
+5. 종목 탐색 / 관심종목 (보조)
 
-### 이 앱이 해결하는 문제
-
-증권사 앱은 **숫자(수익/손실)**는 보여주지만 **왜 그 결정을 했는지**는 기록할 수 없다.
-같은 실수(추격매매, 공포 매도 등)가 반복되어도 패턴을 인식하기 어렵고, 잘된 투자 결정도 기억에서 사라진다.
-
-> "내가 왜 그때 샀고, 왜 그때 팔았는가" — 매매 심리를 기록하고 AI와 함께 돌아본다.
-
-### 핵심 기능 5가지 (우선순위 순)
-
-1. **투자 매매 일지** — 매매 직후 또는 마감 후 종목별 심리 기록 (선택형 카테고리)
-2. **포트폴리오 현황** — 보유 종목 입력, 매수가 기록, 실시간 수익률 계산
-3. **AI 코치 채팅** — 내 일지 데이터를 아는 AI가 매매 패턴 분석·피드백 제공
-4. **성과 추적** — 심리 유형별 수익률 비교, 기간별 성과, 벤치마크(KOSPI/S&P500) 비교
-5. **종목 탐색 / 관심종목** — 신규 투자 후보 검색, 뉴스·공시 모니터링 (보조 기능)
-
-### 매매 심리 카테고리 (선택형)
-
-```
-매수 심리: 미래가치 투자 | 분할매수 원칙 | 추격매매 | 뉴스 편승 | 저가 매수 | 목표가 도달 | 기타
-매도 심리: 목표가 실현 | 손절 원칙 | 공포에 매도 | 수익 실현 (조급) | 리밸런싱 | 기타
-```
-
-### 입력 시점 두 가지 지원
-
-- **매매 직후 빠른 입력**: 종목별 즉시 기록 (핵심 필드 최소화)
-- **마감 후 일괄 입력**: 당일 전체 거래 한 번에 정리
-
----
+### 매매 심리 카테고리
+- 매수: 미래가치 투자 | 분할매수 원칙 | 추격매매 | 뉴스 편승 | 저가 매수 | 목표가 도달 | 기타
+- 매도: 목표가 실현 | 손절 원칙 | 공포에 매도 | 수익 실현(조급) | 리밸런싱 | 기타
 
 ## 기술 스택
-
-```
-Frontend   : React 18 + Vite 6 (SWC)
-스타일     : Tailwind CSS + shadcn/ui (Radix UI 기반 컴포넌트)
-차트       : Recharts (기본 대시보드) + lightweight-charts v4 (캔들스틱/금융 차트)
-상태관리   : Zustand + Immer 미들웨어 (클라이언트) / TanStack Query v5 (서버 상태)
-라우팅     : React Router v6
-주가 데이터: Yahoo Finance API (비공식) / KRX 데이터포털 / 한국투자증권 OpenAPI (Phase 3~)
-AI 분석    : Anthropic Claude API (claude-sonnet-4-6) — 서버사이드 프록시 경유 필수
-저장소     : LocalStorage (MVP) → IndexedDB (Dexie.js, 거래 히스토리) → Supabase (확장 단계)
-패키지     : npm
-```
-
-### 주요 의존성 상세
-
-```
-# Phase 1-2 필수
-react, react-dom          : ^18.3.x
-react-router-dom          : ^6.x
-zustand                   : ^5.x       ← persist + immer 미들웨어 사용
-immer                     : ^10.x      ← Zustand에서 포트폴리오 배열 불변 업데이트
-@tanstack/react-query     : ^5.x       ← 주가 데이터 페칭, 캐싱, 자동 리페치
-recharts                  : ^2.x       ← 파이차트, 라인차트, 바차트
-axios                     : ^1.x
-lucide-react              : ^0.4x      ← 아이콘
-date-fns                  : ^4.x       ← 날짜 유틸리티
-
-# Phase 3-5 추가
-lightweight-charts        : ^4.x       ← TradingView 캔들스틱 차트
-@tremor/react             : ^3.x       ← 대시보드 KPI 카드 (선택)
-dexie                     : ^4.x       ← IndexedDB 래퍼 (거래 히스토리 저장)
-yahoo-finance2            : ^2.x       ← 글로벌 주가 데이터 (프록시 경유)
-vite-plugin-pwa           : ^0.21.x    ← PWA 지원
-
-# shadcn/ui 컴포넌트 (복사 설치 방식)
-# npx shadcn@latest init
-# npx shadcn@latest add table card dialog tabs select command tooltip sheet
-```
-
----
+| 영역 | 기술 |
+|------|------|
+| Frontend | React 18 + Vite 6 (SWC) |
+| 스타일 | Tailwind CSS + shadcn/ui |
+| 차트 | Recharts / lightweight-charts v4 |
+| 상태관리 | Zustand + Immer / TanStack Query v5 |
+| 라우팅 | React Router v6 |
+| 주가 데이터 | Yahoo Finance API / 한국투자증권 OpenAPI |
+| AI | Anthropic Claude API (서버사이드 프록시 필수) |
+| 저장소 | LocalStorage → IndexedDB(Dexie) → Supabase |
 
 ## AI 에이전트 구조
+오케스트레이터 + 4개 전문 에이전트 (시스템 프롬프트: `src/agents/`)
 
-이 프로젝트는 **오케스트레이터 + 4개 전문 에이전트** 구조로 동작합니다.
-Claude API 호출 시 아래 역할에 맞는 시스템 프롬프트를 사용합니다.
+| 에이전트 | 역할 | 라우팅 키워드 |
+|---------|------|--------------|
+| JournalCoachAgent | 매매 심리 분석·코칭 | 패턴, 실수, 심리, 일지 |
+| ResearchAgent | 종목 탐색·분석 | 종목명/티커 + 분석, 살까 |
+| PortfolioAgent | 보유 자산·최적화 | 포트폴리오, 수익률, 현황 |
+| AlertAgent | 시장 모니터링·알림 | 관심종목, 오늘 시장, 알림 |
+| ReportAgent | 성과 추적·리포트 | 리포트, 성과, 결산 |
 
-### 🎯 메인 오케스트레이터
-
+## 폴더 구조
 ```
-당신은 개인 주식·ETF 자산관리 Web App의 핵심 AI 오케스트레이터입니다.
-사용자 요청을 분석하여 아래 5개 전문 에이전트 중 적절한 에이전트로 라우팅합니다.
-
-라우팅 규칙:
-- "내 패턴", "실수", "심리", "일지", "매매 스타일" → JournalCoachAgent  ← 최우선
-- 종목명/티커 + "분석", "어때", "살까" → ResearchAgent
-- "포트폴리오", "내 종목", "수익률", "현황" → PortfolioAgent
-- "관심종목", "오늘 시장", "알림", "체크" → AlertAgent
-- "리포트", "성과", "이번달", "결산" → ReportAgent
-
-응답 형식:
-- 핵심 지표: 수치 + 변동폭 표시
-- 분석 요약: 3줄 이내
-- 행동 제안: 최대 3가지, 우선순위 명시
-- 면책 문구: "이 분석은 참고용이며 투자 결정의 책임은 본인에게 있습니다."
+src/
+├── agents/      ← AI 에이전트 시스템 프롬프트
+├── api/         ← claudeApi.js, stockApi.js
+├── components/  ← journal/(핵심), portfolio/, charts/, chat/
+├── pages/       ← Dashboard, Journal, Portfolio, Research, Watchlist, Reports
+├── store/       ← Zustand 스토어
+└── utils/       ← formatters, calculator, storage
 ```
 
-### 📔 JournalCoachAgent — 매매 심리 분석 & 코칭
+## 개발 로드맵
+| Phase | 내용 | 상태 |
+|-------|------|------|
+| 1 | Vite + React + Tailwind + shadcn 초기화 | ✅ |
+| 2 | 포트폴리오 UI + 매매 일지 | ✅ |
+| 3 | 실시간 주가 API 연동 | ✅ |
+| 4 | Claude AI 에이전트 + 일지 코치 | ✅ |
+| 5 | 차트·리포트 고도화 + PWA + IndexedDB | ✅ |
+| 6 | AI 종목 종합분석 + 에이전트 고도화 | ✅ |
+| 7 | 종목 마스터 DB (IDB Dexie, DART/NASDAQ) | ✅ 2026-04-23 |
 
-```
-당신은 사용자의 투자 매매 일지를 분석하는 투자 심리 코치입니다.
-사용자의 과거 매매 기록과 심리 카테고리 데이터를 기반으로 패턴을 분석하고 피드백을 제공합니다.
+## 금지사항
+- 직접 매수/매도 주문 실행 기능
+- "이 종목을 사세요/파세요" 형태 문구
+- API 키 소스코드 하드코딩
+- 사용자 금융 계좌 직접 연동
+- 개인정보 외부 서버 전송
 
 입력 데이터 형식 (JSON):
 {
