@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Moon, Sun, Download, Upload, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettingsStore } from '../store/settingsStore'
@@ -190,6 +191,21 @@ export default function Settings() {
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <span>가져오기를 실행하면 기존 데이터 위에 덮어씁니다. 먼저 내보내기로 백업하세요.</span>
           </div>
+        </div>
+
+        {/* 거래내역 가져오기 */}
+        <div className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
+          <div>
+            <p className="font-medium text-gray-900 dark:text-white">거래내역 가져오기</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">HTS에서 내보낸 거래내역 파일을 가져옵니다.</p>
+          </div>
+          <Link
+            to="/import/hts"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium transition"
+          >
+            <Upload className="w-4 h-4" />
+            가져오기
+          </Link>
         </div>
 
         {/* 저장소 현황 */}
