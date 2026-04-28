@@ -1,27 +1,34 @@
 import { useRef, useState } from 'react'
-import { Moon, Sun, Download, Upload, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Moon, Sun, Download, Upload, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettingsStore } from '../store/settingsStore'
 import StorageInfo from '../components/common/StorageInfo'
 import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
 import { useJournalStore } from '../store/journalStore'
+import { usePortfolioStore } from '../store/portfolioStore'
 import { useAuthStore } from '../store/authStore'
 import { db } from '../utils/db'
 
 export default function Settings() {
   const { theme, toggleTheme, benchmarkIndex, setBenchmark } = useSettingsStore()
   const loadFromDB = useJournalStore((s) => s.loadFromDB)
+  const clearEntries = useJournalStore((s) => s.clearEntries)
+  const entryCount = useJournalStore((s) => s.entries.length)
+  const recomputeFromJournal = usePortfolioStore((s) => s.recomputeFromJournal)
   const currentUser = useAuthStore((s) => s.currentUser)
 
   const fileInputRef = useRef(null)
 
-  const [importing, setImporting]           = useState(false)
-  const [importProgress, setImportProgress] = useState(null)
-  const [confirmOpen, setConfirmOpen]       = useState(false)
-  const [pendingFile, setPendingFile]       = useState(null)
-  const [cleaning, setCleaning]             = useState(false)
+  const [importing, setImporting]               = useState(false)
+  const [importProgress, setImportProgress]     = useState(null)
+  const [confirmOpen, setConfirmOpen]           = useState(false)
+  const [pendingFile, setPendingFile]           = useState(null)
+  const [cleaning, setCleaning]                 = useState(false)
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [clearing, setClearing]                 = useState(false)
 
+  // ─── 계좌 미연결 HTS 항목 삭제 ───
   async function handleCleanHtsNoAccount() {
     if (!currentUser?.id) return
     setCleaning(true)
@@ -46,6 +53,21 @@ export default function Settings() {
     }
   }
 
+  // ─── 거래 정보 일괄 삭제 ───
+  async function handleClearAll() {
+    setClearing(true)
+    try {
+      clearEntries()
+      recomputeFromJournal()
+      toast.success('모든 거래 정보가 삭제되었습니다.')
+    } catch (err) {
+      toast.error('삭제 실패: ' + (err?.message ?? '알 수 없는 오류'))
+    } finally {
+      setClearing(false)
+      setClearConfirmOpen(false)
+    }
+  }
+
   // ─── 내보내기 ───
   const handleExport = async () => {
     try {
@@ -67,7 +89,7 @@ export default function Settings() {
     }
     setPendingFile(file)
     setConfirmOpen(true)
-    e.target.value = '' // 같은 파일 재선택 가능하도록 초기화
+    e.target.value = ''
   }
 
   // ─── 가져오기: 확인 후 실행 ───
@@ -154,7 +176,6 @@ export default function Settings() {
           </div>
 
           <div className="flex gap-3">
-            {/* 내보내기 */}
             <button
               onClick={handleExport}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
@@ -163,7 +184,6 @@ export default function Settings() {
               내보내기 (JSON)
             </button>
 
-            {/* 가져오기 */}
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
@@ -181,7 +201,6 @@ export default function Settings() {
             />
           </div>
 
-          {/* 진행률 표시 */}
           {importing && importProgress && (
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
@@ -197,7 +216,6 @@ export default function Settings() {
             </div>
           )}
 
-          {/* 경고 문구 */}
           <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-xs">
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <span>가져오기를 실행하면 기존 데이터 위에 덮어씁니다. 먼저 내보내기로 백업하세요.</span>
@@ -208,9 +226,11 @@ export default function Settings() {
         <StorageInfo />
       </section>
 
-      {/* ─── HTS import 정리 ─── */}
-      <section className="space-y-2">
+      {/* ─── 데이터 정리 ─── */}
+      <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">데이터 정리</h2>
+
+        {/* 계좌 미연결 HTS 항목 삭제 */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-800 px-5 py-4 space-y-3">
           <div>
             <p className="text-sm font-medium text-gray-800 dark:text-gray-200">계좌 미연결 HTS import 항목 삭제</p>
@@ -226,6 +246,27 @@ export default function Settings() {
             {cleaning ? '삭제 중…' : '계좌 미연결 HTS 항목 삭제'}
           </button>
         </div>
+
+        {/* 거래 정보 일괄 삭제 */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-800 px-5 py-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">거래 정보 일괄 삭제</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              매매 일지의 모든 거래 내역을 삭제합니다.
+              {entryCount > 0 && (
+                <span className="ml-1 text-red-500">현재 {entryCount.toLocaleString('ko-KR')}건</span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => setClearConfirmOpen(true)}
+            disabled={clearing || entryCount === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40 transition"
+          >
+            <Trash2 className="w-4 h-4" />
+            {clearing ? '삭제 중…' : '전체 거래 삭제'}
+          </button>
+        </div>
       </section>
 
       {/* ─── 앱 정보 ─── */}
@@ -238,7 +279,7 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* ─── 확인 다이얼로그 ─── */}
+      {/* ─── 백업 복원 확인 다이얼로그 ─── */}
       {confirmOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
@@ -267,6 +308,44 @@ export default function Settings() {
               >
                 <CheckCircle2 className="w-4 h-4" />
                 가져오기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 거래 일괄 삭제 확인 다이얼로그 ─── */}
+      {clearConfirmOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 dark:text-white">거래 정보 일괄 삭제</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">되돌릴 수 없습니다</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              매매 일지의{' '}
+              <span className="font-semibold text-red-600">{entryCount.toLocaleString('ko-KR')}건</span>{' '}
+              거래 내역이 모두 삭제됩니다. 삭제 전 내보내기로 백업하는 것을 권장합니다.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setClearConfirmOpen(false)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleClearAll}
+                disabled={clearing}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40 transition"
+              >
+                <Trash2 className="w-4 h-4" />
+                {clearing ? '삭제 중…' : '전체 삭제'}
               </button>
             </div>
           </div>

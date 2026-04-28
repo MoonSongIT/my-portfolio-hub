@@ -93,13 +93,22 @@ export function parseEugeneRow(row) {
   const sellQty = toNumber(row[EUGENE_COL.sellQty])
   const isBuy = buyQty > 0
 
-  const price = isBuy
+  let price = isBuy
     ? toNumber(row[EUGENE_COL.buyPrice])
     : toNumber(row[EUGENE_COL.sellPrice])
-  const quantity = isBuy ? buyQty : sellQty
+  let quantity = isBuy ? buyQty : sellQty
   const amount = isBuy
     ? toNumber(row[EUGENE_COL.buyAmount])
     : toNumber(row[EUGENE_COL.sellAmount])
+
+  // price=0이고 amount·qty가 모두 양수이면 단가를 역산 (금액/수량)
+  if (price === 0 && quantity > 0 && amount > 0) {
+    price = Math.round(amount / quantity)
+  }
+  // qty가 실제로 금액값인 경우: qty ≈ amount (단가 > 0) → qty = round(amount/price)
+  if (price > 0 && quantity > 0 && amount > 0 && quantity === amount) {
+    quantity = Math.round(amount / price)
+  }
 
   return {
     date,
