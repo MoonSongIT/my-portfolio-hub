@@ -292,6 +292,43 @@ export const useJournalStore = create(
         return updates.length
       },
 
+      // ─── HTS import 전용 ───
+
+      // externalId로 기존 엔트리 조회 (중복 감지용)
+      findEntryByExternalId: (externalId) => {
+        return get().entries.find((e) => e.externalId === externalId) ?? null
+      },
+
+      // 복수 엔트리 일괄 추가 (HTS import용, 현금흐름 자동 연동 제외)
+      addEntriesBulk: (entries) => {
+        const userId = useAuthStore.getState().currentUser?.id
+        const now = new Date().toISOString()
+
+        const newEntries = entries.map((entry) => ({
+          id: crypto.randomUUID(),
+          createdAt: now,
+          pnl: null,
+          memo: '',
+          linkedCashFlowId: null,
+          userId,
+          source: 'eugene-hts',
+          importedAt: now,
+          ...entry,
+        }))
+
+        set((state) => {
+          state.entries.push(...newEntries)
+        })
+
+        newEntries.forEach((e) => {
+          addTransaction(e).catch((err) =>
+            console.warn('[DB] addEntriesBulk failed:', err)
+          )
+        })
+
+        return newEntries.length
+      },
+
       // 전체 통계 요약 (선택적 accountId 필터)
       getSummaryStats: (accountId) => {
         let entries = get().entries
