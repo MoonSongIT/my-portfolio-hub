@@ -116,11 +116,17 @@ export const useJournalStore = create(
         deleteTransaction(id).catch(err => console.warn('[DB] deleteTransaction failed:', err))
       },
 
+      // 메모리만 초기화 (로그아웃/사용자 전환 시 사용)
       clearEntries: () => {
+        set((state) => { state.entries = [] })
+      },
+
+      // 메모리 + IndexedDB 모두 삭제 (설정 > 데이터 초기화 전용)
+      deleteAllEntries: () => {
         const userId = useAuthStore.getState().currentUser?.id
         set((state) => { state.entries = [] })
         if (userId) {
-          deleteTransactionsByUser(userId).catch(err => console.warn('[DB] clearEntries failed:', err))
+          deleteTransactionsByUser(userId).catch(err => console.warn('[DB] deleteAllEntries failed:', err))
         }
       },
 

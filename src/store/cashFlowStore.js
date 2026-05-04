@@ -80,11 +80,17 @@ export const useCashFlowStore = create(
         dbDeleteByAccount(accountId).catch(err => console.warn('[DB] deleteCashFlowsByAccount failed:', err))
       },
 
+      // 메모리만 초기화 (로그아웃/사용자 전환 시 사용)
       clearCashFlows: () => {
+        set((state) => { state.cashFlows = [] })
+      },
+
+      // 메모리 + IndexedDB 모두 삭제 (설정 > 데이터 초기화 전용)
+      deleteAllCashFlows: () => {
         const userId = useAuthStore.getState().currentUser?.id
         set((state) => { state.cashFlows = [] })
         if (userId) {
-          dbDeleteByUser(userId).catch(err => console.warn('[DB] clearCashFlows failed:', err))
+          dbDeleteByUser(userId).catch(err => console.warn('[DB] deleteAllCashFlows failed:', err))
         }
       },
 
