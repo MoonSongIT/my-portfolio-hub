@@ -103,8 +103,8 @@ export const usePortfolioStore = create(
         state.selectedAccountId = accountId
       }),
 
+      // 메모리만 초기화 (로그아웃 시 사용) — accountStore 데이터는 건드리지 않음
       clearAccounts: () => {
-        useAccountStore.getState().clearAccounts()
         set((state) => {
           state.accounts = []
           state.selectedAccountId = 'all'

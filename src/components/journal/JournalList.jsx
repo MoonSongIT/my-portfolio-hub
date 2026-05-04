@@ -3,11 +3,12 @@ import { useJournalStore, BUY_PSYCHOLOGY, SELL_PSYCHOLOGY } from '../../store/jo
 import { useUserAccounts, useAccountStore } from '../../store/accountStore'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import JournalEntryForm from './JournalEntryForm'
+import { toast } from 'sonner'
 
 const ALL_PSYCHOLOGY = ['전체', ...BUY_PSYCHOLOGY, ...SELL_PSYCHOLOGY.filter(p => !BUY_PSYCHOLOGY.includes(p))]
 
 export default function JournalList({ filterAccountId = '전체' }) {
-  const { entries, deleteEntry } = useJournalStore()
+  const { entries, deleteEntry, updateEntry, syncCashFlowsToJournals } = useJournalStore()
   const accounts = useUserAccounts()
   const getAccountLabel = useAccountStore((state) => state.getAccountLabel)
   const [filterPsychology, setFilterPsychology] = useState('전체')
@@ -15,6 +16,8 @@ export default function JournalList({ filterAccountId = '전체' }) {
   const [searchTicker, setSearchTicker] = useState('')
   const [editEntry, setEditEntry] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
+  const [moveAccountId, setMoveAccountId] = useState('')
+  const [moveConfirmOpen, setMoveConfirmOpen] = useState(false)
 
   // 필터 적용
   const filtered = entries
@@ -38,6 +41,16 @@ export default function JournalList({ filterAccountId = '전체' }) {
 
   const handleDelete = (id) => {
     if (window.confirm('이 기록을 삭제할까요?')) deleteEntry(id)
+  }
+
+  const handleMoveAccount = () => {
+    if (!moveAccountId) return
+    filtered.forEach(e => updateEntry(e.id, { accountId: moveAccountId }))
+    const synced = syncCashFlowsToJournals()
+    const targetName = getAccountLabel(moveAccountId)
+    toast.success(`${filtered.length}건 → ${targetName} 이동 완료 (자금흐름 ${synced}건 동기화)`)
+    setMoveConfirmOpen(false)
+    setMoveAccountId('')
   }
 
   return (
@@ -77,6 +90,46 @@ export default function JournalList({ filterAccountId = '전체' }) {
           {ALL_PSYCHOLOGY.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
       </div>
+
+      {/* 계좌 일괄 이동 */}
+      {filtered.length > 0 && (
+        <div className="flex items-center gap-2 mt-2">
+          {!moveConfirmOpen ? (
+            <button
+              onClick={() => setMoveConfirmOpen(true)}
+              className="text-xs text-gray-500 hover:text-blue-600 hover:underline"
+            >
+              필터된 {filtered.length}건 계좌 이동
+            </button>
+          ) : (
+            <>
+              <select
+                value={moveAccountId}
+                onChange={e => setMoveAccountId(e.target.value)}
+                className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+              >
+                <option value="">계좌 선택</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleMoveAccount}
+                disabled={!moveAccountId}
+                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+              >
+                이동
+              </button>
+              <button
+                onClick={() => { setMoveConfirmOpen(false); setMoveAccountId('') }}
+                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+              >
+                취소
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* 결과 없음 */}
       {filtered.length === 0 && (

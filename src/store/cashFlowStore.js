@@ -72,6 +72,22 @@ export const useCashFlowStore = create(
         dbDelete(id).catch(err => console.warn('[DB] deleteCashFlow failed:', err))
       },
 
+      // 특정 계좌의 모든 입출금 내역을 다른 계좌로 이동
+      moveCashFlowsByAccount: (fromAccountId, toAccountId) => {
+        const ids = []
+        set((state) => {
+          state.cashFlows.forEach(f => {
+            if (f.accountId === fromAccountId) {
+              f.accountId = toAccountId
+              ids.push(f.id)
+            }
+          })
+        })
+        ids.forEach(id => dbUpdate(id, { accountId: toAccountId })
+          .catch(err => console.warn('[DB] moveCashFlows failed:', err)))
+        return ids.length
+      },
+
       // 계좌 삭제 시 연결 입출금 내역 cascade 삭제
       deleteCashFlowsByAccount: (accountId) => {
         set((state) => {

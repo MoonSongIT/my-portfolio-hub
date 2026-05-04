@@ -27,10 +27,14 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { Button } from '../components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 
 export default function Dashboard() {
   const queryClient = useQueryClient()
   const [snapshotLoading, setSnapshotLoading] = useState(false)
+  const [overwriteConfirm, setOverwriteConfirm] = useState(false)
+  const [existingSnapshotTime, setExistingSnapshotTime] = useState('')
   const [chartPeriod, setChartPeriod] = useState(30)
   const autoSnapshotRan = useRef(false)
   const {
@@ -170,7 +174,8 @@ export default function Dashboard() {
     queryClient.invalidateQueries({ queryKey: ['exchangeRate'] })
   }
 
-  const handleSnapshot = async () => {
+  const executeSnapshotToday = async () => {
+    setOverwriteConfirm(false)
     setSnapshotLoading(true)
     try {
       await snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
@@ -179,6 +184,23 @@ export default function Dashboard() {
       toast.error('손익 저장 실패. 다시 시도해주세요.')
     } finally {
       setSnapshotLoading(false)
+    }
+  }
+
+  const handleSnapshot = () => {
+    const todayStr = new Date().toISOString().split('T')[0]
+    const existing = Object.values(snapshots).find(
+      s => s.date === todayStr &&
+        (selectedAccountId === 'all' || s.accountId === selectedAccountId)
+    )
+    if (existing) {
+      const time = new Date(existing.createdAt).toLocaleTimeString('ko-KR', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul'
+      })
+      setExistingSnapshotTime(time)
+      setOverwriteConfirm(true)
+    } else {
+      executeSnapshotToday()
     }
   }
 
@@ -222,6 +244,22 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* 스냅샷 덮어쓰기 확인 다이얼로그 */}
+      <Dialog open={overwriteConfirm} onOpenChange={setOverwriteConfirm}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>스냅샷 덮어쓰기</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 dark:text-gray-300 py-2">
+            {existingSnapshotTime}에 저장된 스냅샷이 있는데 현시점으로 덮어쓰겠습니까?
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setOverwriteConfirm(false)}>취소</Button>
+            <Button onClick={executeSnapshotToday}>덮어쓰기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 페이지 헤더 */}
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between">
