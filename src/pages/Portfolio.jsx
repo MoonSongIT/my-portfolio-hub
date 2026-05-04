@@ -190,7 +190,7 @@ export default function Portfolio() {
         <Card className="border border-gray-200 dark:border-gray-700">
           <CardContent className="p-3 space-y-0.5 text-right">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400">총 평가금액</p>
-            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatCurrencyShort(totalValue)}</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatCurrency(totalValue)}</p>
           </CardContent>
         </Card>
         <Card className="border border-gray-200 dark:border-gray-700">
