@@ -24,9 +24,12 @@ function isWeekday() {
   return day >= 1 && day <= 5
 }
 
+// 15:30 이후 ~ 17:00 이전이면 트리거 가능 (앱을 늦게 켜도 당일 안에 팝업 표시)
 function isSnapshotTime() {
   const now = new Date()
-  return now.getHours() === TRIGGER_HOUR && now.getMinutes() === TRIGGER_MINUTE
+  const total = now.getHours() * 60 + now.getMinutes()
+  const trigger = TRIGGER_HOUR * 60 + TRIGGER_MINUTE
+  return total >= trigger && total < trigger + 90
 }
 
 export function useAutoSnapshot() {
@@ -80,7 +83,10 @@ export function useAutoSnapshot() {
       openDialog(() => snapshotToday())
     }
 
-    // 다음 분 0초까지 기다린 후 매 분마다 체크
+    // 마운트 즉시 1회 체크 (앱을 15:30 이후에 켜도 당일 팝업 표시)
+    check()
+
+    // 다음 분 0초부터 매 분마다 체크 (정각 체크로 15:30 포착)
     const msToNextMinute = (60 - new Date().getSeconds()) * 1000
     let intervalId
 
