@@ -34,7 +34,7 @@ export default function AvailableCashCard({ accountId = 'all', compact = false }
 
   const totalDeposit    = useMemo(() => getTotalDeposit(accountId),                    [accountId, cashFlows])
   const totalWithdrawal = useMemo(() => getTotalWithdrawal(accountId),                 [accountId, cashFlows])
-  const availableCash   = useMemo(() => getAvailableCash(accountId, holdingsTotalCost),[accountId, cashFlows, holdingsTotalCost])
+  const availableCash   = useMemo(() => getAvailableCash(accountId), [accountId, cashFlows])
   const isNegative      = availableCash < 0
 
   const openModal = (type) => {

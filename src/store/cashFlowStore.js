@@ -133,13 +133,11 @@ export const useCashFlowStore = create(
         return flows.reduce((sum, f) => sum + (f.amount || 0), 0)
       },
 
-      // 투자 가능 금액 계산
-      // = 총 입금 - 총 출금 - 현재 보유 종목 매수 원가 합산
-      // holdingsTotalCost: journalStore.computeHoldings(accountId) 결과의 totalCost 합산 (외부에서 전달)
-      getAvailableCash: (accountId, holdingsTotalCost = 0) => {
-        const totalDeposit    = get().getTotalDeposit(accountId)
-        const totalWithdrawal = get().getTotalWithdrawal(accountId)
-        return totalDeposit - totalWithdrawal - holdingsTotalCost
+      // 투자 가능 금액 = 잔고누계 마지막 값
+      // 매수/매도 거래(자동 포함)를 모두 반영한 실제 잔고
+      getAvailableCash: (accountId) => {
+        const running = get().getRunningBalance(accountId)
+        return running.length > 0 ? running[running.length - 1].balance : 0
       },
 
       // 잔고 누계 배열 (날짜 오름차순, 수동 입출금만)

@@ -5,6 +5,7 @@ import {
   upsertDailyPnl,
   bulkUpsertDailyPnl,
   getDailyPnlByUser,
+  clearDailyPnl,
 } from '../utils/db'
 import { useAuthStore } from './authStore'
 
@@ -38,6 +39,7 @@ export const useDailyPnlStore = create(
 
       clearAll: () => {
         set((state) => { state.snapshots = {} })
+        clearDailyPnl().catch(err => console.warn('[DB] clearDailyPnl failed:', err))
       },
 
       // 앱 시작 시 IndexedDB에서 사용자별 로드 (최근 180일치만)

@@ -37,7 +37,7 @@ const TABLE_LABELS = {
   alertHistory:  '알림 히스토리',
 }
 
-export default function StorageInfo() {
+export default function StorageInfo({ refreshKey = 0 }) {
   const lastCleanupDate = useSettingsStore(s => s.lastCleanupDate)
   const [storageEstimate, setStorageEstimate] = useState(null)
   const [tableCounts, setTableCounts]         = useState(null)
@@ -60,7 +60,7 @@ export default function StorageInfo() {
     }
   }, [])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { refresh() }, [refresh, refreshKey])
 
   const handleCleanNow = async () => {
     setIsCleaning(true)

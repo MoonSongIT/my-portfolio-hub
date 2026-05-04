@@ -19,6 +19,7 @@ import HoldingPnlTimeline from '../components/charts/HoldingPnlTimeline'
 import AccountSelector from '../components/common/AccountSelector'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import ChatPanel from '../components/chat/ChatPanel'
 
 export default function Portfolio() {
@@ -40,6 +41,8 @@ export default function Portfolio() {
   // 스냅샷 작업 상태
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [backfillLoading, setBackfillLoading] = useState(false)
+  const [overwriteConfirm, setOverwriteConfirm] = useState(false)
+  const [existingSnapshotTime, setExistingSnapshotTime] = useState('')
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId, entries])
   const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId, cashFlows, entries])
@@ -83,8 +86,9 @@ export default function Portfolio() {
     ? new Date(lastUpdated).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : null
 
-  // 오늘 스냅샷 저장
-  const handleSnapshotToday = async () => {
+  // 오늘 스냅샷 저장 실행
+  const executeSnapshotToday = async () => {
+    setOverwriteConfirm(false)
     setSnapshotLoading(true)
     try {
       await snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
@@ -93,6 +97,27 @@ export default function Portfolio() {
       toast.error('오늘 손익 저장 실패. 다시 시도해주세요.')
     } finally {
       setSnapshotLoading(false)
+    }
+  }
+
+  // 오늘 스냅샷 저장 버튼 클릭 — 기존 스냅샷 있으면 덮어쓰기 확인
+  const handleSnapshotToday = () => {
+    const todayStr = new Date().toISOString().split('T')[0]
+
+    // 현재 선택 계좌의 보유 종목 중 오늘 스냅샷이 있는지 확인
+    const existing = Object.values(snapshots).find(
+      s => s.date === todayStr &&
+        (selectedAccountId === 'all' || s.accountId === selectedAccountId)
+    )
+
+    if (existing) {
+      const time = new Date(existing.createdAt).toLocaleTimeString('ko-KR', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul'
+      })
+      setExistingSnapshotTime(time)
+      setOverwriteConfirm(true)
+    } else {
+      executeSnapshotToday()
     }
   }
 
@@ -141,6 +166,22 @@ export default function Portfolio() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* 스냅샷 덮어쓰기 확인 다이얼로그 */}
+      <Dialog open={overwriteConfirm} onOpenChange={setOverwriteConfirm}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>스냅샷 덮어쓰기</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 dark:text-gray-300 py-2">
+            {existingSnapshotTime}에 저장된 스냅샷이 있는데 현시점으로 덮어쓰겠습니까?
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setOverwriteConfirm(false)}>취소</Button>
+            <Button onClick={executeSnapshotToday}>덮어쓰기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 페이지 헤더 */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -190,7 +231,7 @@ export default function Portfolio() {
         <Card className="border border-gray-200 dark:border-gray-700">
           <CardContent className="p-3 space-y-0.5 text-right">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400">총 평가금액</p>
-            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatCurrencyShort(totalValue)}</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatCurrency(totalValue)}</p>
           </CardContent>
         </Card>
         <Card className="border border-gray-200 dark:border-gray-700">

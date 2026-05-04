@@ -17,6 +17,8 @@ import Sidebar from './components/common/Sidebar'
 import OfflineBanner from './components/common/OfflineBanner'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import LoadingSpinner from './components/common/LoadingSpinner'
+import AutoSnapshotDialog from './components/common/AutoSnapshotDialog'
+import { useAutoSnapshot } from './hooks/useAutoSnapshot'
 
 // 페이지 컴포넌트 lazy 로딩 (코드 스플리팅)
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -40,6 +42,7 @@ function App() {
   const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
   const currentUser = useAuthStore(s => s.currentUser)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { dialogOpen, countdown, handleConfirm, handleDismiss } = useAutoSnapshot()
 
   // PWA 서비스 워커 등록
   const {
@@ -126,6 +129,12 @@ function App() {
   return (
     <BrowserRouter>
       <Toaster position="bottom-right" richColors closeButton />
+      <AutoSnapshotDialog
+        open={dialogOpen}
+        countdown={countdown}
+        onConfirm={handleConfirm}
+        onDismiss={handleDismiss}
+      />
       {/* PWA 새 버전 알림 배너 */}
       {needRefresh && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-blue-600 text-white text-sm px-4 py-3 rounded-xl shadow-lg">

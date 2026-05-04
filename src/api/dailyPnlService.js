@@ -67,9 +67,6 @@ export async function snapshotToday(accountId) {
     if (holdings.length === 0) continue
 
     for (const holding of holdings) {
-      // 이미 오늘 스냅샷 있으면 스킵
-      if (dailyPnlStore.hasSnapshotToday(holding.ticker, account.id)) continue
-
       try {
         const quote = await fetchQuote(holding.ticker, holding.market || 'KRX')
 

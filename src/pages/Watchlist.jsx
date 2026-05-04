@@ -216,6 +216,11 @@ export default function Watchlist() {
   const { data: searchResults } = useStockSearch(debouncedSearch)
 
   const handleAddFromSearch = (item) => {
+    const alreadyExists = watchlist.some(w => w.ticker === item.ticker)
+    if (alreadyExists) {
+      toast.warning(`${item.name}은(는) 이미 관심종목에 있습니다.`)
+      return
+    }
     addToWatchlist({
       ticker: item.ticker,
       name: item.name,
