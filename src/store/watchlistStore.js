@@ -11,12 +11,22 @@ export const useWatchlistStore = create(
     // 가격 알림 목록 [{ id, ticker, name, condition: 'above'|'below', targetPrice }]
     alerts: [],
 
+    // 현재 로드된 사용자 ID (다중 사용자 전환 감지용)
+    watchlistUserId: null,
+
     // 사용자별 관심종목 로드 (로그인 시 호출)
-    loadUserWatchlist: (userId) => set({
-      watchlist: sampleWatchlistByUser[userId]
-        ? [...sampleWatchlistByUser[userId]]
-        : [],
-    }),
+    // 같은 사용자 재로그인이면 기존 데이터 유지, 다른 사용자 전환 시에만 초기화
+    loadUserWatchlist: (userId) => {
+      const { watchlistUserId, watchlist } = get()
+      if (watchlistUserId === userId && watchlist.length > 0) return
+      set({
+        watchlistUserId: userId,
+        watchlist: sampleWatchlistByUser[userId]
+          ? [...sampleWatchlistByUser[userId]]
+          : [],
+        alerts: [],
+      })
+    },
 
     // 관심종목 추가 (중복 방지)
     addToWatchlist: (item) => set((state) => ({
@@ -113,6 +123,7 @@ export const useWatchlistStore = create(
     migrate: (persisted) => ({
       watchlist: persisted?.watchlist || [],
       alerts: persisted?.alerts || [],
+      watchlistUserId: persisted?.watchlistUserId || null,
     }),
   })
 )

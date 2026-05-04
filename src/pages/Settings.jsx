@@ -14,11 +14,11 @@ import { useWatchlistStore } from '../store/watchlistStore'
 
 export default function Settings() {
   const { theme, toggleTheme, benchmarkIndex, setBenchmark } = useSettingsStore()
-  const clearEntries = useJournalStore((s) => s.clearEntries)
+  const deleteAllEntries = useJournalStore((s) => s.deleteAllEntries)
   const entryCount = useJournalStore((s) => s.entries.length)
   const recomputeFromJournal = usePortfolioStore((s) => s.recomputeFromJournal)
-  const clearCashFlows = useCashFlowStore((s) => s.clearCashFlows)
-  const clearAllPnl = useDailyPnlStore((s) => s.clearAll)
+  const deleteAllCashFlows = useCashFlowStore((s) => s.deleteAllCashFlows)
+  const deleteAllPnl = useDailyPnlStore((s) => s.deleteAllSnapshots)
   const clearWatchlist = useWatchlistStore((s) => s.clearWatchlist)
 
   const fileInputRef = useRef(null)
@@ -35,9 +35,9 @@ export default function Settings() {
   async function handleClearAll() {
     setClearing(true)
     try {
-      clearEntries()
-      clearCashFlows()
-      clearAllPnl()
+      deleteAllEntries()
+      deleteAllCashFlows()
+      deleteAllPnl()
       clearWatchlist()
       recomputeFromJournal()
       toast.success('모든 데이터가 초기화되었습니다.')

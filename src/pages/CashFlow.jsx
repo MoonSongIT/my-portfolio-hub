@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, Pencil, Building2 } from 'lucide-react'
+import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, Pencil, Building2, ArrowRightLeft } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAccountStore, useUserAccounts, ACCOUNT_TYPES } from '../store/accountStore'
+import { useCashFlowStore } from '../store/cashFlowStore'
+import { useJournalStore } from '../store/journalStore'
 import AccountSelector from '../components/account/AccountSelector'
 import AccountSetupModal from '../components/account/AccountSetupModal'
 import AvailableCashCard from '../components/portfolio/AvailableCashCard'
@@ -24,15 +27,32 @@ const TYPE_COLOR = {
 
 export default function CashFlow() {
   const accounts = useUserAccounts()
+  const moveCashFlowsByAccount = useCashFlowStore(s => s.moveCashFlowsByAccount)
+  const moveEntriesByAccount   = useJournalStore(s => s.moveEntriesByAccount)
   const [selectedAccountId, setSelectedAccountId] = useState('all')
   const [dateFilter, setDateFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [modalType, setModalType] = useState('deposit')
   const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [fromAccountId, setFromAccountId] = useState('')
+  const [toAccountId, setToAccountId] = useState('')
 
   const openModal = (type) => {
     setModalType(type)
     setModalOpen(true)
+  }
+
+  const handleMoveAccount = () => {
+    if (!fromAccountId || !toAccountId || fromAccountId === toAccountId) return
+    const movedFlows   = moveCashFlowsByAccount(fromAccountId, toAccountId)
+    const movedEntries = moveEntriesByAccount(fromAccountId, toAccountId)
+    const fromName = accounts.find(a => a.id === fromAccountId)?.name ?? ''
+    const toName   = accounts.find(a => a.id === toAccountId)?.name ?? ''
+    toast.success(`${fromName} → ${toName}: 입출금 ${movedFlows}건, 거래 ${movedEntries}건 이동 완료`)
+    setMoveOpen(false)
+    setFromAccountId('')
+    setToAccountId('')
   }
 
   return (
@@ -49,8 +69,16 @@ export default function CashFlow() {
           </div>
         </div>
 
-        {/* 입금 / 출금 버튼 */}
+        {/* 입금 / 출금 / 계좌이동 버튼 */}
         <div className="flex gap-2">
+          <button
+            onClick={() => setMoveOpen(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-xl text-sm font-medium transition"
+            title="계좌 내용 이동"
+          >
+            <ArrowRightLeft size={16} />
+            <span className="hidden sm:inline">계좌 이동</span>
+          </button>
           <button
             onClick={() => openModal('deposit')}
             className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition"
@@ -67,6 +95,43 @@ export default function CashFlow() {
           </button>
         </div>
       </div>
+
+      {/* 계좌 이동 패널 */}
+      {moveOpen && (
+        <div className="flex flex-wrap items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">계좌 이동</span>
+          <select
+            value={fromAccountId}
+            onChange={e => setFromAccountId(e.target.value)}
+            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">이동할 계좌</option>
+            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+          <span className="text-gray-400">→</span>
+          <select
+            value={toAccountId}
+            onChange={e => setToAccountId(e.target.value)}
+            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">대상 계좌</option>
+            {accounts.filter(a => a.id !== fromAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+          <button
+            onClick={handleMoveAccount}
+            disabled={!fromAccountId || !toAccountId || fromAccountId === toAccountId}
+            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg font-medium transition"
+          >
+            이동
+          </button>
+          <button
+            onClick={() => { setMoveOpen(false); setFromAccountId(''); setToAccountId('') }}
+            className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition"
+          >
+            취소
+          </button>
+        </div>
+      )}
 
       {/* 계좌 선택 + 선택된 계좌 정보 카드 */}
       <div className="flex flex-col sm:flex-row sm:items-start gap-3">

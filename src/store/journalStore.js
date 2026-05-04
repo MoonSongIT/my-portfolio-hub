@@ -97,9 +97,40 @@ export const useJournalStore = create(
       },
 
       updateEntry: (id, updates) => {
+        const entry = get().entries.find(e => e.id === id)
+
+        // 연결된 자동 현금 흐름도 함께 동기화
+        if (entry?.linkedCashFlowId) {
+          const cashFlowUpdates = {}
+
+          if (updates.accountId !== undefined && updates.accountId !== entry.accountId) {
+            cashFlowUpdates.accountId = updates.accountId
+          }
+
+          const newAction  = updates.action   ?? entry.action
+          const newPrice   = updates.price    ?? entry.price
+          const newQty     = updates.quantity ?? entry.quantity
+          const newFee     = updates.fee      ?? entry.fee
+          const newMarket  = updates.market   ?? entry.market
+          const newFeeCalc = newAction === 'buy' ? (newFee || 0) : 0
+          const oldFeeCalc = entry.action === 'buy' ? (entry.fee || 0) : 0
+          const newAmount  = newPrice * newQty + newFeeCalc
+          const oldAmount  = entry.price * entry.quantity + oldFeeCalc
+
+          if (newAmount !== oldAmount || newAction !== entry.action || newMarket !== entry.market) {
+            cashFlowUpdates.amount   = newAmount
+            cashFlowUpdates.type     = newAction === 'buy' ? 'withdrawal' : 'deposit'
+            cashFlowUpdates.currency = newMarket === 'NYSE' || newMarket === 'NASDAQ' ? 'USD' : 'KRW'
+          }
+
+          if (Object.keys(cashFlowUpdates).length > 0) {
+            useCashFlowStore.getState().updateCashFlow(entry.linkedCashFlowId, cashFlowUpdates)
+          }
+        }
+
         set((state) => {
-          const entry = state.entries.find(e => e.id === id)
-          if (entry) Object.assign(entry, updates)
+          const e = state.entries.find(e => e.id === id)
+          if (e) Object.assign(e, updates)
         })
         updateTransaction(id, updates).catch(err => console.warn('[DB] updateTransaction failed:', err))
       },
@@ -116,11 +147,49 @@ export const useJournalStore = create(
         deleteTransaction(id).catch(err => console.warn('[DB] deleteTransaction failed:', err))
       },
 
+      // 매매일지 accountId 기준으로 연결된 cashFlow accountId를 강제 동기화
+      // linkedCashFlowId가 있는 항목만 대상, 계좌 불일치 건만 업데이트
+      syncCashFlowsToJournals: () => {
+        const entries = get().entries
+        const cashFlowStore = useCashFlowStore.getState()
+        let synced = 0
+        entries.forEach(entry => {
+          if (!entry.linkedCashFlowId) return
+          const flow = cashFlowStore.cashFlows.find(f => f.id === entry.linkedCashFlowId)
+          if (flow && flow.accountId !== entry.accountId) {
+            cashFlowStore.updateCashFlow(entry.linkedCashFlowId, { accountId: entry.accountId })
+            synced++
+          }
+        })
+        return synced
+      },
+
+      // 특정 계좌의 모든 거래 내역을 다른 계좌로 이동
+      moveEntriesByAccount: (fromAccountId, toAccountId) => {
+        const ids = get().entries
+          .filter(e => e.accountId === fromAccountId)
+          .map(e => e.id)
+        set((state) => {
+          state.entries.forEach(e => {
+            if (e.accountId === fromAccountId) e.accountId = toAccountId
+          })
+        })
+        ids.forEach(id => updateTransaction(id, { accountId: toAccountId })
+          .catch(err => console.warn('[DB] moveEntries failed:', err)))
+        return ids.length
+      },
+
+      // 메모리만 초기화 (로그아웃/사용자 전환 시 사용)
       clearEntries: () => {
+        set((state) => { state.entries = [] })
+      },
+
+      // 메모리 + IndexedDB 모두 삭제 (설정 > 데이터 초기화 전용)
+      deleteAllEntries: () => {
         const userId = useAuthStore.getState().currentUser?.id
         set((state) => { state.entries = [] })
         if (userId) {
-          deleteTransactionsByUser(userId).catch(err => console.warn('[DB] clearEntries failed:', err))
+          deleteTransactionsByUser(userId).catch(err => console.warn('[DB] deleteAllEntries failed:', err))
         }
       },
 
