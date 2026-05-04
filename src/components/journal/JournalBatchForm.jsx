@@ -2,36 +2,14 @@ import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import { useJournalStore } from '../../store/journalStore'
 import { useUserAccounts } from '../../store/accountStore'
+import { useWatchlistStore } from '../../store/watchlistStore'
+import { usePortfolioStore } from '../../store/portfolioStore'
 import { ensureHistory } from '../../api/dailyPnlService'
-import { KRX_STOCKS } from '../../data/krxStocks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import PsychologySelector from './PsychologySelector'
 import AccountSelector from '../account/AccountSelector'
-
-const US_STOCKS = [
-  { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ' },
-  { ticker: 'MSFT', name: 'Microsoft', market: 'NASDAQ' },
-  { ticker: 'NVDA', name: 'NVIDIA', market: 'NASDAQ' },
-  { ticker: 'GOOGL', name: 'Alphabet', market: 'NASDAQ' },
-  { ticker: 'AMZN', name: 'Amazon', market: 'NASDAQ' },
-  { ticker: 'META', name: 'Meta', market: 'NASDAQ' },
-  { ticker: 'TSLA', name: 'Tesla', market: 'NASDAQ' },
-  { ticker: 'SPY', name: 'SPDR S&P 500 ETF', market: 'NYSE' },
-  { ticker: 'QQQ', name: 'Invesco QQQ Trust', market: 'NASDAQ' },
-]
-const ALL_STOCKS = [...KRX_STOCKS, ...US_STOCKS]
-
-function searchStocks(query) {
-  if (!query || query.length < 1) return []
-  const q = query.toLowerCase()
-  return ALL_STOCKS.filter(s =>
-    s.name.toLowerCase().includes(q) ||
-    s.ticker.toLowerCase().includes(q) ||
-    (s.nameEn && s.nameEn.toLowerCase().includes(q))
-  ).slice(0, 10)
-}
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -54,6 +32,8 @@ const emptyRow = () => ({
 export default function JournalBatchForm({ open, onClose }) {
   const { addEntry } = useJournalStore()
   const accounts = useUserAccounts()
+  const watchlist = useWatchlistStore(s => s.watchlist)
+  const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
   const [accountId, setAccountId] = useState('')
   const [date, setDate] = useState(today())
   const [rows, setRows] = useState([emptyRow()])
@@ -67,9 +47,24 @@ export default function JournalBatchForm({ open, onClose }) {
     }
   }, [open, accounts])
 
-  // 현재 검색 중인 행의 query로 로컬 검색
+  // 관심종목 + 보유종목 합산 후 ticker 중복 제거
+  const stockPool = useMemo(() => {
+    const holdings = getSelectedHoldings().map(h => ({ ticker: h.ticker, name: h.name, market: h.market }))
+    const watched  = watchlist.map(w => ({ ticker: w.ticker, name: w.name, market: w.market }))
+    const merged = [...holdings, ...watched]
+    const seen = new Set()
+    return merged.filter(s => { if (seen.has(s.ticker)) return false; seen.add(s.ticker); return true })
+  }, [watchlist, getSelectedHoldings])
+
+  // 현재 검색 중인 행의 query로 검색
   const activeRow = rows.find(r => r._id === activeSearchRow)
-  const searchResults = useMemo(() => searchStocks(activeRow?._searchQuery ?? ''), [activeRow?._searchQuery])
+  const searchResults = useMemo(() => {
+    const q = (activeRow?._searchQuery ?? '').toLowerCase()
+    if (!q) return []
+    return stockPool.filter(s =>
+      s.name.toLowerCase().includes(q) || s.ticker.toLowerCase().includes(q)
+    ).slice(0, 10)
+  }, [activeRow?._searchQuery, stockPool])
 
   const updateRow = (id, key, value) => {
     setRows(prev => prev.map(r => r._id === id ? { ...r, [key]: value } : r))
