@@ -88,6 +88,19 @@ db.version(8).stores({
   chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
 })
 
+// v9: AI API 키 저장 테이블 추가
+// provider를 PK로 사용 (단일 행 보장, 향후 멀티 프로바이더 확장 대비)
+db.version(9).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
@@ -307,4 +320,24 @@ export async function getLatestReportByType(type, userId) {
     .reverse()
     .sortBy('createdAt')
   return results[0] || null
+}
+
+// ─── aiCredentials CRUD ───
+
+export async function getAiCredential(provider = 'anthropic') {
+  return db.aiCredentials.get(provider)
+}
+
+export async function saveAiCredential(credential) {
+  const now = new Date().toISOString()
+  const existing = await db.aiCredentials.get(credential.provider)
+  return db.aiCredentials.put({
+    ...credential,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  })
+}
+
+export async function deleteAiCredential(provider = 'anthropic') {
+  return db.aiCredentials.delete(provider)
 }

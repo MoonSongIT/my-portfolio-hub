@@ -6,6 +6,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import StorageInfo from '../components/common/StorageInfo'
 import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
+import AiKeyPanel from '../components/settings/AiKeyPanel'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -136,6 +137,12 @@ export default function Settings() {
             <option value="SP500">S&P 500</option>
           </select>
         </div>
+      </section>
+
+      {/* ─── AI 설정 ─── */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 설정</h2>
+        <AiKeyPanel />
       </section>
 
       {/* ─── 종목 DB 관리 ─── */}

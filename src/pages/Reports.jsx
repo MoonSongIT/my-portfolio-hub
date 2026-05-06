@@ -9,6 +9,8 @@ import { useAuthStore } from '../store/authStore'
 import { EXCHANGE_RATE } from '../data/samplePortfolio'
 import { fetchBenchmarkHistory } from '../api/stockApi'
 import { sendToAgent } from '../api/claudeApi'
+import { useApiKeyGuard } from '../hooks/useApiKeyGuard'
+import ApiKeyRequiredDialog from '../components/common/ApiKeyRequiredDialog'
 import {
   calculatePortfolioReturn, calculateTotalPnL,
   filterByDateRange, calculateWinRate,
@@ -115,6 +117,7 @@ export default function Reports() {
   const { accounts, selectedAccountId, getSelectedHoldings } = usePortfolioStore()
   const { entries } = useJournalStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const { ensureKey, guardProps } = useApiKeyGuard()
   const [dateRange, setDateRange] = useState('1m')
   const [benchmark, setBenchmark] = useState({ KOSPI: [], SP500: [] })
   const [benchLoading, setBenchLoading] = useState(false)
@@ -172,6 +175,9 @@ export default function Reports() {
   }, [comparisonData])
 
   const handleSaveWeeklyReport = async () => {
+    const ok = await ensureKey()
+    if (!ok) return
+
     const userId = currentUser?.id
     if (!userId) {
       toast.error('로그인이 필요합니다.')
@@ -463,6 +469,7 @@ export default function Reports() {
           </div>
         </TabsContent>
       </Tabs>
+      <ApiKeyRequiredDialog {...guardProps} />
     </div>
   )
 }
