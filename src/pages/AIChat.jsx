@@ -11,6 +11,8 @@ import { useJournalStore } from '../store/journalStore'
 import { useAuthStore } from '../store/authStore'
 import { useChatStore } from '../store/chatStore'
 import { sendToAgent, summarizeAndCompressHistory } from '../api/claudeApi'
+import { useApiKeyGuard } from '../hooks/useApiKeyGuard'
+import ApiKeyRequiredDialog from '../components/common/ApiKeyRequiredDialog'
 import { buildJournalCoachPrompt, buildJournalContext } from '../agents/journalCoachAgent'
 import MessageBubble from '../components/chat/MessageBubble'
 import QuickPromptButtons from '../components/chat/QuickPromptButtons'
@@ -33,6 +35,7 @@ export default function AIChat() {
   const [localLoading, setLocalLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const { isOnline } = useOnlineStatus()
+  const { ensureKey, guardProps } = useApiKeyGuard()
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -104,6 +107,8 @@ export default function AIChat() {
   async function handleSend(text) {
     const msg = text?.trim()
     if (!msg || isLoading || !isOnline) return
+    const ok = await ensureKey()
+    if (!ok) return
 
     addUserMessage(msg)
     setInput('')
@@ -355,6 +360,7 @@ export default function AIChat() {
           </p>
         </div>
       </div>
+      <ApiKeyRequiredDialog {...guardProps} />
     </div>
   )
 }

@@ -320,6 +320,7 @@ KIS_ACCOUNT_NO=여기에_계좌번호_입력
 | Phase 7 | 종목 마스터 DB (IDB Dexie, DART/NASDAQ Trader, 앱 전역 연결) | ✅ 완료 (2026-04-23) |
 | Phase 8 | 차트 동적 로딩 + 대시보드 수익률 추이 구현 | ✅ 완료 (2026-04-27) |
 | Phase 9 | HTS 거래내역 일괄 import (유진투자증권 Excel → 일지) | ✅ 완료 (2026-04-28) |
+| Phase 10 | AI API 키 관리 (사용자 본인 키 — IDB 저장, 가드, 검증) | ✅ 완료 (2026-05-06) |
 
 ---
 
