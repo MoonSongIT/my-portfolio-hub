@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Bot, RefreshCw, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { sendToAgent } from '../../api/claudeApi'
+import { useApiKeyGuard } from '../../hooks/useApiKeyGuard'
+import ApiKeyRequiredDialog from '../common/ApiKeyRequiredDialog'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -36,10 +38,14 @@ export default function InsightsCard({ entries = [], dateRange = '1m', holdings 
   const [loading, setLoading] = useState(false)
   const [insight, setInsight] = useState(null)
   const [error, setError] = useState(null)
+  const { ensureKey, guardProps } = useApiKeyGuard()
 
   const periodLabel = dateRange === '1d' ? '오늘' : dateRange === '1w' ? '이번 주' : dateRange === '1m' ? '이번 달' : '올해'
 
   const handleGenerate = async () => {
+    const ok = await ensureKey()
+    if (!ok) return
+
     setLoading(true)
     setError(null)
     setInsight(null)
@@ -116,6 +122,7 @@ export default function InsightsCard({ entries = [], dateRange = '1m', holdings 
           )}
         </div>
       )}
+      <ApiKeyRequiredDialog {...guardProps} />
     </div>
   )
 }

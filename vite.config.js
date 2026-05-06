@@ -129,7 +129,7 @@ export default defineConfig(({ mode }) => {
             res.writeHead(200, {
               'Access-Control-Allow-Origin': '*',
               'Access-Control-Allow-Methods': 'POST, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type',
+              'Access-Control-Allow-Headers': 'Content-Type, X-User-Api-Key',
             })
             return res.end()
           }
@@ -140,17 +140,62 @@ export default defineConfig(({ mode }) => {
           req.on('data', (chunk) => { body += chunk.toString() })
           req.on('end', async () => {
             try {
-              const { systemPrompt, messages, maxTokens = 4096 } = JSON.parse(body)
+              const parsed = JSON.parse(body || '{}')
+
+              // /api/claude/validate — 키 유효성 검증
+              // Vite 미들웨어에서 req.url은 마운트 경로(/api/claude) 이후 부분
+              if (req.url === '/validate' || req.url?.startsWith('/validate')) {
+                const keyToValidate = parsed.apiKey || req.headers['x-user-api-key']
+                if (!keyToValidate) {
+                  res.writeHead(400, { 'Content-Type': 'application/json' })
+                  return res.end(JSON.stringify({ valid: false, reason: 'API 키가 전달되지 않았습니다.' }))
+                }
+                try {
+                  const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-api-key': keyToValidate,
+                      'anthropic-version': '2023-06-01',
+                    },
+                    body: JSON.stringify({
+                      model: 'claude-haiku-4-5-20251001',
+                      max_tokens: 1,
+                      messages: [{ role: 'user', content: 'ping' }],
+                    }),
+                  })
+                  if (upstream.ok) {
+                    res.writeHead(200, { 'Content-Type': 'application/json' })
+                    return res.end(JSON.stringify({ valid: true }))
+                  }
+                  if (upstream.status === 401) {
+                    res.writeHead(200, { 'Content-Type': 'application/json' })
+                    return res.end(JSON.stringify({ valid: false, reason: '유효하지 않은 API 키입니다.' }))
+                  }
+                  const errText = await upstream.text()
+                  res.writeHead(200, { 'Content-Type': 'application/json' })
+                  return res.end(JSON.stringify({ valid: false, reason: `API 오류 (${upstream.status}): ${errText.substring(0, 100)}` }))
+                } catch (err) {
+                  res.writeHead(500, { 'Content-Type': 'application/json' })
+                  return res.end(JSON.stringify({ valid: false, reason: `네트워크 오류: ${err.message}` }))
+                }
+              }
+
+              // /api/claude — 일반 AI 호출
+              const { systemPrompt, messages, maxTokens = 4096 } = parsed
 
               if (!systemPrompt || !messages?.length) {
                 res.writeHead(400, { 'Content-Type': 'application/json' })
                 return res.end(JSON.stringify({ error: '필수 파라미터 누락 (systemPrompt, messages)' }))
               }
 
-              if (!apiKey) {
+              // 사용자 제공 키 우선, 없으면 서버 환경변수 fallback
+              const userApiKey = req.headers['x-user-api-key'] || apiKey
+
+              if (!userApiKey) {
                 console.error('[Claude Proxy] ANTHROPIC_API_KEY 미설정!')
                 res.writeHead(500, { 'Content-Type': 'application/json' })
-                return res.end(JSON.stringify({ error: 'API 키 미설정. .env 파일에 ANTHROPIC_API_KEY를 확인하세요.' }))
+                return res.end(JSON.stringify({ error: 'API 키 미설정. 설정 페이지에서 API 키를 등록하거나 .env 파일을 확인하세요.' }))
               }
 
               console.log(`[Claude Proxy] 요청 → model: claude-sonnet-4-6, messages: ${messages.length}`)
@@ -159,7 +204,7 @@ export default defineConfig(({ mode }) => {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'x-api-key': apiKey,
+                  'x-api-key': userApiKey,
                   'anthropic-version': '2023-06-01',
                 },
                 body: JSON.stringify({

@@ -13,6 +13,8 @@ import MessageBubble from './MessageBubble'
 import QuickPromptButtons from './QuickPromptButtons'
 import { useChatStore } from '../../store/chatStore'
 import { sendToAgent } from '../../api/claudeApi'
+import { useApiKeyGuard } from '../../hooks/useApiKeyGuard'
+import ApiKeyRequiredDialog from '../common/ApiKeyRequiredDialog'
 
 const MIN_WIDTH = 360
 const MAX_WIDTH = 800
@@ -36,6 +38,8 @@ export default function ChatPanel({
   const inputRef = useRef(null)
   const initialMessageSent = useRef(false)
   const isDragging = useRef(false)
+
+  const { ensureKey, guardProps } = useApiKeyGuard()
 
   const {
     sessions,
@@ -113,6 +117,8 @@ export default function ChatPanel({
   async function handleSend(text) {
     const msg = text?.trim()
     if (!msg || isLoading) return
+    const ok = await ensureKey()
+    if (!ok) return
 
     addUserMessage(msg)
     setInput('')
@@ -141,6 +147,7 @@ export default function ChatPanel({
   }
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         showCloseButton={false}
@@ -273,5 +280,7 @@ export default function ChatPanel({
         </div>
       </SheetContent>
     </Sheet>
+    <ApiKeyRequiredDialog {...guardProps} />
+    </>
   )
 }

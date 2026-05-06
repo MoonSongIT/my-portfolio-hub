@@ -9,6 +9,7 @@ import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
+import useAiCredentialStore from './store/aiCredentialStore'
 import { getReportsByUser } from './utils/db'
 import { shouldGenerateWeeklyReport } from './agents/reportAgent'
 import { Toaster, toast } from 'sonner'
@@ -79,6 +80,11 @@ function App() {
   // 앱 시작 시 1회 DB 자동 정리 (24시간 경과 시에만 실행)
   useEffect(() => {
     runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 앱 시작 시 AI API 키 IDB → 메모리 로드
+  useEffect(() => {
+    useAiCredentialStore.getState().hydrate()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 앱 시작 시 1회: LocalStorage(stock-db-v1) → IndexedDB(StockMasterDB) 마이그레이션
