@@ -6,16 +6,79 @@
 import { useState, useRef } from 'react'
 import {
   Database, RefreshCw, Zap, Trash2,
-  CheckCircle2, AlertCircle, ChevronDown, ChevronUp,
+  AlertCircle, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStockMasterStore } from '@/store/stockMasterStore'
 import {
-  syncAll, syncCategory, syncExchange, syncIncremental,
+  syncAll, syncCategory, syncIncremental,
   EXCHANGES, EXCHANGE_LABELS,
 } from '@/api/stockMasterApi'
 import { stockMasterDb } from '@/utils/stockMasterDb'
+import { fetchNaverSector } from '@/api/naverApi'
 import CustomStockForm from './CustomStockForm'
+
+// ── KRX sector 보강 헬퍼 ──────────────────────────────────────────────────
+// KRX 일반종목: sector 비어있는 행만 Naver 조회 (개당 ~1초)
+// KRX_ETF: 일괄 'ETF' 라벨 (API 호출 없이)
+async function enrichKrxSectors({ onProgress, signal }) {
+  // 1단계: KRX_ETF 일괄 처리 ([category+exchange] 복합 인덱스 사용)
+  const etfRows = await stockMasterDb.stocks
+    .where('[category+exchange]').equals(['DOMESTIC', 'KRX_ETF'])
+    .filter(r => !r.sector)
+    .toArray()
+  if (etfRows.length > 0) {
+    const now = new Date().toISOString()
+    await stockMasterDb.stocks.bulkPut(
+      etfRows.map(r => ({ ...r, sector: 'ETF', updatedAt: now }))
+    )
+  }
+
+  // 2단계: KRX 일반종목 (KOSPI/KOSDAQ/NXT) 중 sector 미보유 행만 조회
+  const targets = await stockMasterDb.stocks
+    .where('[category+exchange]').anyOf([
+      ['DOMESTIC', 'KOSPI'],
+      ['DOMESTIC', 'KOSDAQ'],
+      ['DOMESTIC', 'NXT'],
+    ])
+    .filter(r => !r.sector)
+    .toArray()
+
+  if (targets.length === 0) return { updated: 0, total: 0 }
+
+  let updated = 0
+  let consecutive409 = 0
+  let aborted409 = false
+  for (let i = 0; i < targets.length; i++) {
+    if (signal?.aborted) break
+    const row = targets[i]
+    onProgress?.({ exchange: 'KRX_SECTOR', phase: 'sector', current: i + 1, total: targets.length })
+    try {
+      const sector = await fetchNaverSector(row.ticker)
+      if (sector) {
+        await stockMasterDb.stocks.update(row.id, {
+          sector,
+          updatedAt: new Date().toISOString(),
+        })
+        updated++
+      }
+      consecutive409 = 0
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        consecutive409++
+        // 연속 10회 409 → Naver 차단 상태로 판단, 조기 중단
+        if (consecutive409 >= 10) {
+          aborted409 = true
+          break
+        }
+      } else {
+        consecutive409 = 0
+      }
+      /* 개별 실패 skip */
+    }
+  }
+  return { updated, total: targets.length, aborted409 }
+}
 
 // ── exchange 카드 ─────────────────────────────────────────────────────────
 
@@ -52,13 +115,19 @@ function ProgressBar({ progress }) {
   if (!progress) return null
   const { exchange, phase, current, total } = progress
   const pct = total ? Math.round((current / total) * 100) : null
-  const label = EXCHANGE_LABELS[exchange] || exchange
+  const label = exchange === 'KRX_SECTOR'
+    ? 'KRX 업종 정보'
+    : (EXCHANGE_LABELS[exchange] || exchange)
+  const phaseLabel =
+    phase === 'fetch'  ? '서버 수집 중' :
+    phase === 'sector' ? '업종 조회 중' :
+    'DB 동기화 중'
 
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
         <span>
-          {label} — {phase === 'fetch' ? '서버 수집 중' : 'DB 동기화 중'}
+          {label} — {phaseLabel}
         </span>
         {pct != null && <span>{current} / {total}</span>}
       </div>
@@ -107,6 +176,25 @@ export default function StockMasterPanel() {
   // ── 공통 onProgress 콜백 ─────────────────────────────────────────────
   const makeOnProgress = () => (info) => setProgress(info)
 
+  // ── KRX 종목 sector 보강 (sync 후 자동 실행) ─────────────────────────
+  const runSectorEnrichment = async (signal) => {
+    try {
+      const { updated, total, aborted409 } = await enrichKrxSectors({
+        onProgress: makeOnProgress(),
+        signal,
+      })
+      if (aborted409) {
+        toast.warning(`Naver 차단 감지 — ${updated}/${total} 종목까지 보강 후 중단 (잠시 후 재시도 권장)`)
+      } else if (total > 0) {
+        toast.success(`업종 정보 보강 — ${updated}/${total} 종목`)
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.warn('[StockMaster] sector enrichment 실패:', err)
+      }
+    }
+  }
+
   // ── 완료 후 처리 ─────────────────────────────────────────────────────
   const handleDone = async (result, label) => {
     const stats = {
@@ -137,6 +225,7 @@ export default function StockMasterPanel() {
         signal: controller.signal,
       })
       await handleDone(result, '전체 업데이트')
+      await runSectorEnrichment(controller.signal)
     } catch (err) {
       if (err.name !== 'AbortError') toast.error(`업데이트 실패: ${err.message}`)
     } finally {
@@ -155,6 +244,7 @@ export default function StockMasterPanel() {
         signal: controller.signal,
       })
       await handleDone(result, '국내 업데이트')
+      await runSectorEnrichment(controller.signal)
     } catch (err) {
       if (err.name !== 'AbortError') toast.error(`업데이트 실패: ${err.message}`)
     } finally {
@@ -211,6 +301,7 @@ export default function StockMasterPanel() {
       )
 
       await handleDone({ totalAdded: totalStats.added, totalChanged: totalStats.changed, totalRemoved: totalStats.removed }, '증분 동기화')
+      await runSectorEnrichment(controller.signal)
     } catch (err) {
       if (err.name !== 'AbortError') toast.error(`동기화 실패: ${err.message}`)
     } finally {
@@ -328,6 +419,9 @@ export default function StockMasterPanel() {
 
         <p className="text-xs text-amber-600 dark:text-amber-400">
           ※ 개발 서버 실행 중에만 업데이트 가능합니다 (API 프록시 경유).
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          ※ 종목 수집 후 KRX 업종(sector) 정보를 자동 보강합니다 — 최초 1회 약 30~50분 소요(이후 증분만 처리).
         </p>
       </div>
 

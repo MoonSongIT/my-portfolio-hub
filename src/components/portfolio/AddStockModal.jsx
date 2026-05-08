@@ -6,6 +6,7 @@ import { useStockSearch, useStockPrice } from '../../hooks/useStockData'
 import { useDebounce } from '../../hooks/useDebounce'
 import { formatCurrency } from '../../utils/formatters'
 import { getByTicker, stockMasterDb } from '../../utils/stockMasterDb'
+import { fetchNaverProfile } from '../../api/naverApi'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../ui/dialog'
@@ -87,6 +88,25 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
     }
   }, [liveQuote, isEdit, form.ticker])
 
+  // KRX 종목의 sector를 Naver에서 조회하여 form + DB에 반영
+  const fetchAndSaveSector = async (ticker, market) => {
+    if (market !== 'KRX' && market !== 'KOSPI' && market !== 'KOSDAQ') return null
+    try {
+      const existing = await getByTicker(ticker)
+      if (existing?.sector && existing.sector !== 'ETC') {
+        setForm(prev => ({ ...prev, sector: existing.sector }))
+        return existing.sector
+      }
+      const profile = await fetchNaverProfile(ticker)
+      if (!profile?.sector) return null
+      setForm(prev => ({ ...prev, sector: profile.sector }))
+      if (existing?.id) {
+        await stockMasterDb.stocks.update(existing.id, { sector: profile.sector, updatedAt: new Date().toISOString() })
+      }
+      return profile.sector
+    } catch { return null }
+  }
+
   // 검색 결과 선택
   const handleSelectSearch = (item) => {
     setForm(prev => ({
@@ -99,9 +119,10 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
     setSearchQuery('')
     setShowSearch(false)
     setMasterWarn(false) // 검색 선택 시 경고 해제 (마스터 DB 결과이므로)
+    fetchAndSaveSector(item.ticker, item.market)
   }
 
-  // 티커 직접 입력 시 마스터 DB 검증
+  // 티커 직접 입력 시 마스터 DB 검증 + sector 자동 조회
   // DB가 비어있으면(미동기화) 경고 없이 통과, DB에 데이터가 있을 때만 검증
   const handleTickerBlur = async () => {
     const ticker = form.ticker.trim().toUpperCase()
@@ -111,6 +132,7 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
       if (total === 0) { setMasterWarn(false); return }
       const found = await getByTicker(ticker)
       setMasterWarn(!found)
+      if (found) fetchAndSaveSector(ticker, form.market)
     } catch { setMasterWarn(false) }
   }
 

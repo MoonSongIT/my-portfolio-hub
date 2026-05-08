@@ -55,7 +55,8 @@
       "Bash(npx vitest:*)",
       "Bash(npm test:*)",
       "Bash(ls \"C:\\\\Users\\\\dohay\\\\ClaudeWork\\\\my-portfolio-hub\\\\docs\"\" 2>/dev/null || echo \"docs folder not found \")",
-      "Bash(pkill -f \"npm run dev\")"
+      "Bash(pkill -f \"npm run dev\")",
+      "Bash(npx eslint *)"
     ]
   }
 }

@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { TrendingUp, TrendingDown, Wallet, Briefcase, RefreshCw, Camera } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wallet, Briefcase, RefreshCw, Camera, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePortfolioStore } from '../store/portfolioStore'
@@ -13,9 +13,12 @@ import {
   calculatePortfolioReturn,
   calculateTotalPnL,
   calcAllocation,
-  calcDailyChange,
   calculateReturn,
+  calcMorningComparePnl,
+  calcRealizedTodayPnl,
 } from '../utils/calculator'
+import { useJournalStore } from '../store/journalStore'
+import { getByTicker } from '../utils/stockMasterDb'
 import { formatCurrency, formatPercent, formatCurrencyShort } from '../utils/formatters'
 import { aggregatePortfolioHistory } from '../utils/portfolioAggregator'
 import AllocationPieChart from '../components/charts/AllocationPieChart'
@@ -46,6 +49,8 @@ export default function Dashboard() {
   // 실제 계좌 수는 accountStore 기준으로 읽음 (portfolioStore.accounts는 동기화 지연 있음)
   const userAccounts = useUserAccounts()
 
+  const entries = useJournalStore(s => s.entries)
+  const [sectorMap, setSectorMap] = useState({})
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
   const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId])
 
@@ -93,7 +98,6 @@ export default function Dashboard() {
   )
 
   // dailyPnlStore
-  const getSnapshotsByDate  = useDailyPnlStore(s => s.getSnapshotsByDate)
   const snapshots           = useDailyPnlStore(s => s.snapshots)
   const hasSnapshotToday    = useDailyPnlStore(s => s.hasSnapshotToday)
   const allSnapshots        = useMemo(() => Object.values(snapshots), [snapshots])
@@ -124,33 +128,49 @@ export default function Dashboard() {
     })
   }, [holdings.length])
 
-  const dailyChange = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0]
-    const todaySnapshots = getSnapshotsByDate(today, selectedAccountId)
+  useEffect(() => {
+    if (holdings.length === 0) return
 
-    // 스냅샷 커버 종목 집합
-    const snapshotCovered = new Set(todaySnapshots.map(s => `${s.ticker}__${s.accountId}`))
-
-    // ① 스냅샷 있는 종목: snapshot dailyPnl 합산
-    let todayPnL = todaySnapshots.reduce((sum, s) => sum + (s.dailyPnl || 0), 0)
-
-    // ② 스냅샷 없는 종목: API previousClose 기반 fallback 보완
+    // batchData에서 sector 먼저 추출 (추가 API 호출 없음)
+    const fromBatch = {}
     if (batchData) {
       batchData.forEach(r => {
-        if (!r.success || !r.data) return
-        if (!r.data.previousClose || r.data.previousClose <= 0) return
-        holdings
-          .filter(h => h.ticker === r.ticker && !snapshotCovered.has(`${h.ticker}__${h.accountId}`))
-          .forEach(holding => {
-            const change = (r.data.currentPrice - r.data.previousClose) * holding.quantity
-            todayPnL += holding.currency === 'USD' ? change * exchangeRate : change
-          })
+        if (r.success && r.data?.sector) fromBatch[r.ticker] = r.data.sector
       })
     }
 
-    const prevTotal = totalValue - todayPnL
-    return calcDailyChange(prevTotal, totalValue)
-  }, [snapshots, selectedAccountId, batchData, holdings, totalValue, exchangeRate])
+    // batchData에 sector 없는 ticker만 DB에서 보완
+    const tickers = [...new Set(holdings.map(h => h.ticker))]
+    const missing = tickers.filter(t => !fromBatch[t])
+    if (missing.length === 0) {
+      setSectorMap(fromBatch)
+      return
+    }
+    Promise.all(missing.map(t => getByTicker(t).then(row => [t, row?.sector])))
+      .then(pairs => {
+        const fromDb = Object.fromEntries(pairs.filter(([, s]) => s))
+        setSectorMap({ ...fromBatch, ...fromDb })
+      })
+      .catch(() => setSectorMap(fromBatch))
+  }, [batchData, holdings.map(h => h.ticker).join(',')])
+
+  const holdingsWithSector = useMemo(
+    () => holdings.map(h => ({ ...h, sector: sectorMap[h.ticker] ?? h.sector })),
+    [holdings, sectorMap]
+  )
+
+  const morningPnl = useMemo(
+    () => calcMorningComparePnl(holdings, batchData, exchangeRate),
+    [holdings, batchData, exchangeRate]
+  )
+
+  const realizedTodayPnl = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0]
+    const filtered = selectedAccountId === 'all'
+      ? entries
+      : entries.filter(e => e.accountId === selectedAccountId)
+    return calcRealizedTodayPnl(filtered, today)
+  }, [entries, selectedAccountId])
 
   const holdingsSub = useMemo(() => {
     if (selectedAccountId === 'all') {
@@ -218,12 +238,21 @@ export default function Dashboard() {
       bgColor: 'bg-blue-50 dark:bg-blue-900/20',
     },
     {
-      title: '오늘 손익',
-      value: formatCurrencyShort(dailyChange.amount),
-      sub: formatPercent(dailyChange.rate),
-      icon: dailyChange.amount >= 0 ? TrendingUp : TrendingDown,
-      color: dailyChange.amount >= 0 ? 'text-emerald-600' : 'text-red-500',
-      bgColor: dailyChange.amount >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20',
+      title: '아침대비 손익',
+      value: formatCurrencyShort(morningPnl.amount),
+      sub: formatPercent(morningPnl.rate),
+      icon: morningPnl.amount >= 0 ? TrendingUp : TrendingDown,
+      color: morningPnl.amount >= 0 ? 'text-emerald-600' : 'text-red-500',
+      bgColor: morningPnl.amount >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20',
+      loading: priceLoading,
+    },
+    {
+      title: '오늘 실현손익',
+      value: formatCurrencyShort(realizedTodayPnl.amount),
+      sub: `${realizedTodayPnl.count}건 매도`,
+      icon: realizedTodayPnl.amount >= 0 ? TrendingUp : TrendingDown,
+      color: realizedTodayPnl.amount >= 0 ? 'text-emerald-600' : 'text-red-500',
+      bgColor: realizedTodayPnl.amount >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20',
     },
     {
       title: '총 수익률',
@@ -301,22 +330,31 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPI 카드 5개 (4개 + 투자 가능 금액) - 동일 간격 가로 정렬 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* KPI 카드 6개 (5개 + 투자 가능 금액) - 동일 간격 가로 정렬 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon
           return (
             <Card key={kpi.title} className="border border-gray-200 dark:border-gray-700">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{kpi.title}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{kpi.title}</span>
+                    {kpi.loading && (
+                      <Loader2 className="w-3 h-3 text-gray-400 animate-spin" />
+                    )}
+                  </div>
                   <div className={`p-2 rounded-lg ${kpi.bgColor}`}>
                     <Icon className={`w-4 h-4 ${kpi.color}`} />
                   </div>
                 </div>
-                <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
+                <p className={`text-2xl font-bold ${kpi.color} ${kpi.loading ? 'opacity-50' : ''}`}>
+                  {kpi.value}
+                </p>
                 {kpi.sub && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{kpi.sub}</p>
+                  <p className={`text-sm text-gray-500 dark:text-gray-400 mt-1 ${kpi.loading ? 'opacity-50' : ''}`}>
+                    {kpi.sub}
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -334,7 +372,7 @@ export default function Dashboard() {
             <CardTitle className="text-lg">자산 배분</CardTitle>
           </CardHeader>
           <CardContent>
-            <AllocationPieChart holdings={holdings} accounts={accounts} selectedAccountId={selectedAccountId} />
+            <AllocationPieChart holdings={holdingsWithSector} accounts={accounts} selectedAccountId={selectedAccountId} />
           </CardContent>
         </Card>
 
