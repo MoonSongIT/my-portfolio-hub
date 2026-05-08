@@ -57,16 +57,19 @@ export const useJournalStore = create(
           const holding = currentHoldings.find(h => h.ticker === newEntry.ticker)
           if (holding && holding.avgPrice > 0) {
             // pnl은 해당 종목의 원화폐 단위로 저장 (USD → KRW 변환은 집계 시 처리)
-            newEntry.pnl = Math.round((newEntry.price - holding.avgPrice) * newEntry.quantity)
+            newEntry.pnl = Math.round(
+              (newEntry.price - holding.avgPrice) * newEntry.quantity - (newEntry.fee || 0)
+            )
           }
         }
 
         // 매수/매도 시 현금 흐름 자동 연동
         // 매수: price*qty + fee (수수료 포함 실제 출금액)
-        // 매도: price*qty       (수수료는 실현손익에 이미 반영)
+        // 매도: price*qty - fee (수수료 차감 실제 입금액)
         if (newEntry.accountId && newEntry.price && newEntry.quantity) {
-          const fee = newEntry.action === 'buy' ? (newEntry.fee || 0) : 0
-          const amount = newEntry.price * newEntry.quantity + fee
+          const buyFee  = newEntry.action === 'buy'  ? (newEntry.fee || 0) : 0
+          const sellFee = newEntry.action === 'sell' ? (newEntry.fee || 0) : 0
+          const amount = newEntry.price * newEntry.quantity + buyFee - sellFee
           const cashFlowType = newEntry.action === 'buy' ? 'withdrawal' : 'deposit'
           const label = newEntry.action === 'buy'
             ? `매수: ${newEntry.name || newEntry.ticker}`
@@ -114,10 +117,12 @@ export const useJournalStore = create(
           const newQty     = updates.quantity ?? entry.quantity
           const newFee     = updates.fee      ?? entry.fee
           const newMarket  = updates.market   ?? entry.market
-          const newFeeCalc = newAction === 'buy' ? (newFee || 0) : 0
-          const oldFeeCalc = entry.action === 'buy' ? (entry.fee || 0) : 0
-          const newAmount  = newPrice * newQty + newFeeCalc
-          const oldAmount  = entry.price * entry.quantity + oldFeeCalc
+          const newBuyFee  = newAction === 'buy'  ? (newFee || 0) : 0
+          const newSellFee = newAction === 'sell' ? (newFee || 0) : 0
+          const newAmount  = newPrice * newQty + newBuyFee - newSellFee
+          // 실제 저장된 cashFlow 금액과 비교 (재계산 비교 시 이전 버그와 일치해 버리는 문제 방지)
+          const storedCashFlow = useCashFlowStore.getState().cashFlows.find(f => f.id === entry.linkedCashFlowId)
+          const oldAmount  = storedCashFlow?.amount ?? newAmount
 
           if (newAmount !== oldAmount || newAction !== entry.action || newMarket !== entry.market) {
             cashFlowUpdates.amount   = newAmount
