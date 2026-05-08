@@ -132,6 +132,35 @@ export const calcDailyChange = (prevValue, currentValue) => ({
   rate: prevValue > 0 ? ((currentValue - prevValue) / prevValue) * 100 : 0,
 })
 
+// 아침대비 손익: (현재가 - 전일종가) × 수량 합산 (실시간)
+export const calcMorningComparePnl = (holdings, batchData, exchangeRate = 1300) => {
+  if (!batchData) return { amount: 0, rate: 0 }
+  let pnl = 0
+  let prevTotal = 0
+  batchData.forEach(r => {
+    if (!r.success || !r.data?.previousClose) return
+    const { currentPrice, previousClose } = r.data
+    holdings
+      .filter(h => h.ticker === r.ticker)
+      .forEach(h => {
+        const rate = h.currency === 'USD' ? exchangeRate : 1
+        pnl += (currentPrice - previousClose) * h.quantity * rate
+        prevTotal += previousClose * h.quantity * rate
+      })
+  })
+  return {
+    amount: Math.round(pnl),
+    rate: prevTotal > 0 ? (pnl / prevTotal) * 100 : 0,
+  }
+}
+
+// 오늘 실현손익: 당일 매도 entry.pnl 합산
+export const calcRealizedTodayPnl = (entries, today) => {
+  const todaySells = entries.filter(e => e.action === 'sell' && e.date === today)
+  const amount = todaySells.reduce((sum, e) => sum + (e.pnl ?? 0), 0)
+  return { amount: Math.round(amount), count: todaySells.length }
+}
+
 // ─── 매매 일지 헬퍼 ───
 
 // 기간 코드 → 시작 날짜 문자열 (YYYY-MM-DD)

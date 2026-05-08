@@ -98,7 +98,7 @@ export async function fetchYahooStocks(targetExchange) {
   // 1단계: screener 조회
   for (const screenerId of STOCK_SCREENERS) {
     try {
-      const result = await yf.screener(screenerId)
+      const result = await yf.screener(screenerId, {}, { validateResult: false })
       for (const q of (result?.quotes || [])) {
         if (!q.symbol) continue
         if (q.quoteType === 'ETF' || q.quoteType === 'MUTUALFUND') continue
