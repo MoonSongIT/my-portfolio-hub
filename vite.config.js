@@ -64,7 +64,8 @@ export default defineConfig(({ mode }) => {
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           if (!req.url?.startsWith('/api/dart/list')) return next()
-          await handleDartList(req, res, env.DART_API_KEY || '')
+          const dartKey = req.headers['x-dart-api-key'] || env.DART_API_KEY || ''
+          await handleDartList(req, res, dartKey)
         })
       },
     },
@@ -116,7 +117,8 @@ export default defineConfig(({ mode }) => {
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           if (req.method !== 'POST' || !req.url?.startsWith('/api/claude/agentic')) return next()
-          await handleAgenticRequest(req, res, apiKey, env.DART_API_KEY || '')
+          const dartKey = req.headers['x-dart-api-key'] || env.DART_API_KEY || ''
+          await handleAgenticRequest(req, res, apiKey, dartKey)
         })
       },
     },

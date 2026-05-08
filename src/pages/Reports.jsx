@@ -223,7 +223,7 @@ export default function Reports() {
       await exportAsPNG(reportRef.current, 'portfolio-report')
     } catch (e) {
       console.error('[Export PNG]', e)
-      alert(`PNG 저장 실패: ${e.message}`)
+      toast.error(`PNG 저장 실패: ${e.message}`)
     }
   }
   const handleExportPDF = async () => {
@@ -232,7 +232,7 @@ export default function Reports() {
       await exportAsPDF(reportRef.current, 'portfolio-report')
     } catch (e) {
       console.error('[Export PDF]', e)
-      alert(`PDF 저장 실패: ${e.message}`)
+      toast.error(`PDF 저장 실패: ${e.message}`)
     }
   }
 

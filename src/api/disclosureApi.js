@@ -1,5 +1,6 @@
 // 공시 API 클라이언트 — DART(한국) / SEC EDGAR(미국)
 import axios from 'axios'
+import useAiCredentialStore from '../store/aiCredentialStore.js'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -41,7 +42,9 @@ export async function fetchDisclosures(ticker, market, days = 30) {
   try {
     if (isKorean) {
       trackDartCall()
-      const res = await api.get('/dart/list', { params: { ticker: cleanTicker, days } })
+      const dartKey = useAiCredentialStore.getState().dartApiKey
+      const headers = dartKey ? { 'X-Dart-Api-Key': dartKey } : {}
+      const res = await api.get('/dart/list', { params: { ticker: cleanTicker, days }, headers })
       return res.data?.items ?? []
     } else {
       const res = await api.get('/edgar/filings', { params: { ticker, days } })

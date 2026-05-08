@@ -6,6 +6,7 @@
  */
 
 import { upsertSync, appendSyncLog } from '@/utils/stockMasterDb'
+import useAiCredentialStore from '../store/aiCredentialStore.js'
 
 // ── 상수 ─────────────────────────────────────────────────────────────────
 
@@ -49,8 +50,11 @@ async function fetchExchangeRaw(exchange, signal) {
       ? anySignal([signal, controller.signal])
       : controller.signal
 
+    const dartKey = useAiCredentialStore.getState().dartApiKey
+    const headers = dartKey ? { 'X-Dart-Api-Key': dartKey } : {}
     const res = await fetch(`${BASE_URL}?exchange=${exchange}`, {
       signal: mergedSignal,
+      headers,
     })
     clearTimeout(timer)
 

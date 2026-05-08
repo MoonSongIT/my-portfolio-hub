@@ -3,29 +3,36 @@ import { getAiCredential, saveAiCredential, deleteAiCredential } from '../utils/
 import { isValidFormat } from '../utils/apiKeyValidator.js'
 
 const PROVIDER = 'anthropic'
+const DART_PROVIDER = 'dart'
 
 const useAiCredentialStore = create((set, get) => ({
+  // ── Anthropic ──
   apiKey: null,
   isValid: null,       // null=미검증, true=검증완료, false=검증실패
   validatedAt: null,
   isLoading: false,
   isHydrated: false,
 
-  // 앱 시작 시 IDB → 메모리 로드
+  // ── DART ──
+  dartApiKey: null,
+  dartSavedAt: null,
+
+  // 앱 시작 시 IDB → 메모리 로드 (Anthropic + DART)
   hydrate: async () => {
     if (get().isHydrated) return
     try {
-      const credential = await getAiCredential(PROVIDER)
-      if (credential) {
-        set({
-          apiKey: credential.apiKey || null,
-          isValid: credential.isValid ?? null,
-          validatedAt: credential.validatedAt || null,
-          isHydrated: true,
-        })
-      } else {
-        set({ isHydrated: true })
-      }
+      const [credential, dartCredential] = await Promise.all([
+        getAiCredential(PROVIDER),
+        getAiCredential(DART_PROVIDER),
+      ])
+      set({
+        apiKey: credential?.apiKey || null,
+        isValid: credential?.isValid ?? null,
+        validatedAt: credential?.validatedAt || null,
+        dartApiKey: dartCredential?.apiKey || null,
+        dartSavedAt: dartCredential?.updatedAt || null,
+        isHydrated: true,
+      })
     } catch {
       set({ isHydrated: true })
     }
@@ -76,6 +83,28 @@ const useAiCredentialStore = create((set, get) => ({
 
   // 키 존재 여부 셀렉터
   hasKey: () => get().apiKey !== null && get().apiKey !== '',
+
+  // ── DART 키 저장/삭제 ──
+  setDartKey: async (key) => {
+    const now = new Date().toISOString()
+    set({ dartApiKey: key, dartSavedAt: now })
+    await saveAiCredential({
+      provider: DART_PROVIDER,
+      apiKey: key,
+      isValid: null,
+      validatedAt: null,
+    })
+  },
+
+  clearDartKey: async () => {
+    await deleteAiCredential(DART_PROVIDER)
+    set({ dartApiKey: null, dartSavedAt: null })
+  },
+
+  hasDartKey: () => {
+    const key = get().dartApiKey
+    return key !== null && key !== ''
+  },
 }))
 
 export default useAiCredentialStore
