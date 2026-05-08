@@ -50,11 +50,11 @@ function App() {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
-    onRegistered(r) {
-      console.log('[SW] 서비스 워커 등록 완료:', r)
+    onRegistered(_r) {
+      // 서비스 워커 등록 완료 (프로덕션 로그 생략)
     },
     onOfflineReady() {
-      console.log('[SW] 오프라인 준비 완료')
+      // 오프라인 준비 완료 (프로덕션 로그 생략)
     },
   })
 

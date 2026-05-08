@@ -57,7 +57,7 @@ export default function Settings() {
       await exportAllData()
       toast.success('백업 파일이 다운로드되었습니다.')
     } catch (err) {
-      console.error(err)
+      console.error('[Settings] 데이터 내보내기 실패:', err)
       toast.error('내보내기 중 오류가 발생했습니다.')
     }
   }
@@ -88,7 +88,7 @@ export default function Settings() {
       })
       toast.success(`가져오기 완료 (백업일: ${new Date(result.importedAt).toLocaleDateString('ko-KR')})`)
     } catch (err) {
-      console.error(err)
+      console.error('[Settings] 데이터 가져오기 실패:', err)
       toast.error(`가져오기 실패: ${err.message}`)
     } finally {
       setImporting(false)

@@ -323,11 +323,9 @@ export async function seedDemoData() {
   // 이미 데모 데이터가 있는지 확인
   const accounts = useAccountStore.getState().accounts
   if (accounts.some(a => a.id === DEMO_GENERAL_ID)) {
-    console.log('[Demo] 데모 데이터가 이미 존재합니다. 스킵합니다.')
     return false
   }
 
-  console.log('[Demo] 데모 데이터 생성을 시작합니다...')
   const startTime = performance.now()
 
   // ── 1. 계좌 생성 ──
@@ -377,7 +375,6 @@ export async function seedDemoData() {
   // ── 3. 거래 생성 ──
 
   const tradingDays = getTradingDays()
-  console.log(`[Demo] 거래일 수: ${tradingDays.length}일 (${tradingDays[0]} ~ ${tradingDays[tradingDays.length - 1]})`)
 
   const generalTrades = generateAccountTrades(DEMO_GENERAL_ID, GENERAL_STOCKS, tradingDays, 42)
   const isaTrades = generateAccountTrades(DEMO_ISA_ID, ISA_STOCKS, tradingDays, 137)
@@ -399,10 +396,6 @@ export async function seedDemoData() {
   const elapsed = Math.round(performance.now() - startTime)
   const buyCount = allTrades.filter(t => t.action === 'buy').length
   const sellCount = allTrades.filter(t => t.action === 'sell').length
-
-  console.log(`[Demo] 데모 데이터 생성 완료 (${elapsed}ms)`)
-  console.log(`[Demo] 총 ${allTrades.length}건 거래 (매수 ${buyCount}건 / 매도 ${sellCount}건)`)
-  console.log(`[Demo] 일반계좌: ${generalTrades.length}건, ISA계좌: ${isaTrades.length}건`)
 
   return true
 }
