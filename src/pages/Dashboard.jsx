@@ -128,25 +128,26 @@ export default function Dashboard() {
     const today = new Date().toISOString().split('T')[0]
     const todaySnapshots = getSnapshotsByDate(today, selectedAccountId)
 
-    // ① dailyPnlStore 스냅샷 데이터가 있으면 우선 사용
-    if (todaySnapshots.length > 0) {
-      const snapshotPnl = todaySnapshots.reduce((sum, s) => sum + (s.dailyPnl || 0), 0)
-      const prevTotal = totalValue - snapshotPnl
-      return calcDailyChange(prevTotal, totalValue)
+    // 스냅샷 커버 종목 집합
+    const snapshotCovered = new Set(todaySnapshots.map(s => `${s.ticker}__${s.accountId}`))
+
+    // ① 스냅샷 있는 종목: snapshot dailyPnl 합산
+    let todayPnL = todaySnapshots.reduce((sum, s) => sum + (s.dailyPnl || 0), 0)
+
+    // ② 스냅샷 없는 종목: API previousClose 기반 fallback 보완
+    if (batchData) {
+      batchData.forEach(r => {
+        if (!r.success || !r.data) return
+        if (!r.data.previousClose || r.data.previousClose <= 0) return
+        holdings
+          .filter(h => h.ticker === r.ticker && !snapshotCovered.has(`${h.ticker}__${h.accountId}`))
+          .forEach(holding => {
+            const change = (r.data.currentPrice - r.data.previousClose) * holding.quantity
+            todayPnL += holding.currency === 'USD' ? change * exchangeRate : change
+          })
+      })
     }
 
-    // ② 없으면 API previousClose 기반으로 fallback
-    if (!batchData) return { amount: 0, rate: 0 }
-    let todayPnL = 0
-    batchData.forEach(r => {
-      if (!r.success || !r.data) return
-      if (!r.data.previousClose || r.data.previousClose <= 0) return
-      const h = holdings.filter(h => h.ticker === r.ticker)
-      h.forEach(holding => {
-        const change = (r.data.currentPrice - r.data.previousClose) * holding.quantity
-        todayPnL += holding.currency === 'USD' ? change * exchangeRate : change
-      })
-    })
     const prevTotal = totalValue - todayPnL
     return calcDailyChange(prevTotal, totalValue)
   }, [snapshots, selectedAccountId, batchData, holdings, totalValue, exchangeRate])
