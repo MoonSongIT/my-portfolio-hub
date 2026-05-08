@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { usePortfolioStore } from '../../store/portfolioStore'
+import { toast } from 'sonner'
+import { useJournalStore } from '../../store/journalStore'
 import { useUserAccounts } from '../../store/accountStore'
 import { SECTORS, MARKETS } from '../../data/samplePortfolio'
 import { useStockSearch, useStockPrice } from '../../hooks/useStockData'
@@ -27,7 +28,7 @@ const INITIAL_FORM = {
 }
 
 export default function AddStockModal({ open, onClose, editStock = null }) {
-  const { addHolding, updateHolding } = usePortfolioStore()
+  const { addEntry } = useJournalStore()
   const rawAccounts = useUserAccounts()
   const accounts = useMemo(() => rawAccounts.map(a => ({
     id: a.id,
@@ -167,23 +168,30 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
   const handleSubmit = () => {
     if (!validate()) return
 
-    const stockData = {
+    if (isEdit) {
+      // 수정 모드는 매매 일지에서 직접 수정 필요
+      toast.error('종목 수정은 매매 일지에서 직접 수정하세요.')
+      onClose()
+      return
+    }
+
+    addEntry({
+      action: 'buy',
+      accountId: form.accountId,
       ticker: form.ticker.trim().toUpperCase(),
       name: form.name.trim(),
       market: form.market,
+      price: Number(form.avgPrice),
       quantity: Number(form.quantity),
-      avgPrice: Number(form.avgPrice),
-      currentPrice: Number(form.currentPrice),
+      fee: 0,
       sector: form.sector,
       currency: form.currency,
-    }
+      date: new Date().toISOString().split('T')[0],
+      memo: '직접 추가',
+      psychology: '기타',
+    })
 
-    if (isEdit) {
-      updateHolding(editStock.accountId, editStock.ticker, stockData)
-    } else {
-      addHolding(form.accountId, stockData)
-    }
-
+    toast.success('종목이 추가되었습니다.')
     setForm(INITIAL_FORM)
     onClose()
   }

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { toast } from 'sonner'
 import { db, addTransaction, updateTransaction, deleteTransaction, getTransactionsByUser, deleteTransactionsByUser } from '../utils/db'
 import { useCashFlowStore } from './cashFlowStore'
 import { useWatchlistStore } from './watchlistStore'
@@ -89,7 +90,10 @@ export const useJournalStore = create(
 
         set((state) => { state.entries.push(newEntry) })
         // IndexedDB에도 저장 (비동기, 실패해도 로컬스토리지 백업 유지)
-        addTransaction(newEntry).catch(err => console.warn('[DB] addTransaction failed:', err))
+        addTransaction(newEntry).catch(err => {
+          console.warn('[DB] addTransaction failed:', err)
+          toast.warning('로컬 DB 저장 실패 — 앱 데이터는 보존됩니다.')
+        })
 
         // 매수 종목은 관심종목에 자동 등록 (중복은 watchlistStore에서 방지)
         if (newEntry.action === 'buy' && newEntry.ticker) {

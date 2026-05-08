@@ -61,6 +61,7 @@ export async function snapshotToday(accountId) {
 
   const todayStr = today()
   const results  = []
+  const failed   = []
 
   for (const account of accounts) {
     const holdings = journalStore.computeHoldings(account.id)
@@ -102,11 +103,12 @@ export async function snapshotToday(accountId) {
         results.push(snapshot)
       } catch (err) {
         console.warn(`[dailyPnlService] snapshotToday failed for ${holding.ticker}:`, err.message)
+        failed.push(holding.ticker)
       }
     }
   }
 
-  return results
+  return { results, failed }
 }
 
 /**

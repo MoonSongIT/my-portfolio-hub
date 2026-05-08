@@ -91,8 +91,12 @@ export default function Portfolio() {
     setOverwriteConfirm(false)
     setSnapshotLoading(true)
     try {
-      await snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
-      toast.success('오늘 손익 스냅샷 저장 완료')
+      const { failed } = await snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
+      if (failed.length > 0) {
+        toast.warning(`일부 종목 가격 조회 실패: ${failed.join(', ')}`)
+      } else {
+        toast.success('오늘 손익 스냅샷 저장 완료')
+      }
     } catch {
       toast.error('오늘 손익 저장 실패. 다시 시도해주세요.')
     } finally {
