@@ -7,6 +7,7 @@ import StorageInfo from '../components/common/StorageInfo'
 import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
 import AiKeyPanel from '../components/settings/AiKeyPanel'
+import DartKeyPanel from '../components/settings/DartKeyPanel'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -143,6 +144,7 @@ export default function Settings() {
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 설정</h2>
         <AiKeyPanel />
+        <DartKeyPanel />
       </section>
 
       {/* ─── 종목 DB 관리 ─── */}
