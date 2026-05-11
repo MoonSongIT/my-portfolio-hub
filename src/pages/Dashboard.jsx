@@ -420,7 +420,7 @@ export default function Dashboard() {
                   {kpi.value}
                 </p>
                 {kpi.sub && (
-                  <p className={`text-sm text-gray-500 dark:text-gray-400 mt-1 ${kpi.loading ? 'opacity-50' : ''}`}>
+                  <p className={`text-base font-medium text-gray-700 dark:text-gray-200 mt-1 ${kpi.loading ? 'opacity-50' : ''}`}>
                     {kpi.sub}
                   </p>
                 )}
