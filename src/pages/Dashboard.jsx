@@ -227,21 +227,8 @@ export default function Dashboard() {
 
   const comprehensiveReturn = useMemo(() => {
     const unrealized = calculateTotalPnL(holdings, exchangeRate)
-    const result = totalInvestment <= 0
-      ? 0
-      : ((unrealized + combinedRealizedPnl + totalDividends) / totalInvestment) * 100
-    console.group('[종합수익률 검증]')
-    console.log('투자원금(순수입금, KRW):', Math.round(totalInvestment).toLocaleString())
-    console.log('미실현손익(KRW):', Math.round(unrealized).toLocaleString())
-    console.log('누적실현손익_일지(KRW):', Math.round(realizedAllPnl).toLocaleString())
-    console.log('누적실현손익_매도차익입금(KRW):', Math.round(cashFlowRealizedPnl).toLocaleString())
-    console.log('누적실현손익_합계(KRW):', Math.round(combinedRealizedPnl).toLocaleString())
-    console.log('배당금(KRW):', Math.round(totalDividends).toLocaleString())
-    console.log('손익합계(미실현+실현+배당):', Math.round(unrealized + combinedRealizedPnl + totalDividends).toLocaleString())
-    console.log('종합수익률(%):', result.toFixed(2))
-    console.log('계산식: (' + Math.round(unrealized) + ' + ' + Math.round(combinedRealizedPnl) + ' + ' + Math.round(totalDividends) + ') / ' + Math.round(totalInvestment) + ' × 100')
-    console.groupEnd()
-    return result
+    if (totalInvestment <= 0) return 0
+    return ((unrealized + combinedRealizedPnl + totalDividends) / totalInvestment) * 100
   }, [holdings, combinedRealizedPnl, totalDividends, totalInvestment, exchangeRate])
 
   const holdingsSub = useMemo(() => {
