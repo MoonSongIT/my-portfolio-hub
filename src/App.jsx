@@ -133,7 +133,7 @@ function App() {
   }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Toaster position="bottom-right" richColors closeButton />
       <AutoSnapshotDialog
         open={dialogOpen}
