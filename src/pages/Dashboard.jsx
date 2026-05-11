@@ -300,6 +300,10 @@ export default function Dashboard() {
       icon: Wallet,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+      breakdown: [
+        { label: '주식평가액', value: formatCurrencyShort(totalValue - cashKRW - cashUSD * exchangeRate) },
+        { label: '현금비중', value: totalValue > 0 ? `${((cashKRW + cashUSD * exchangeRate) / totalValue * 100).toFixed(1)}%` : '0.0%' },
+      ],
     },
     {
       title: '오늘 손익',
