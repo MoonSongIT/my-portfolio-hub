@@ -205,10 +205,35 @@ export default function Dashboard() {
       .reduce((sum, f) => sum + (f.amount || 0), 0)
   }, [cashFlows, selectedAccountId])
 
-  const comprehensiveReturn = useMemo(
-    () => calculateComprehensiveReturn(holdings, realizedAllPnl, totalDividends, exchangeRate),
-    [holdings, realizedAllPnl, totalDividends, exchangeRate]
-  )
+  const cashFlowRealizedPnl = useMemo(() => {
+    return cashFlows
+      .filter(f =>
+        f.type === 'deposit' &&
+        !f.isAuto &&
+        f.memo?.includes('매도차익') &&
+        (selectedAccountId === 'all' || f.accountId === selectedAccountId)
+      )
+      .reduce((sum, f) => sum + (f.amount || 0), 0)
+  }, [cashFlows, selectedAccountId])
+
+  const combinedRealizedPnl = realizedAllPnl + cashFlowRealizedPnl
+
+  const comprehensiveReturn = useMemo(() => {
+    const unrealized = calculateTotalPnL(holdings, exchangeRate)
+    const result = calculateComprehensiveReturn(holdings, combinedRealizedPnl, totalDividends, exchangeRate)
+    console.group('[종합수익률 검증]')
+    console.log('투자원금(KRW):', Math.round(totalInvestment).toLocaleString())
+    console.log('미실현손익(KRW):', Math.round(unrealized).toLocaleString())
+    console.log('누적실현손익_일지(KRW):', Math.round(realizedAllPnl).toLocaleString())
+    console.log('누적실현손익_매도차익입금(KRW):', Math.round(cashFlowRealizedPnl).toLocaleString())
+    console.log('누적실현손익_합계(KRW):', Math.round(combinedRealizedPnl).toLocaleString())
+    console.log('배당금(KRW):', Math.round(totalDividends).toLocaleString())
+    console.log('손익합계(미실현+실현+배당):', Math.round(unrealized + combinedRealizedPnl + totalDividends).toLocaleString())
+    console.log('종합수익률(%):', result.toFixed(2))
+    console.log('계산식: (' + Math.round(unrealized) + ' + ' + Math.round(combinedRealizedPnl) + ' + ' + Math.round(totalDividends) + ') / ' + Math.round(totalInvestment) + ' × 100')
+    console.groupEnd()
+    return result
+  }, [holdings, combinedRealizedPnl, totalDividends, totalInvestment, exchangeRate])
 
   const holdingsSub = useMemo(() => {
     if (selectedAccountId === 'all') {
@@ -302,7 +327,7 @@ export default function Dashboard() {
     {
       title: '종합수익률',
       value: formatPercent(comprehensiveReturn),
-      sub: `손익합계 ${formatCurrencyShort(totalPnL + realizedAllPnl)}`,
+      sub: `손익합계 ${formatCurrencyShort(totalPnL + combinedRealizedPnl)}`,
       sub2: `원금 ${formatCurrencyShort(totalInvestment)} / 배당 ${formatCurrencyShort(totalDividends)}`,
       icon: comprehensiveReturn >= 0 ? TrendingUp : TrendingDown,
       color: comprehensiveReturn >= 0 ? 'text-emerald-600' : 'text-red-500',
