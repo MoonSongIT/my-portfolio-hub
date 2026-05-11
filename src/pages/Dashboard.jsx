@@ -184,10 +184,17 @@ export default function Dashboard() {
     [selectedAccountId, getAvailableCash]
   )
 
-  const totalInvestment = useMemo(
-    () => calculateTotalInvestment(holdings, exchangeRate),
-    [holdings, exchangeRate]
-  )
+  const totalInvestment = useMemo(() => {
+    const EXCLUDED_MEMOS = ['배당금', '매도차익', '실현이익']
+    return cashFlows
+      .filter(f =>
+        f.type === 'deposit' &&
+        !f.isAuto &&
+        !EXCLUDED_MEMOS.some(keyword => f.memo?.includes(keyword)) &&
+        (selectedAccountId === 'all' || f.accountId === selectedAccountId)
+      )
+      .reduce((sum, f) => sum + (f.amount || 0), 0)
+  }, [cashFlows, selectedAccountId])
 
   const realizedAllPnl = useMemo(
     () => calculateTotalRealizedPnl(filteredEntries, exchangeRate),
@@ -220,9 +227,11 @@ export default function Dashboard() {
 
   const comprehensiveReturn = useMemo(() => {
     const unrealized = calculateTotalPnL(holdings, exchangeRate)
-    const result = calculateComprehensiveReturn(holdings, combinedRealizedPnl, totalDividends, exchangeRate)
+    const result = totalInvestment <= 0
+      ? 0
+      : ((unrealized + combinedRealizedPnl + totalDividends) / totalInvestment) * 100
     console.group('[종합수익률 검증]')
-    console.log('투자원금(KRW):', Math.round(totalInvestment).toLocaleString())
+    console.log('투자원금(순수입금, KRW):', Math.round(totalInvestment).toLocaleString())
     console.log('미실현손익(KRW):', Math.round(unrealized).toLocaleString())
     console.log('누적실현손익_일지(KRW):', Math.round(realizedAllPnl).toLocaleString())
     console.log('누적실현손익_매도차익입금(KRW):', Math.round(cashFlowRealizedPnl).toLocaleString())
@@ -327,12 +336,16 @@ export default function Dashboard() {
     {
       title: '종합수익률',
       value: formatPercent(comprehensiveReturn),
-      sub: `손익합계 ${formatCurrencyShort(totalPnL + combinedRealizedPnl)}`,
-      sub2: `원금 ${formatCurrencyShort(totalInvestment)} / 배당 ${formatCurrencyShort(totalDividends)}`,
       icon: comprehensiveReturn >= 0 ? TrendingUp : TrendingDown,
       color: comprehensiveReturn >= 0 ? 'text-emerald-600' : 'text-red-500',
       bgColor: comprehensiveReturn >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20',
-      icon2: BarChart3,
+      breakdown: [
+        { label: '미실현손익', value: formatCurrencyShort(totalPnL), pnl: totalPnL },
+        { label: '실현손익', value: formatCurrencyShort(combinedRealizedPnl), pnl: combinedRealizedPnl },
+        { label: '배당금', value: formatCurrencyShort(totalDividends), pnl: totalDividends },
+        { label: '손익합계', value: formatCurrencyShort(totalPnL + combinedRealizedPnl + totalDividends), pnl: totalPnL + combinedRealizedPnl + totalDividends, divider: true },
+        { label: '투자원금', value: formatCurrencyShort(totalInvestment) },
+      ],
     },
   ]
 
@@ -429,6 +442,27 @@ export default function Dashboard() {
                   <p className="text-xs text-gray-300 dark:text-gray-600 mt-1 italic">
                     {kpi.note}
                   </p>
+                )}
+                {kpi.breakdown && (
+                  <div className="mt-2 space-y-0.5">
+                    {kpi.breakdown.map((item) => (
+                      <div key={item.label}>
+                        {item.divider && <hr className="my-1 border-gray-200 dark:border-gray-700" />}
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-400 dark:text-gray-500">{item.label}</span>
+                          <span className={
+                            item.divider
+                              ? 'font-semibold text-gray-600 dark:text-gray-300'
+                              : item.pnl != null
+                                ? item.pnl >= 0 ? 'text-emerald-600' : 'text-red-500'
+                                : 'text-gray-500 dark:text-gray-400'
+                          }>
+                            {item.value}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>
