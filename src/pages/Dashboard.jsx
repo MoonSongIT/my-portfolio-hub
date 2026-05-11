@@ -407,7 +407,7 @@ export default function Dashboard() {
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{kpi.title}</span>
+                    <span className="text-lg font-semibold text-gray-700 dark:text-gray-200">{kpi.title}</span>
                     {kpi.loading && (
                       <Loader2 className="w-3 h-3 text-gray-400 animate-spin" />
                     )}
@@ -425,7 +425,7 @@ export default function Dashboard() {
                   </p>
                 )}
                 {kpi.sub2 && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
                     {kpi.sub2}
                   </p>
                 )}
