@@ -333,7 +333,15 @@ export default function Portfolio() {
           </div>
         </CardHeader>
         <CardContent>
-          <HoldingPnlTimeline accountId={selectedAccountId} height={300} />
+          {selectedAccountId === 'all' && accounts.length >= 2
+            ? accounts.map(acc => (
+                <div key={acc.id} className="mb-6 last:mb-0">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{acc.name}</p>
+                  <HoldingPnlTimeline accountId={acc.id} height={240} />
+                </div>
+              ))
+            : <HoldingPnlTimeline accountId={selectedAccountId} height={300} />
+          }
         </CardContent>
       </Card>
 
