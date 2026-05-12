@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ArrowUpDown } from 'lucide-react'
+import { ArrowUpDown, AlertTriangle } from 'lucide-react'
 import { usePortfolioStore } from '../../store/portfolioStore'
 import { calculateReturn, calculatePositionPnL, calcAllocation } from '../../utils/calculator'
 import { formatCurrency, formatPercent, formatNumber } from '../../utils/formatters'
@@ -90,7 +90,7 @@ export default function PortfolioTable({ onRowClick }) {
             {sortedHoldings.map((h) => (
               <TableRow
                 key={`${h.accountId}-${h.ticker}`}
-                className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${onRowClick ? 'cursor-pointer' : ''}`}
+                className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${onRowClick ? 'cursor-pointer' : ''} ${h.weight > 30 ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}
                 onClick={() => onRowClick?.(h)}
               >
                 <TableCell>
@@ -114,7 +114,10 @@ export default function PortfolioTable({ onRowClick }) {
                   {formatPercent(h.returnRate)}
                 </TableCell>
                 <TableCell className="text-right text-gray-600 dark:text-gray-400">
-                  {h.weight.toFixed(1)}%
+                  <span className="inline-flex items-center justify-end gap-1">
+                    {h.weight > 30 && <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />}
+                    {h.weight.toFixed(1)}%
+                  </span>
                 </TableCell>
               </TableRow>
             ))}
