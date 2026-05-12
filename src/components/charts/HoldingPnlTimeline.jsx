@@ -15,10 +15,11 @@ const COLORS = [
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
+  const sorted = [...payload].sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-xs space-y-1 min-w-[160px]">
       <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm mb-1">{label}</p>
-      {payload.map((p) => (
+      {sorted.map((p) => (
         <div key={p.dataKey} className="flex items-center justify-between gap-3">
           <span style={{ color: p.color }} className="font-medium truncate max-w-[90px]">{p.name}</span>
           <span style={{ color: p.color }}>
@@ -126,7 +127,7 @@ export default function HoldingPnlTimeline({ accountId, height = 300 }) {
             key={ticker}
             type="monotone"
             dataKey={ticker}
-            name={ticker}
+            name={tickerNames[ticker] || ticker}
             stroke={COLORS[i % COLORS.length]}
             strokeWidth={2}
             dot={false}
