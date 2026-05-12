@@ -157,7 +157,6 @@ export const usePortfolioStore = create(
             ...h,
             currentPrice: prices[h.ticker] ?? h.avgPrice,
             currency,
-            sector: 'ETC',
             accountName: account?.name || '알 수 없는 계좌',
             accountType: account?.type || 'GENERAL',
           }
