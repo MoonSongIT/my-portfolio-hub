@@ -75,6 +75,7 @@ export default function PortfolioTable({ onRowClick }) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>추이</TableHead>
               <TableHead><SortButton label="종목명" sortField="name" /></TableHead>
               <TableHead>티커</TableHead>
               {showAccountColumn && <TableHead>계좌</TableHead>}
@@ -84,7 +85,6 @@ export default function PortfolioTable({ onRowClick }) {
               <TableHead className="text-right"><SortButton label="평가금액" sortField="evalValue" /></TableHead>
               <TableHead className="text-right"><SortButton label="평가손익" sortField="pnl" /></TableHead>
               <TableHead className="text-right"><SortButton label="수익률" sortField="returnRate" /></TableHead>
-              <TableHead className="text-right">추이</TableHead>
               <TableHead className="text-right"><SortButton label="비중" sortField="weight" /></TableHead>
             </TableRow>
           </TableHeader>
@@ -95,6 +95,9 @@ export default function PortfolioTable({ onRowClick }) {
                 className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${onRowClick ? 'cursor-pointer' : ''} ${h.weight > 30 ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}
                 onClick={() => onRowClick?.(h)}
               >
+                <TableCell>
+                  <HoldingSparkline ticker={h.ticker} accountId={h.accountId} />
+                </TableCell>
                 <TableCell>
                   <p className="font-medium text-gray-900 dark:text-gray-100">{h.name}</p>
                   <p className="text-xs text-gray-500">{h.market}</p>
@@ -114,11 +117,6 @@ export default function PortfolioTable({ onRowClick }) {
                 </TableCell>
                 <TableCell className={`text-right font-semibold ${h.returnRate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                   {formatPercent(h.returnRate)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end">
-                    <HoldingSparkline ticker={h.ticker} accountId={h.accountId} />
-                  </div>
                 </TableCell>
                 <TableCell className="text-right text-gray-600 dark:text-gray-400">
                   <span className="inline-flex items-center justify-end gap-1">
