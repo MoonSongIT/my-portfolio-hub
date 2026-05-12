@@ -21,7 +21,7 @@ export default function HoldingSparkline({ ticker, accountId }) {
 
   if (data.length < 2) return <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
 
-  const color = lastRate >= 0 ? '#10b981' : '#ef4444'
+  const color = lastRate >= 0 ? '#ef4444' : '#3b82f6'
 
   return (
     <ResponsiveContainer width={80} height={32}>
