@@ -112,10 +112,10 @@ export default function PortfolioTable({ onRowClick }) {
                 <TableCell className="text-right">{formatCurrency(h.avgPrice, h.currency)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(h.currentPrice, h.currency)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(h.evalValue, h.currency)}</TableCell>
-                <TableCell className={`text-right font-semibold ${h.pnl >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                <TableCell className={`text-right font-semibold ${h.pnl >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
                   {h.pnl >= 0 ? '+' : ''}{formatCurrency(h.pnl, h.currency)}
                 </TableCell>
-                <TableCell className={`text-right font-semibold ${h.returnRate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                <TableCell className={`text-right font-semibold ${h.returnRate >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
                   {formatPercent(h.returnRate)}
                 </TableCell>
                 <TableCell className="text-right text-gray-600 dark:text-gray-400">
