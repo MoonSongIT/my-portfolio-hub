@@ -32,19 +32,26 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 /**
- * HoldingPnlTimeline — 전체 보유 종목 누적 수익률 오버레이 차트
+ * HoldingPnlTimeline — 현재 보유 종목 누적 수익률 오버레이 차트
  * Props:
- *   accountId : string | 'all'
- *   height    : number  (기본 300)
+ *   accountId    : string | 'all'
+ *   activeTickers: string[]  현재 보유 중인 티커 목록 (없으면 전체 표시)
+ *   height       : number  (기본 300)
  */
-export default function HoldingPnlTimeline({ accountId, height = 300 }) {
+export default function HoldingPnlTimeline({ accountId, activeTickers, height = 300 }) {
   const snapshots = useDailyPnlStore(s => s.snapshots)
+  const tickerSet = useMemo(
+    () => activeTickers ? new Set(activeTickers) : null,
+    [activeTickers?.join(',')]
+  )
 
   // 종목별 { date -> cumulativePnlRate } 집계
   const { dates, tickers, tickerNames, merged } = useMemo(() => {
-    const all = Object.values(snapshots).filter(s =>
-      !accountId || accountId === 'all' || s.accountId === accountId
-    )
+    const all = Object.values(snapshots).filter(s => {
+      if (accountId && accountId !== 'all' && s.accountId !== accountId) return false
+      if (tickerSet && !tickerSet.has(s.ticker)) return false
+      return true
+    })
     if (all.length === 0) return { dates: [], tickers: [], tickerNames: {}, merged: [] }
 
     // 날짜 유니크 + 정렬

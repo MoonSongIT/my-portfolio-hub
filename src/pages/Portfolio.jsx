@@ -334,13 +334,16 @@ export default function Portfolio() {
         </CardHeader>
         <CardContent>
           {selectedAccountId === 'all' && accounts.length >= 2
-            ? accounts.map(acc => (
-                <div key={acc.id} className="mb-6 last:mb-0">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{acc.name}</p>
-                  <HoldingPnlTimeline accountId={acc.id} height={240} />
-                </div>
-              ))
-            : <HoldingPnlTimeline accountId={selectedAccountId} height={300} />
+            ? accounts.map(acc => {
+                const accTickers = holdings.filter(h => h.accountId === acc.id).map(h => h.ticker)
+                return (
+                  <div key={acc.id} className="mb-6 last:mb-0">
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{acc.name}</p>
+                    <HoldingPnlTimeline accountId={acc.id} activeTickers={accTickers} height={240} />
+                  </div>
+                )
+              })
+            : <HoldingPnlTimeline accountId={selectedAccountId} activeTickers={holdings.map(h => h.ticker)} height={300} />
           }
         </CardContent>
       </Card>
