@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
-import { ArrowUpDown } from 'lucide-react'
+import { ArrowUpDown, AlertTriangle } from 'lucide-react'
 import { usePortfolioStore } from '../../store/portfolioStore'
-import { calculateReturn, calcAllocation } from '../../utils/calculator'
+import HoldingSparkline from '../charts/HoldingSparkline'
+import { calculateReturn, calculatePositionPnL, calcAllocation } from '../../utils/calculator'
 import { formatCurrency, formatPercent, formatNumber } from '../../utils/formatters'
 import {
   Table,
@@ -29,6 +30,7 @@ export default function PortfolioTable({ onRowClick }) {
         ...h,
         returnRate: calculateReturn(h.avgPrice, h.currentPrice),
         evalValue: h.quantity * h.currentPrice,
+        pnl: calculatePositionPnL(h.quantity, h.avgPrice, h.currentPrice),
         weight: allocations[i]?.weight || 0,
       }))
       .sort((a, b) => {
@@ -37,6 +39,7 @@ export default function PortfolioTable({ onRowClick }) {
           case 'returnRate': diff = a.returnRate - b.returnRate; break
           case 'weight': diff = a.weight - b.weight; break
           case 'evalValue': diff = a.evalValue - b.evalValue; break
+          case 'pnl': diff = a.pnl - b.pnl; break
           case 'name': diff = a.name.localeCompare(b.name); break
           default: diff = 0
         }
@@ -72,6 +75,7 @@ export default function PortfolioTable({ onRowClick }) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>추이</TableHead>
               <TableHead><SortButton label="종목명" sortField="name" /></TableHead>
               <TableHead>티커</TableHead>
               {showAccountColumn && <TableHead>계좌</TableHead>}
@@ -79,6 +83,7 @@ export default function PortfolioTable({ onRowClick }) {
               <TableHead className="text-right">평균매수가</TableHead>
               <TableHead className="text-right">현재가</TableHead>
               <TableHead className="text-right"><SortButton label="평가금액" sortField="evalValue" /></TableHead>
+              <TableHead className="text-right"><SortButton label="평가손익" sortField="pnl" /></TableHead>
               <TableHead className="text-right"><SortButton label="수익률" sortField="returnRate" /></TableHead>
               <TableHead className="text-right"><SortButton label="비중" sortField="weight" /></TableHead>
             </TableRow>
@@ -87,9 +92,12 @@ export default function PortfolioTable({ onRowClick }) {
             {sortedHoldings.map((h) => (
               <TableRow
                 key={`${h.accountId}-${h.ticker}`}
-                className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${onRowClick ? 'cursor-pointer' : ''}`}
+                className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${onRowClick ? 'cursor-pointer' : ''} ${h.weight > 30 ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}
                 onClick={() => onRowClick?.(h)}
               >
+                <TableCell>
+                  <HoldingSparkline ticker={h.ticker} accountId={h.accountId} />
+                </TableCell>
                 <TableCell>
                   <p className="font-medium text-gray-900 dark:text-gray-100">{h.name}</p>
                   <p className="text-xs text-gray-500">{h.market}</p>
@@ -104,17 +112,23 @@ export default function PortfolioTable({ onRowClick }) {
                 <TableCell className="text-right">{formatCurrency(h.avgPrice, h.currency)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(h.currentPrice, h.currency)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(h.evalValue, h.currency)}</TableCell>
-                <TableCell className={`text-right font-semibold ${h.returnRate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                <TableCell className={`text-right font-semibold ${h.pnl >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                  {h.pnl >= 0 ? '+' : ''}{formatCurrency(h.pnl, h.currency)}
+                </TableCell>
+                <TableCell className={`text-right font-semibold ${h.returnRate >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
                   {formatPercent(h.returnRate)}
                 </TableCell>
                 <TableCell className="text-right text-gray-600 dark:text-gray-400">
-                  {h.weight.toFixed(1)}%
+                  <span className="inline-flex items-center justify-end gap-1">
+                    {h.weight > 30 && <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />}
+                    {h.weight.toFixed(1)}%
+                  </span>
                 </TableCell>
               </TableRow>
             ))}
             {sortedHoldings.length === 0 && (
               <TableRow>
-                <TableCell colSpan={showAccountColumn ? 9 : 8} className="text-center py-10 text-gray-500">
+                <TableCell colSpan={showAccountColumn ? 11 : 10} className="text-center py-10 text-gray-500">
                   <p className="text-base mb-1">보유 종목이 없습니다.</p>
                   <p className="text-sm text-gray-400">거래 일지에 매수 기록을 추가하면 자동으로 표시됩니다.</p>
                 </TableCell>

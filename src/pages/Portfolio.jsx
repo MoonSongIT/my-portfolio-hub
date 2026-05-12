@@ -8,9 +8,10 @@ import { useCashFlowStore } from '../store/cashFlowStore'
 import { useJournalStore } from '../store/journalStore'
 import { useDailyPnlStore } from '../store/dailyPnlStore'
 import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
-import { calculateTotalValue, calculatePortfolioReturn, calculateTotalPnL } from '../utils/calculator'
+import { calculateTotalValue, calculatePortfolioReturn, calculateTotalPnL, calcMorningComparePnl } from '../utils/calculator'
 import { formatCurrency, formatPercent, formatCurrencyShort } from '../utils/formatters'
 import { snapshotToday, backfillHistory } from '../api/dailyPnlService'
+import { getByTicker } from '../utils/stockMasterDb'
 import PortfolioTable from '../components/portfolio/PortfolioTable'
 import AddStockModal from '../components/portfolio/AddStockModal'
 import AllocationPieChart from '../components/charts/AllocationPieChart'
@@ -34,6 +35,7 @@ export default function Portfolio() {
   const entries   = useJournalStore(s => s.entries)
   const snapshots = useDailyPnlStore(s => s.snapshots)
 
+  const [sectorMap, setSectorMap] = useState({})
   const [chatOpen, setChatOpen] = useState(false)
   const [addStockOpen, setAddStockOpen] = useState(false)
   // 종목 상세 드로어
@@ -70,12 +72,39 @@ export default function Portfolio() {
   }, [batchData])
 
   useEffect(() => {
+    if (holdings.length === 0) return
+    const fromBatch = {}
+    if (batchData) {
+      batchData.forEach(r => {
+        if (r.success && r.data?.sector) fromBatch[r.ticker] = r.data.sector
+      })
+    }
+    const tickers = [...new Set(holdings.map(h => h.ticker))]
+    const missing = tickers.filter(t => !fromBatch[t])
+    if (missing.length === 0) {
+      setSectorMap(fromBatch)
+      return
+    }
+    Promise.all(missing.map(t => getByTicker(t).then(row => [t, row?.sector])))
+      .then(pairs => {
+        const fromDb = Object.fromEntries(pairs.filter(([, s]) => s))
+        setSectorMap({ ...fromBatch, ...fromDb })
+      })
+  }, [batchData, holdings.map(h => h.ticker).join(',')])
+
+  useEffect(() => {
     if (rateData?.rate) updateExchangeRate(rateData.rate)
   }, [rateData])
+
+  const holdingsWithSector = useMemo(
+    () => holdings.map(h => ({ ...h, sector: sectorMap[h.ticker] ?? h.sector })),
+    [holdings, sectorMap]
+  )
 
   const totalValue  = useMemo(() => calculateTotalValue(holdings, cashKRW, cashUSD, exchangeRate), [holdings, cashKRW, cashUSD, exchangeRate])
   const totalReturn = useMemo(() => calculatePortfolioReturn(holdings, exchangeRate), [holdings, exchangeRate])
   const totalPnL    = useMemo(() => calculateTotalPnL(holdings, exchangeRate), [holdings, exchangeRate])
+  const morningPnl  = useMemo(() => calcMorningComparePnl(holdings, batchData, exchangeRate), [holdings, batchData, exchangeRate])
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['batchQuotes'] })
@@ -231,7 +260,7 @@ export default function Portfolio() {
       </div>
 
       {/* 요약 KPI 카드 */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border border-gray-200 dark:border-gray-700">
           <CardContent className="p-3 space-y-0.5 text-right">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400">총 평가금액</p>
@@ -255,6 +284,25 @@ export default function Portfolio() {
             <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatCurrency(cashKRW)}</p>
             {cashUSD > 0 && (
               <p className="text-xs text-gray-500 dark:text-gray-400">{formatCurrency(cashUSD, 'USD')}</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-200 dark:border-gray-700">
+          <CardContent className="p-3 space-y-0.5 text-right">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">오늘 추정손익</p>
+            {priceLoading ? (
+              <p className="text-xl font-bold text-gray-400 dark:text-gray-500 animate-pulse flex items-center justify-end gap-1">
+                <Loader2 className="w-4 h-4 animate-spin" />계산 중…
+              </p>
+            ) : (
+              <>
+                <p className={`text-xl font-bold ${morningPnl.amount >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {morningPnl.amount >= 0 ? '+' : ''}{formatCurrency(morningPnl.amount)}
+                </p>
+                <p className={`text-xs ${morningPnl.rate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {morningPnl.rate >= 0 ? '+' : ''}{morningPnl.rate.toFixed(2)}%
+                </p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -305,7 +353,18 @@ export default function Portfolio() {
           </div>
         </CardHeader>
         <CardContent>
-          <HoldingPnlTimeline accountId={selectedAccountId} height={300} />
+          {selectedAccountId === 'all' && accounts.length >= 2
+            ? accounts.map(acc => {
+                const accTickers = holdings.filter(h => h.accountId === acc.id).map(h => h.ticker)
+                return (
+                  <div key={acc.id} className="mb-6 last:mb-0">
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{acc.name}</p>
+                    <HoldingPnlTimeline accountId={acc.id} activeTickers={accTickers} height={240} />
+                  </div>
+                )
+              })
+            : <HoldingPnlTimeline accountId={selectedAccountId} activeTickers={holdings.map(h => h.ticker)} height={300} />
+          }
         </CardContent>
       </Card>
 
@@ -315,7 +374,7 @@ export default function Portfolio() {
           <CardTitle className="text-lg">자산 배분</CardTitle>
         </CardHeader>
         <CardContent>
-          <AllocationPieChart holdings={holdings} accounts={accounts} selectedAccountId={selectedAccountId} />
+          <AllocationPieChart holdings={holdingsWithSector} accounts={accounts} selectedAccountId={selectedAccountId} />
         </CardContent>
       </Card>
 

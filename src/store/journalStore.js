@@ -245,6 +245,7 @@ export const useJournalStore = create(
               ticker: e.ticker,
               name: e.name,
               market: e.market || 'KRX',
+              sector: e.sector || 'ETC',
               quantity: 0,
               totalCost: 0,
               accountId: e.accountId,
@@ -254,6 +255,7 @@ export const useJournalStore = create(
           if (e.action === 'buy') {
             pos.totalCost += e.price * e.quantity + (e.fee || 0)
             pos.quantity += e.quantity
+            pos.sector = e.sector || pos.sector
           } else {
             // 매도: 평균단가 기준으로 총원가 감소
             if (pos.quantity > 0) {
