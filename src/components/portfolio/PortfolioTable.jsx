@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { ArrowUpDown, AlertTriangle } from 'lucide-react'
 import { usePortfolioStore } from '../../store/portfolioStore'
+import HoldingSparkline from '../charts/HoldingSparkline'
 import { calculateReturn, calculatePositionPnL, calcAllocation } from '../../utils/calculator'
 import { formatCurrency, formatPercent, formatNumber } from '../../utils/formatters'
 import {
@@ -83,6 +84,7 @@ export default function PortfolioTable({ onRowClick }) {
               <TableHead className="text-right"><SortButton label="평가금액" sortField="evalValue" /></TableHead>
               <TableHead className="text-right"><SortButton label="평가손익" sortField="pnl" /></TableHead>
               <TableHead className="text-right"><SortButton label="수익률" sortField="returnRate" /></TableHead>
+              <TableHead className="text-right">추이</TableHead>
               <TableHead className="text-right"><SortButton label="비중" sortField="weight" /></TableHead>
             </TableRow>
           </TableHeader>
@@ -113,6 +115,11 @@ export default function PortfolioTable({ onRowClick }) {
                 <TableCell className={`text-right font-semibold ${h.returnRate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                   {formatPercent(h.returnRate)}
                 </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end">
+                    <HoldingSparkline ticker={h.ticker} accountId={h.accountId} />
+                  </div>
+                </TableCell>
                 <TableCell className="text-right text-gray-600 dark:text-gray-400">
                   <span className="inline-flex items-center justify-end gap-1">
                     {h.weight > 30 && <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />}
@@ -123,7 +130,7 @@ export default function PortfolioTable({ onRowClick }) {
             ))}
             {sortedHoldings.length === 0 && (
               <TableRow>
-                <TableCell colSpan={showAccountColumn ? 10 : 9} className="text-center py-10 text-gray-500">
+                <TableCell colSpan={showAccountColumn ? 11 : 10} className="text-center py-10 text-gray-500">
                   <p className="text-base mb-1">보유 종목이 없습니다.</p>
                   <p className="text-sm text-gray-400">거래 일지에 매수 기록을 추가하면 자동으로 표시됩니다.</p>
                 </TableCell>
