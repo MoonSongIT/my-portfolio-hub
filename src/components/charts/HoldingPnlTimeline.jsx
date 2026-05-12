@@ -59,8 +59,8 @@ export default function HoldingPnlTimeline({ accountId, activeTickers, height = 
     const dates   = [...dateSet].sort()
 
     // 종목 유니크
-    const tickerSet = new Set(all.map(s => s.ticker))
-    const tickers   = [...tickerSet]
+    const snapshotTickerSet = new Set(all.map(s => s.ticker))
+    const tickers           = [...snapshotTickerSet]
     const tickerNames = {}
     all.forEach(s => { tickerNames[s.ticker] = s.name || s.ticker })
 
