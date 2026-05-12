@@ -201,3 +201,19 @@ export const calculateWinRate = (entries) => {
   const wins = pnlEntries.filter(e => e.pnl > 0).length
   return Math.round((wins / pnlEntries.length) * 100)
 }
+
+// 일지 기반 누적 실현손익 합산 (매도 entry.pnl 합계, USD는 환율 적용)
+export const calculateTotalRealizedPnl = (entries, exchangeRate = EXCHANGE_RATE) => {
+  return entries
+    .filter(e => e.action === 'sell' && e.pnl != null)
+    .reduce((sum, e) => {
+      const pnl = e.currency === 'USD' ? e.pnl * exchangeRate : e.pnl
+      return sum + pnl
+    }, 0)
+}
+
+// 종합수익률 = (미실현손익 + 실현손익합계 + 배당금) / 투자원금 × 100
+export const calculateComprehensiveReturn = (unrealizedPnl, realizedPnl, dividends, totalInvestment) => {
+  if (totalInvestment <= 0) return 0
+  return ((unrealizedPnl + realizedPnl + dividends) / totalInvestment) * 100
+}
