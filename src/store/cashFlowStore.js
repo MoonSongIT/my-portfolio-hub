@@ -17,6 +17,22 @@ export const CASH_FLOW_TYPES = {
   WITHDRAWAL: { code: 'withdrawal', label: '출금',   color: 'text-orange-500' },
 }
 
+// ─── 입출금 카테고리 상수 ───
+// isCapital: true  → 수익률 계산 분모(순투자원금)에 포함
+// isCapital: false → 잔고에는 반영되나 수익률 분모에서 제외
+export const CASH_FLOW_CATEGORIES = {
+  INVESTMENT_IN:  { code: 'investment_in',  label: '투자금 입금', type: 'deposit',    isCapital: true  },
+  DIVIDEND:       { code: 'dividend',       label: '배당금',      type: 'deposit',    isCapital: false },
+  INTEREST:       { code: 'interest',       label: '이자/기타',   type: 'deposit',    isCapital: false },
+  ADJUST_PLUS:    { code: 'adjust_plus',    label: '조정(+)',     type: 'deposit',    isCapital: false },
+  INVESTMENT_OUT: { code: 'investment_out', label: '투자금 출금', type: 'withdrawal', isCapital: true  },
+  FEE_TAX:        { code: 'fee_tax',        label: '수수료/세금', type: 'withdrawal', isCapital: false },
+  ADJUST_MINUS:   { code: 'adjust_minus',   label: '조정(-)',     type: 'withdrawal', isCapital: false },
+}
+
+export const DEPOSIT_CATEGORIES    = Object.values(CASH_FLOW_CATEGORIES).filter(c => c.type === 'deposit')
+export const WITHDRAWAL_CATEGORIES = Object.values(CASH_FLOW_CATEGORIES).filter(c => c.type === 'withdrawal')
+
 export const useCashFlowStore = create(
   persist(
     immer((set, get) => ({
@@ -27,12 +43,15 @@ export const useCashFlowStore = create(
       // 수동 입출금 추가
       addCashFlow: (flow) => {
         const userId = useAuthStore.getState().currentUser?.id
+        // 카테고리 미지정 시 type 기반 기본값 적용
+        const defaultCategory = flow.type === 'withdrawal' ? 'investment_out' : 'investment_in'
         const newFlow = {
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           isAuto: false,
           memo: '',
           userId,
+          category: defaultCategory,
           ...flow,
         }
         set((state) => { state.cashFlows.push(newFlow) })
@@ -110,12 +129,29 @@ export const useCashFlowStore = create(
         }
       },
 
+      // category 필드 없는 기존 레코드에 기본 카테고리 마이그레이션
+      migrateCashFlowCategories: () => {
+        const ids = []
+        set((state) => {
+          state.cashFlows.forEach(f => {
+            if (!f.category) {
+              f.category = f.type === 'withdrawal' ? 'investment_out' : 'investment_in'
+              ids.push({ id: f.id, category: f.category })
+            }
+          })
+        })
+        ids.forEach(({ id, category }) =>
+          dbUpdate(id, { category }).catch(err => console.warn('[DB] migrateCashFlowCategories failed:', err))
+        )
+      },
+
       // 앱 시작 시 IndexedDB에서 사용자별 로드
       loadFromDB: async (userId) => {
         if (!userId) return
         try {
           const dbFlows = await getCashFlowsByUser(userId)
           set((state) => { state.cashFlows = dbFlows })
+          get().migrateCashFlowCategories()
         } catch (err) {
           console.warn('[DB] cashFlow loadFromDB failed, using localStorage:', err)
         }
@@ -136,23 +172,43 @@ export const useCashFlowStore = create(
       },
 
       // 계좌별 총 입금액
-      getTotalDeposit: (accountId) => {
-        const flows = get().cashFlows.filter(f =>
-          f.type === 'deposit' &&
-          !f.isAuto &&
-          (accountId === 'all' || f.accountId === accountId)
-        )
+      // capitalOnly=true 시 isCapital 카테고리(투자금 입금)만 합산
+      getTotalDeposit: (accountId, capitalOnly = false) => {
+        const allCategories = Object.values(CASH_FLOW_CATEGORIES)
+        const flows = get().cashFlows.filter(f => {
+          if (f.type !== 'deposit' || f.isAuto) return false
+          if (accountId !== 'all' && f.accountId !== accountId) return false
+          if (capitalOnly) {
+            const cat = allCategories.find(c => c.code === f.category)
+            return cat ? cat.isCapital : true // 카테고리 없는 레거시는 자본으로 처리
+          }
+          return true
+        })
         return flows.reduce((sum, f) => sum + (f.amount || 0), 0)
       },
 
       // 계좌별 총 출금액
-      getTotalWithdrawal: (accountId) => {
-        const flows = get().cashFlows.filter(f =>
-          f.type === 'withdrawal' &&
-          !f.isAuto &&
-          (accountId === 'all' || f.accountId === accountId)
-        )
+      // capitalOnly=true 시 isCapital 카테고리(투자금 출금)만 합산
+      getTotalWithdrawal: (accountId, capitalOnly = false) => {
+        const allCategories = Object.values(CASH_FLOW_CATEGORIES)
+        const flows = get().cashFlows.filter(f => {
+          if (f.type !== 'withdrawal' || f.isAuto) return false
+          if (accountId !== 'all' && f.accountId !== accountId) return false
+          if (capitalOnly) {
+            const cat = allCategories.find(c => c.code === f.category)
+            return cat ? cat.isCapital : true
+          }
+          return true
+        })
         return flows.reduce((sum, f) => sum + (f.amount || 0), 0)
+      },
+
+      // 순투자원금 = isCapital 입금 합계 − isCapital 출금 합계
+      // 수익률 계산 분모로 사용
+      getNetCapital: (accountId) => {
+        const totalIn  = get().getTotalDeposit(accountId, true)
+        const totalOut = get().getTotalWithdrawal(accountId, true)
+        return totalIn - totalOut
       },
 
       // 투자 가능 금액 = 잔고누계 마지막 값
