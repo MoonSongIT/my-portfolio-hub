@@ -27,7 +27,8 @@ import { formatCurrency, formatPercent, formatCurrencyShort } from '../utils/for
 import { aggregatePortfolioHistory } from '../utils/portfolioAggregator'
 import AllocationPieChart from '../components/charts/AllocationPieChart'
 import ProfitLineChart from '../components/charts/ProfitLineChart'
-import AccountSelector from '../components/common/AccountSelector'
+import AccountSelector from '../components/account/AccountSelector'
+import AccountSetupModal from '../components/account/AccountSetupModal'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -42,11 +43,13 @@ export default function Dashboard() {
   const [overwriteConfirm, setOverwriteConfirm] = useState(false)
   const [existingSnapshotTime, setExistingSnapshotTime] = useState('')
   const [chartPeriod, setChartPeriod] = useState(30)
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
   const autoSnapshotRan = useRef(false)
   const {
     accounts, selectedAccountId, exchangeRate,
     getSelectedHoldings, getSelectedCash,
     updateAllPrices, updateExchangeRate, lastUpdated,
+    selectAccount,
   } = usePortfolioStore()
 
   // 실제 계좌 수는 accountStore 기준으로 읽음 (portfolioStore.accounts는 동기화 지연 있음)
@@ -378,7 +381,12 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-        <AccountSelector />
+        <AccountSelector
+          value={selectedAccountId}
+          onChange={selectAccount}
+          showAllOption={true}
+          onAddClick={() => setAccountModalOpen(true)}
+        />
       </div>
 
       {/* API 에러 배너 */}
@@ -542,6 +550,7 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+      <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
     </div>
   )
 }

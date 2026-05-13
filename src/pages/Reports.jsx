@@ -21,7 +21,8 @@ import { formatPercent, formatShortDate, formatCurrencyShort } from '../utils/fo
 import { exportAsPNG, exportAsPDF } from '../utils/exportReport'
 import { saveScheduledReport, shouldGenerateWeeklyReport } from '../agents/reportAgent'
 import { getLatestReportByType } from '../utils/db'
-import AccountSelector from '../components/common/AccountSelector'
+import AccountSelector from '../components/account/AccountSelector'
+import AccountSetupModal from '../components/account/AccountSetupModal'
 import TradeHistoryTable from '../components/reports/TradeHistoryTable'
 import InsightsCard from '../components/reports/InsightsCard'
 import PerformanceRanking from '../components/reports/PerformanceRanking'
@@ -116,7 +117,7 @@ function ExportMenu({ onPNG, onPDF }) {
 }
 
 export default function Reports() {
-  const { accounts, selectedAccountId, getSelectedHoldings } = usePortfolioStore()
+  const { accounts, selectedAccountId, getSelectedHoldings, selectAccount } = usePortfolioStore()
   const { entries } = useJournalStore()
   const currentUser = useAuthStore(s => s.currentUser)
   const { ensureKey, guardProps } = useApiKeyGuard()
@@ -124,6 +125,7 @@ export default function Reports() {
   const [benchmark, setBenchmark] = useState({ KOSPI: [], SP500: [] })
   const [benchLoading, setBenchLoading] = useState(false)
   const [weeklyStatus, setWeeklyStatus] = useState('idle') // 'idle' | 'loading' | 'saved' | 'exists' | 'error'
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
   const reportRef = useRef(null)
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
@@ -295,7 +297,12 @@ export default function Reports() {
           <ExportMenu onPNG={handleExportPNG} onPDF={handleExportPDF} />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <AccountSelector />
+          <AccountSelector
+            value={selectedAccountId}
+            onChange={selectAccount}
+            showAllOption={true}
+            onAddClick={() => setAccountModalOpen(true)}
+          />
           <div className="flex gap-1">
             {DATE_RANGES.map(r => (
               <button
@@ -584,6 +591,7 @@ export default function Reports() {
         </TabsContent>
       </Tabs>
       <ApiKeyRequiredDialog {...guardProps} />
+      <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
     </div>
   )
 }

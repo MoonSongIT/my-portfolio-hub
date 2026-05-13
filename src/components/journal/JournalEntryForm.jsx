@@ -170,6 +170,24 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
     return Object.keys(e).length === 0
   }
 
+  const doSave = (entry) => {
+    if (isEdit) {
+      updateEntry(editEntry.id, entry)
+    } else {
+      addEntry(entry)
+      if (entry.action === 'buy' && entry.accountId) {
+        ensureHistory(entry.ticker, entry.accountId, entry.market).then(results => {
+          if (results.length > 0) {
+            toast.success(`${entry.name} 손익 히스토리 로드 완료 (${results.length}일)`)
+          }
+        }).catch(() => {
+          toast.error(`${entry.name} 손익 히스토리 로드 실패. 포트폴리오에서 수동으로 로드해주세요.`)
+        })
+      }
+    }
+    onClose()
+  }
+
   const handleSubmit = () => {
     if (!validate()) return
 
@@ -191,22 +209,28 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
       pnl: form.pnl !== '' ? Number(form.pnl) : null,
     }
 
-    if (isEdit) {
-      updateEntry(editEntry.id, entry)
-    } else {
-      addEntry(entry)
-      if (entry.action === 'buy' && entry.accountId) {
-        ensureHistory(entry.ticker, entry.accountId, entry.market).then(results => {
-          if (results.length > 0) {
-            toast.success(`${entry.name} 손익 히스토리 로드 완료 (${results.length}일)`)
+    if (!isEdit) {
+      const ticker = form.ticker.trim().toUpperCase()
+      const duplicate = entries.find(e =>
+        e.date === form.date &&
+        e.ticker === ticker &&
+        e.action === form.action &&
+        e.quantity === quantity
+      )
+      if (duplicate) {
+        toast.warning(
+          `동일한 거래가 이미 있습니다. (${form.date} ${ticker} ${ACTION_LABEL[form.action]} ${quantity}주)`,
+          {
+            action: { label: '계속 저장', onClick: () => doSave(entry) },
+            cancel: { label: '취소' },
+            duration: 8000,
           }
-        }).catch(() => {
-          toast.error(`${entry.name} 손익 히스토리 로드 실패. 포트폴리오에서 수동으로 로드해주세요.`)
-        })
+        )
+        return
       }
     }
 
-    onClose()
+    doSave(entry)
   }
 
   const amount = form.price && form.quantity
