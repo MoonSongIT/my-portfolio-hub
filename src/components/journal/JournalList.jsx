@@ -21,7 +21,7 @@ export default function JournalList({ filterAccountId = 'all', dateRange = 'all'
     .filter(e => filterAccountId === 'all' || e.accountId === filterAccountId)
     .filter(e => filterAction === '전체' || e.action === (filterAction === '매수' ? 'buy' : 'sell'))
     .filter(e => filterPsychology === '전체' || e.psychology === filterPsychology)
-    .filter(e => !searchTicker || e.name.includes(searchTicker) || e.ticker.includes(searchTicker.toUpperCase()))
+    .filter(e => !searchTicker || e.name.includes(searchTicker) || e.ticker.includes(searchTicker.toUpperCase()) || e.memo?.includes(searchTicker))
     .sort((a, b) => b.date.localeCompare(a.date))
 
   // 날짜별 그룹화
