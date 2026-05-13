@@ -3,6 +3,7 @@ import { useJournalStore } from '../store/journalStore'
 import { useUserAccounts } from '../store/accountStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { filterByDateRange } from '../utils/calculator'
+import { exportJournalCsv } from '../utils/dataExport'
 import AccountSelector from '../components/account/AccountSelector'
 import AccountSetupModal from '../components/account/AccountSetupModal'
 import JournalEntryForm from '../components/journal/JournalEntryForm'
@@ -13,6 +14,8 @@ import PsychologyProfitChart from '../components/charts/PsychologyProfitChart'
 import ChatPanel from '../components/chat/ChatPanel'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts'
+import { formatCurrencyShort } from '../utils/formatters'
 
 export default function Journal() {
   const [entryFormOpen, setEntryFormOpen] = useState(false)
@@ -47,6 +50,22 @@ export default function Journal() {
   const chartData = getProfitByPsychology(accountFilter, exchangeRate, filteredEntries)
   const stats = getSummaryStats(accountFilter, filteredEntries)
 
+  // 월별 거래 건수 + 실현손익 집계 (최근 6개월)
+  const monthlyStats = useMemo(() => {
+    const map = {}
+    const filtered = accountFilter
+      ? filteredEntries.filter(e => e.accountId === accountFilter)
+      : filteredEntries
+    filtered.forEach(e => {
+      const month = e.date?.slice(0, 7)
+      if (!month) return
+      if (!map[month]) map[month] = { month, 거래건수: 0, 실현손익: 0 }
+      map[month].거래건수 += 1
+      if (e.pnl != null) map[month].실현손익 += e.pnl
+    })
+    return Object.values(map).sort((a, b) => a.month.localeCompare(b.month)).slice(-6)
+  }, [filteredEntries, accountFilter])
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* 헤더 */}
@@ -64,6 +83,9 @@ export default function Journal() {
           </Button>
           <Button variant="outline" onClick={() => setHtsImportOpen(true)}>
             HTS 가져오기
+          </Button>
+          <Button variant="outline" onClick={() => exportJournalCsv(filteredEntries)}>
+            CSV 내보내기
           </Button>
           <Button variant="outline" onClick={() => setChatOpen(true)}>
             📔 AI 패턴 분석
@@ -116,6 +138,32 @@ export default function Journal() {
             color={stats.totalPnl >= 0 ? 'green' : 'red'}
           />
         </div>
+      )}
+
+      {/* 월별 거래 트렌드 차트 */}
+      {monthlyStats.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">월별 거래 트렌드</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={monthlyStats} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                <YAxis yAxisId="count" orientation="left" tick={{ fontSize: 12 }} width={32} />
+                <YAxis yAxisId="pnl" orientation="right" tickFormatter={v => formatCurrencyShort(v)} tick={{ fontSize: 12 }} width={56} />
+                <Tooltip
+                  formatter={(v, name) => name === '실현손익' ? [formatCurrencyShort(v), name] : [`${v}건`, name]}
+                  contentStyle={{ fontSize: 13, borderRadius: 8 }}
+                />
+                <Legend iconType="rect" wrapperStyle={{ fontSize: 13 }} />
+                <Bar yAxisId="count" dataKey="거래건수" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                <Bar yAxisId="pnl" dataKey="실현손익" fill="#10b981" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       )}
 
       {/* 심리 유형별 수익률 차트 */}

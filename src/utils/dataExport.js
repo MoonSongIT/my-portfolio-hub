@@ -1,3 +1,39 @@
+// 매매일지 CSV 내보내기 (UTF-8 BOM, Excel 한글 호환)
+export function exportJournalCsv(entries) {
+  const headers = ['날짜', '계좌ID', '종목코드', '종목명', '시장', '매수/매도', '가격', '수량', '금액', '수수료', '심리', '메모', '실현손익']
+  const rows = entries.map(e => [
+    e.date ?? '',
+    e.accountId ?? '',
+    e.ticker ?? '',
+    e.name ?? '',
+    e.market ?? '',
+    e.action === 'buy' ? '매수' : e.action === 'sell' ? '매도' : e.action ?? '',
+    e.price ?? '',
+    e.quantity ?? '',
+    e.price != null && e.quantity != null ? e.price * e.quantity : '',
+    e.fee ?? '',
+    e.psychology ?? '',
+    (e.memo ?? '').replace(/"/g, '""'),
+    e.pnl ?? '',
+  ])
+
+  const escape = (v) => {
+    const s = String(v)
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s
+  }
+  const csv = [headers, ...rows].map(row => row.map(escape).join(',')).join('\r\n')
+  const bom = '\uFEFF'
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `journal_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 import { db } from './db'
 import { useAccountStore } from '../store/accountStore'
 import { useSettingsStore } from '../store/settingsStore'
