@@ -1,17 +1,20 @@
 import { useState } from 'react'
 import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, Pencil, Building2 } from 'lucide-react'
-import { useAccountStore, useUserAccounts, ACCOUNT_TYPES } from '../store/accountStore'
+import { useUserAccounts, ACCOUNT_TYPES } from '../store/accountStore'
+import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
 import AccountSelector from '../components/account/AccountSelector'
 import AccountSetupModal from '../components/account/AccountSetupModal'
 import AvailableCashCard from '../components/portfolio/AvailableCashCard'
 import CashFlowHistory from '../components/portfolio/CashFlowHistory'
 import CashFlowModal from '../components/portfolio/CashFlowModal'
+import CashFlowChart from '../components/charts/CashFlowChart'
 
 const DATE_FILTERS = [
   { value: 'all',        label: '전체' },
   { value: 'this_month', label: '이번달' },
   { value: '3month',     label: '3개월' },
+  { value: 'custom',     label: '직접 입력' },
 ]
 
 // 계좌 유형 배지 색상
@@ -25,8 +28,11 @@ const TYPE_COLOR = {
 
 export default function CashFlow() {
   const accounts = useUserAccounts()
-  const [selectedAccountId, setSelectedAccountId] = useState('all')
+  const selectedAccountId = usePortfolioStore(s => s.selectedAccountId)
+  const setSelectedAccountId = usePortfolioStore(s => s.selectAccount)
   const [dateFilter, setDateFilter] = useState('all')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [modalType, setModalType] = useState('deposit')
   const [accountModalOpen, setAccountModalOpen] = useState(false)
@@ -113,32 +119,56 @@ export default function CashFlow() {
       {/* 투자 가능 금액 KPI 카드 */}
       <AvailableCashCard accountId={selectedAccountId} />
 
+      {/* 자금 흐름 차트 */}
+      <CashFlowChart accountId={selectedAccountId} />
+
       {/* 입출금 내역 */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
         {/* 내역 헤더 */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
           <h3 className="font-semibold text-gray-900 dark:text-white text-sm">입출금 내역</h3>
           {/* 날짜 필터 탭 */}
-          <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
-            {DATE_FILTERS.map(f => (
-              <button
-                key={f.value}
-                onClick={() => setDateFilter(f.value)}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition ${
-                  dateFilter === f.value
-                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
+              {DATE_FILTERS.map(f => (
+                <button
+                  key={f.value}
+                  onClick={() => setDateFilter(f.value)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                    dateFilter === f.value
+                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {dateFilter === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={e => setCustomFrom(e.target.value)}
+                  className="px-2 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-400">~</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={e => setCustomTo(e.target.value)}
+                  className="px-2 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            )}
           </div>
         </div>
 
         <CashFlowHistory
           accountId={selectedAccountId}
           dateFilter={dateFilter}
+          customFrom={customFrom}
+          customTo={customTo}
         />
       </div>
 
