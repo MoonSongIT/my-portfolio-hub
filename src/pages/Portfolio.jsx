@@ -17,7 +17,8 @@ import AddStockModal from '../components/portfolio/AddStockModal'
 import AllocationPieChart from '../components/charts/AllocationPieChart'
 import DailyPnlChart from '../components/charts/DailyPnlChart'
 import HoldingPnlTimeline from '../components/charts/HoldingPnlTimeline'
-import AccountSelector from '../components/common/AccountSelector'
+import AccountSelector from '../components/account/AccountSelector'
+import AccountSetupModal from '../components/account/AccountSetupModal'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
@@ -30,6 +31,7 @@ export default function Portfolio() {
     accounts, selectedAccountId, exchangeRate,
     getSelectedHoldings, getSelectedCash,
     updateAllPrices, updateExchangeRate, lastUpdated,
+    selectAccount,
   } = usePortfolioStore()
   const cashFlows = useCashFlowStore(s => s.cashFlows)
   const entries   = useJournalStore(s => s.entries)
@@ -37,6 +39,7 @@ export default function Portfolio() {
 
   const [sectorMap, setSectorMap] = useState({})
   const [chatOpen, setChatOpen] = useState(false)
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
   const [addStockOpen, setAddStockOpen] = useState(false)
   // 종목 상세 드로어
   const [drawerTicker, setDrawerTicker] = useState(null) // { ticker, accountId, name, market }
@@ -256,7 +259,12 @@ export default function Portfolio() {
             </Button>
           </div>
         </div>
-        <AccountSelector />
+        <AccountSelector
+          value={selectedAccountId}
+          onChange={selectAccount}
+          showAllOption={true}
+          onAddClick={() => setAccountModalOpen(true)}
+        />
       </div>
 
       {/* 요약 KPI 카드 */}
@@ -456,6 +464,7 @@ export default function Portfolio() {
 
       {/* 종목 추가 모달 */}
       <AddStockModal open={addStockOpen} onClose={() => setAddStockOpen(false)} />
+      <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
 
       {/* AI 채팅 패널 */}
       <ChatPanel

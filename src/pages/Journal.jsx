@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useJournalStore } from '../store/journalStore'
 import { useUserAccounts } from '../store/accountStore'
 import { usePortfolioStore } from '../store/portfolioStore'
+import AccountSelector from '../components/account/AccountSelector'
+import AccountSetupModal from '../components/account/AccountSetupModal'
 import JournalEntryForm from '../components/journal/JournalEntryForm'
 import JournalBatchForm from '../components/journal/JournalBatchForm'
 import JournalList from '../components/journal/JournalList'
@@ -14,6 +16,7 @@ export default function Journal() {
   const [entryFormOpen, setEntryFormOpen] = useState(false)
   const [batchFormOpen, setBatchFormOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
   const selectedAccountId    = usePortfolioStore(s => s.selectedAccountId)
   const setSelectedAccountId = usePortfolioStore(s => s.selectAccount)
 
@@ -55,27 +58,13 @@ export default function Journal() {
         </div>
       </div>
 
-      {/* 계좌 탭 필터 (계좌 2개 이상일 때만 표시) */}
-      {accounts.length > 1 && (
-        <div className="flex gap-1 flex-wrap">
-          {['all', ...accounts.map(a => a.id)].map((id) => {
-            const label = id === 'all' ? '전체' : (accounts.find(a => a.id === id)?.name ?? id)
-            return (
-              <button
-                key={id}
-                onClick={() => setSelectedAccountId(id)}
-                className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                  selectedAccountId === id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {/* 계좌 선택 */}
+      <AccountSelector
+        value={selectedAccountId}
+        onChange={setSelectedAccountId}
+        showAllOption={true}
+        onAddClick={() => setAccountModalOpen(true)}
+      />
 
       {/* 요약 통계 */}
       {stats.totalCount > 0 && (
@@ -132,6 +121,7 @@ export default function Journal() {
         forceAgent="journal"
         initialMessage="내 매매 패턴을 분석해줘"
       />
+      <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
     </div>
   )
 }
