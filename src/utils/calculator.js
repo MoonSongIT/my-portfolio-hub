@@ -1,4 +1,5 @@
 import { EXCHANGE_RATE } from '../data/samplePortfolio'
+import { CASH_FLOW_CATEGORIES } from '../store/cashFlowStore'
 
 // 수익률 계산 (%)
 export const calculateReturn = (buyPrice, currentPrice) => {
@@ -216,4 +217,23 @@ export const calculateTotalRealizedPnl = (entries, exchangeRate = EXCHANGE_RATE)
 export const calculateComprehensiveReturn = (unrealizedPnl, realizedPnl, dividends, totalInvestment) => {
   if (totalInvestment <= 0) return 0
   return ((unrealizedPnl + realizedPnl + dividends) / totalInvestment) * 100
+}
+
+// 순 투자원금 계산 — isCapital=true 카테고리 입출금만 합산
+// 배당금·이자·조정 항목은 잔고에는 반영되나 수익률 분모에서 제외
+export const calculateNetCapital = (cashFlows, accountId = 'all', exchangeRate = EXCHANGE_RATE) => {
+  const allCategories = Object.values(CASH_FLOW_CATEGORIES)
+  const capitalFlows = cashFlows.filter(f => {
+    if (f.isAuto) return false
+    if (accountId !== 'all' && f.accountId !== accountId) return false
+    const cat = allCategories.find(c => c.code === f.category)
+    return cat ? cat.isCapital : true // category 없는 레거시 레코드는 자본으로 처리
+  })
+  const krw = capitalFlows
+    .filter(f => f.currency !== 'USD')
+    .reduce((sum, f) => sum + (f.type === 'deposit' ? f.amount : -f.amount), 0)
+  const usd = capitalFlows
+    .filter(f => f.currency === 'USD')
+    .reduce((sum, f) => sum + (f.type === 'deposit' ? f.amount : -f.amount), 0)
+  return { krw, usd, total: krw + usd * exchangeRate }
 }

@@ -13,9 +13,9 @@ import {
   calculateTotalValue,
   calculatePortfolioReturn,
   calculateTotalPnL,
-  calculateTotalInvestment,
   calculateTotalRealizedPnl,
   calculateComprehensiveReturn,
+  calculateNetCapital,
   calcAllocation,
   calculateReturn,
   calcMorningComparePnl,
@@ -184,29 +184,22 @@ export default function Dashboard() {
     [selectedAccountId, getAvailableCash]
   )
 
-  const totalInvestment = useMemo(() => {
-    const EXCLUDED_MEMOS = ['배당금', '매도차익', '실현이익']
-    return cashFlows
-      .filter(f =>
-        f.type === 'deposit' &&
-        !f.isAuto &&
-        !EXCLUDED_MEMOS.some(keyword => f.memo?.includes(keyword)) &&
-        (selectedAccountId === 'all' || f.accountId === selectedAccountId)
-      )
-      .reduce((sum, f) => sum + (f.amount || 0), 0)
-  }, [cashFlows, selectedAccountId])
+  // 순 투자원금 — isCapital=true 카테고리(투자금 입출금)만 합산
+  const totalInvestment = useMemo(() =>
+    calculateNetCapital(cashFlows, selectedAccountId, exchangeRate).total
+  , [cashFlows, selectedAccountId, exchangeRate])
 
   const realizedAllPnl = useMemo(
     () => calculateTotalRealizedPnl(filteredEntries, exchangeRate),
     [filteredEntries, exchangeRate]
   )
 
+  // 배당금 합산 — category === 'dividend' 기준
   const totalDividends = useMemo(() => {
     return cashFlows
       .filter(f =>
-        f.type === 'deposit' &&
+        f.category === 'dividend' &&
         !f.isAuto &&
-        f.memo?.includes('배당금') &&
         (selectedAccountId === 'all' || f.accountId === selectedAccountId)
       )
       .reduce((sum, f) => sum + (f.amount || 0), 0)
