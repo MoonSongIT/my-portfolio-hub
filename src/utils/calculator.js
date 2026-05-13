@@ -179,6 +179,10 @@ export const getStartDate = (dateRange) => {
       now.setMonth(now.getMonth() - 1)
       return now.toISOString().split('T')[0]
     }
+    case '3m': {
+      now.setMonth(now.getMonth() - 3)
+      return now.toISOString().split('T')[0]
+    }
     case '1y': {
       now.setFullYear(now.getFullYear() - 1)
       return now.toISOString().split('T')[0]

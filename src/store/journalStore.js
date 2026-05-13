@@ -302,8 +302,9 @@ export const useJournalStore = create(
       },
 
       // 심리 유형별 수익률 집계 (선택적 accountId 필터, 환율 적용)
-      getProfitByPsychology: (accountId, exchangeRate = 1350) => {
-        let entries = get().entries
+      // baseEntries: 날짜 필터 등 외부 사전 필터 배열. 미전달 시 스토어 전체 사용
+      getProfitByPsychology: (accountId, exchangeRate = 1350, baseEntries) => {
+        let entries = baseEntries ?? get().entries
         if (accountId) entries = entries.filter(e => e.accountId === accountId)
 
         const map = {}
@@ -412,8 +413,9 @@ export const useJournalStore = create(
       },
 
       // 전체 통계 요약 (선택적 accountId 필터)
-      getSummaryStats: (accountId) => {
-        let entries = get().entries
+      // baseEntries: 날짜 필터 등 외부 사전 필터 배열. 미전달 시 스토어 전체 사용
+      getSummaryStats: (accountId, baseEntries) => {
+        let entries = baseEntries ?? get().entries
         if (accountId) entries = entries.filter(e => e.accountId === accountId)
 
         const buyCount = entries.filter(e => e.action === 'buy').length

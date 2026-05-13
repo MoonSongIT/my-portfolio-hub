@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useJournalStore } from '../store/journalStore'
 import { useUserAccounts } from '../store/accountStore'
 import { usePortfolioStore } from '../store/portfolioStore'
+import { filterByDateRange } from '../utils/calculator'
 import AccountSelector from '../components/account/AccountSelector'
 import AccountSetupModal from '../components/account/AccountSetupModal'
 import JournalEntryForm from '../components/journal/JournalEntryForm'
 import JournalBatchForm from '../components/journal/JournalBatchForm'
 import JournalList from '../components/journal/JournalList'
+import HtsImportModal from '../components/journal/HtsImportModal'
 import PsychologyProfitChart from '../components/charts/PsychologyProfitChart'
 import ChatPanel from '../components/chat/ChatPanel'
 import { Button } from '../components/ui/button'
@@ -17,6 +19,8 @@ export default function Journal() {
   const [batchFormOpen, setBatchFormOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const [htsImportOpen, setHtsImportOpen] = useState(false)
+  const [dateRange, setDateRange] = useState('all')
   const selectedAccountId    = usePortfolioStore(s => s.selectedAccountId)
   const setSelectedAccountId = usePortfolioStore(s => s.selectAccount)
 
@@ -32,10 +36,16 @@ export default function Journal() {
     recalculateSellPnl()
   }, [])
 
+  // 날짜 범위 필터 적용 (기본값 'all' = 전체)
+  const filteredEntries = useMemo(
+    () => dateRange === 'all' ? entries : filterByDateRange(entries, dateRange),
+    [entries, dateRange]
+  )
+
   // 선택 계좌 필터 ('all' = 전체 집계)
   const accountFilter = selectedAccountId === 'all' ? undefined : selectedAccountId
-  const chartData = getProfitByPsychology(accountFilter, exchangeRate)
-  const stats = getSummaryStats(accountFilter)
+  const chartData = getProfitByPsychology(accountFilter, exchangeRate, filteredEntries)
+  const stats = getSummaryStats(accountFilter, filteredEntries)
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -52,6 +62,9 @@ export default function Journal() {
           <Button variant="outline" onClick={() => setBatchFormOpen(true)}>
             일괄 입력
           </Button>
+          <Button variant="outline" onClick={() => setHtsImportOpen(true)}>
+            HTS 가져오기
+          </Button>
           <Button variant="outline" onClick={() => setChatOpen(true)}>
             📔 AI 패턴 분석
           </Button>
@@ -65,6 +78,28 @@ export default function Journal() {
         showAllOption={true}
         onAddClick={() => setAccountModalOpen(true)}
       />
+
+      {/* 날짜 범위 필터 */}
+      <div className="flex gap-1">
+        {[
+          { key: '1w', label: '1주' },
+          { key: '1m', label: '1개월' },
+          { key: '3m', label: '3개월' },
+          { key: 'all', label: '전체' },
+        ].map(r => (
+          <button
+            key={r.key}
+            onClick={() => setDateRange(r.key)}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              dateRange === r.key
+                ? 'bg-blue-600 text-white'
+                : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+            }`}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
 
       {/* 요약 통계 */}
       {stats.totalCount > 0 && (
@@ -99,7 +134,7 @@ export default function Journal() {
           <CardTitle className="text-base">매매 기록</CardTitle>
         </CardHeader>
         <CardContent>
-          <JournalList filterAccountId={selectedAccountId} />
+          <JournalList filterAccountId={selectedAccountId} dateRange={dateRange} />
         </CardContent>
       </Card>
 
@@ -111,6 +146,10 @@ export default function Journal() {
       <JournalBatchForm
         open={batchFormOpen}
         onClose={() => setBatchFormOpen(false)}
+      />
+      <HtsImportModal
+        open={htsImportOpen}
+        onClose={() => setHtsImportOpen(false)}
       />
 
       {/* AI 매매 코치 채팅 패널 */}
