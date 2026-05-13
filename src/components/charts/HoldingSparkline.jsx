@@ -1,6 +1,6 @@
 // 종목별 누적 수익률 미니 스파크라인 차트
 import { useMemo } from 'react'
-import { LineChart, Line, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { LineChart, Line, ReferenceLine } from 'recharts'
 import { useDailyPnlStore } from '../../store/dailyPnlStore'
 
 export default function HoldingSparkline({ ticker, accountId }) {
@@ -24,18 +24,16 @@ export default function HoldingSparkline({ ticker, accountId }) {
   const color = lastRate >= 0 ? '#ef4444' : '#3b82f6'
 
   return (
-    <ResponsiveContainer width={80} height={32}>
-      <LineChart data={data} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-        <ReferenceLine y={0} stroke="#d1d5db" strokeWidth={1} />
-        <Line
-          type="monotone"
-          dataKey="v"
-          stroke={color}
-          strokeWidth={1.5}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <LineChart width={80} height={32} data={data} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+      <ReferenceLine y={0} stroke="#d1d5db" strokeWidth={1} />
+      <Line
+        type="monotone"
+        dataKey="v"
+        stroke={color}
+        strokeWidth={1.5}
+        dot={false}
+        isAnimationActive={false}
+      />
+    </LineChart>
   )
 }
