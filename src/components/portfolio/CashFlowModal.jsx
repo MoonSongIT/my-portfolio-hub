@@ -1,8 +1,19 @@
 import { useState, useEffect } from 'react'
 import { X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
-import { useCashFlowStore } from '../../store/cashFlowStore'
+import { useCashFlowStore, DEPOSIT_CATEGORIES, WITHDRAWAL_CATEGORIES } from '../../store/cashFlowStore'
 import { useUserAccounts } from '../../store/accountStore'
 import { formatNumber } from '../../utils/formatters'
+
+// 카테고리별 부가 설명
+const CATEGORY_DESC = {
+  investment_in:  '수익률 계산에 포함',
+  dividend:       '배당 수익으로 집계',
+  interest:       '수익률 분모 제외',
+  adjust_plus:    '수익률 분모 제외',
+  investment_out: '수익률 계산에 포함',
+  fee_tax:        '수익률 분모 제외',
+  adjust_minus:   '수익률 분모 제외',
+}
 
 // defaultType: 'deposit' | 'withdrawal'
 // defaultAccountId: 특정 계좌 미리 선택
@@ -12,6 +23,7 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
 
   const [type, setType]           = useState(defaultType)
   const [accountId, setAccountId] = useState(defaultAccountId || accounts[0]?.id || '')
+  const [category, setCategory]   = useState('')
   const [amount, setAmount]       = useState('')
   const [currency, setCurrency]   = useState('KRW')
   const [date, setDate]           = useState(new Date().toISOString().split('T')[0])
@@ -23,12 +35,18 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
     if (open) {
       setType(defaultType)
       setAccountId(defaultAccountId || accounts[0]?.id || '')
+      setCategory('')
       setAmount('')
       setMemo('')
       setError('')
       setDate(new Date().toISOString().split('T')[0])
     }
   }, [open, defaultType, defaultAccountId])
+
+  // 입금 ↔ 출금 전환 시 카테고리 초기화
+  useEffect(() => {
+    setCategory('')
+  }, [type])
 
   // 계좌 통화에 맞춰 currency 자동 설정
   useEffect(() => {
@@ -53,7 +71,7 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
     if (!numAmount || numAmount <= 0) { setError('금액을 올바르게 입력해주세요.'); return }
     if (!date) { setError('날짜를 입력해주세요.'); return }
 
-    addCashFlow({ accountId, type, amount: numAmount, currency, date, memo })
+    addCashFlow({ accountId, type, category: category || undefined, amount: numAmount, currency, date, memo })
     onClose()
   }
 
@@ -115,6 +133,36 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
                 <option key={a.id} value={a.id}>{a.name} ({a.broker || a.type})</option>
               ))}
             </select>
+          </div>
+
+          {/* 카테고리 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">카테고리</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(type === 'deposit' ? DEPOSIT_CATEGORIES : WITHDRAWAL_CATEGORIES).map(cat => (
+                <button
+                  key={cat.code}
+                  type="button"
+                  onClick={() => setCategory(cat.code)}
+                  className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition ${
+                    category === cat.code
+                      ? type === 'deposit'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                        : 'border-orange-400 bg-orange-50 dark:bg-orange-900/30'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <span className={`text-sm font-medium ${
+                    category === cat.code
+                      ? type === 'deposit' ? 'text-blue-700 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'
+                      : 'text-gray-800 dark:text-gray-200'
+                  }`}>
+                    {cat.label}
+                  </span>
+                  <span className="text-xs text-gray-400 mt-0.5">{CATEGORY_DESC[cat.code]}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* 금액 */}
