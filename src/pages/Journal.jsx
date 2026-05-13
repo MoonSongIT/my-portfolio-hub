@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useJournalStore } from '../store/journalStore'
-import { useAccountStore, useUserAccounts } from '../store/accountStore'
+import { useUserAccounts } from '../store/accountStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import JournalEntryForm from '../components/journal/JournalEntryForm'
 import JournalBatchForm from '../components/journal/JournalBatchForm'
@@ -14,8 +14,8 @@ export default function Journal() {
   const [entryFormOpen, setEntryFormOpen] = useState(false)
   const [batchFormOpen, setBatchFormOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
-  const selectedAccountId    = useAccountStore(s => s.selectedJournalAccountId ?? '전체')
-  const setSelectedAccountId = useAccountStore(s => s.setSelectedJournalAccountId)
+  const selectedAccountId    = usePortfolioStore(s => s.selectedAccountId)
+  const setSelectedAccountId = usePortfolioStore(s => s.selectAccount)
 
   const entries = useJournalStore((s) => s.entries)
   const getProfitByPsychology = useJournalStore((s) => s.getProfitByPsychology)
@@ -29,8 +29,8 @@ export default function Journal() {
     recalculateSellPnl()
   }, [])
 
-  // 선택 계좌 필터 (전체 = undefined → 전체 집계)
-  const accountFilter = selectedAccountId === '전체' ? undefined : selectedAccountId
+  // 선택 계좌 필터 ('all' = 전체 집계)
+  const accountFilter = selectedAccountId === 'all' ? undefined : selectedAccountId
   const chartData = getProfitByPsychology(accountFilter, exchangeRate)
   const stats = getSummaryStats(accountFilter)
 
@@ -58,8 +58,8 @@ export default function Journal() {
       {/* 계좌 탭 필터 (계좌 2개 이상일 때만 표시) */}
       {accounts.length > 1 && (
         <div className="flex gap-1 flex-wrap">
-          {['전체', ...accounts.map(a => a.id)].map((id) => {
-            const label = id === '전체' ? '전체' : (accounts.find(a => a.id === id)?.name ?? id)
+          {['all', ...accounts.map(a => a.id)].map((id) => {
+            const label = id === 'all' ? '전체' : (accounts.find(a => a.id === id)?.name ?? id)
             return (
               <button
                 key={id}

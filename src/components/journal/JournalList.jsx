@@ -6,7 +6,7 @@ import JournalEntryForm from './JournalEntryForm'
 
 const ALL_PSYCHOLOGY = ['전체', ...BUY_PSYCHOLOGY, ...SELL_PSYCHOLOGY.filter(p => !BUY_PSYCHOLOGY.includes(p))]
 
-export default function JournalList({ filterAccountId = '전체' }) {
+export default function JournalList({ filterAccountId = 'all' }) {
   const { entries, deleteEntry } = useJournalStore()
   const getAccountLabel = useAccountStore((state) => state.getAccountLabel)
   const [filterPsychology, setFilterPsychology] = useState('전체')
@@ -16,7 +16,7 @@ export default function JournalList({ filterAccountId = '전체' }) {
   const [editOpen, setEditOpen] = useState(false)
   // 필터 적용
   const filtered = entries
-    .filter(e => filterAccountId === '전체' || e.accountId === filterAccountId)
+    .filter(e => filterAccountId === 'all' || e.accountId === filterAccountId)
     .filter(e => filterAction === '전체' || e.action === (filterAction === '매수' ? 'buy' : 'sell'))
     .filter(e => filterPsychology === '전체' || e.psychology === filterPsychology)
     .filter(e => !searchTicker || e.name.includes(searchTicker) || e.ticker.includes(searchTicker.toUpperCase()))

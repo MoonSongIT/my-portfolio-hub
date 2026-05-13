@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, Pencil, Building2 } from 'lucide-react'
-import { useAccountStore, useUserAccounts, ACCOUNT_TYPES } from '../store/accountStore'
+import { useUserAccounts, ACCOUNT_TYPES } from '../store/accountStore'
+import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
 import AccountSelector from '../components/account/AccountSelector'
 import AccountSetupModal from '../components/account/AccountSetupModal'
@@ -27,8 +28,8 @@ const TYPE_COLOR = {
 
 export default function CashFlow() {
   const accounts = useUserAccounts()
-  const selectedAccountId    = useAccountStore(s => s.selectedAccountId ?? 'all')
-  const setSelectedAccountId = useAccountStore(s => s.setSelectedAccountId)
+  const selectedAccountId = usePortfolioStore(s => s.selectedAccountId)
+  const setSelectedAccountId = usePortfolioStore(s => s.selectAccount)
   const [dateFilter, setDateFilter] = useState('all')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')

@@ -19,18 +19,8 @@ export const useAccountStore = create(
   persist(
     immer((set, get) => ({
       accounts: [],
-      selectedAccountId: 'all',        // 자금관리 페이지 계좌 선택 유지
-      selectedJournalAccountId: '전체', // 매매일지 페이지 계좌 선택 유지
 
       // ─── 액션 ───
-
-      setSelectedAccountId: (id) => set((state) => {
-        state.selectedAccountId = id
-      }),
-
-      setSelectedJournalAccountId: (id) => set((state) => {
-        state.selectedJournalAccountId = id
-      }),
 
       addAccount: (account) => set((state) => {
         if (state.accounts.find(a => a.id === account.id)) return
