@@ -138,31 +138,18 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
           {/* 카테고리 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">카테고리</label>
-            <div className="grid grid-cols-2 gap-2">
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">선택하세요</option>
               {(type === 'deposit' ? DEPOSIT_CATEGORIES : WITHDRAWAL_CATEGORIES).map(cat => (
-                <button
-                  key={cat.code}
-                  type="button"
-                  onClick={() => setCategory(cat.code)}
-                  className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition ${
-                    category === cat.code
-                      ? type === 'deposit'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
-                        : 'border-orange-400 bg-orange-50 dark:bg-orange-900/30'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}
-                >
-                  <span className={`text-sm font-medium ${
-                    category === cat.code
-                      ? type === 'deposit' ? 'text-blue-700 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'
-                      : 'text-gray-800 dark:text-gray-200'
-                  }`}>
-                    {cat.label}
-                  </span>
-                  <span className="text-xs text-gray-400 mt-0.5">{CATEGORY_DESC[cat.code]}</span>
-                </button>
+                <option key={cat.code} value={cat.code}>
+                  {cat.label} — {CATEGORY_DESC[cat.code]}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
 
           {/* 금액 */}
