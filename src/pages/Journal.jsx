@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useJournalStore } from '../store/journalStore'
-import { useUserAccounts } from '../store/accountStore'
+import { useAccountStore, useUserAccounts } from '../store/accountStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import JournalEntryForm from '../components/journal/JournalEntryForm'
 import JournalBatchForm from '../components/journal/JournalBatchForm'
@@ -14,7 +14,8 @@ export default function Journal() {
   const [entryFormOpen, setEntryFormOpen] = useState(false)
   const [batchFormOpen, setBatchFormOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
-  const [selectedAccountId, setSelectedAccountId] = useState('전체')
+  const selectedAccountId    = useAccountStore(s => s.selectedJournalAccountId ?? '전체')
+  const setSelectedAccountId = useAccountStore(s => s.setSelectedJournalAccountId)
 
   const entries = useJournalStore((s) => s.entries)
   const getProfitByPsychology = useJournalStore((s) => s.getProfitByPsychology)
