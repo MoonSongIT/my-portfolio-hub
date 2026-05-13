@@ -84,7 +84,7 @@ export default function Journal() {
           <Button variant="outline" onClick={() => setHtsImportOpen(true)}>
             HTS 가져오기
           </Button>
-          <Button variant="outline" onClick={() => exportJournalCsv(filteredEntries)}>
+          <Button variant="outline" onClick={() => exportJournalCsv(filteredEntries, accounts)}>
             CSV 내보내기
           </Button>
           <Button variant="outline" onClick={() => setChatOpen(true)}>

@@ -1,9 +1,11 @@
 // 매매일지 CSV 내보내기 (UTF-8 BOM, Excel 한글 호환)
-export function exportJournalCsv(entries) {
-  const headers = ['날짜', '계좌ID', '종목코드', '종목명', '시장', '매수/매도', '가격', '수량', '금액', '수수료', '심리', '메모', '실현손익']
+export function exportJournalCsv(entries, accounts = []) {
+  const accountMap = Object.fromEntries(accounts.map(a => [a.id, a.name]))
+  const headers = ['날짜', '계좌ID', '계좌명', '종목코드', '종목명', '시장', '매수/매도', '가격', '수량', '금액', '수수료', '심리', '메모', '실현손익']
   const rows = entries.map(e => [
     e.date ?? '',
     e.accountId ?? '',
+    accountMap[e.accountId] ?? '',
     e.ticker ?? '',
     e.name ?? '',
     e.market ?? '',
