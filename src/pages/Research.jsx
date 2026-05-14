@@ -109,8 +109,8 @@ function DiscoveryPanel({ onSelectTicker }) {
                 onClick={() => navigate(`/research/${item.ticker}?market=${item.market}`)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm"
               >
-                <span className="font-medium text-gray-900 dark:text-gray-100">{item.ticker}</span>
-                <span className="text-gray-400 dark:text-gray-500 text-xs">{item.name}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
+                <span className="text-gray-400 dark:text-gray-500 text-xs">{item.ticker}</span>
                 <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                   {item.market}
                 </span>
