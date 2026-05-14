@@ -1,12 +1,143 @@
-import { useState } from 'react'
+// 종목 탐색 페이지 — Discovery Panel, 시장 필터, 검색 결과
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, ExternalLink } from 'lucide-react'
+import { Search, ExternalLink, TrendingUp, Clock, BarChart2 } from 'lucide-react'
 import { useStockSearch, useStockPrice } from '../hooks/useStockData'
 import { useDebounce } from '../hooks/useDebounce'
 import { formatCurrency, formatPercent } from '../utils/formatters'
 import { Card, CardContent } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+
+// ─── 상수 ────────────────────────────────────────────────────────────────────
+
+const POPULAR_TICKERS = [
+  { ticker: '005930', name: '삼성전자', market: 'KRX' },
+  { ticker: '000660', name: 'SK하이닉스', market: 'KRX' },
+  { ticker: 'AAPL',   name: 'Apple',     market: 'NASDAQ' },
+  { ticker: 'NVDA',   name: 'NVIDIA',    market: 'NASDAQ' },
+  { ticker: 'TSLA',   name: 'Tesla',     market: 'NASDAQ' },
+  { ticker: 'MSFT',   name: 'Microsoft', market: 'NASDAQ' },
+  { ticker: '035420', name: 'NAVER',     market: 'KRX' },
+  { ticker: 'AMZN',   name: 'Amazon',    market: 'NASDAQ' },
+]
+
+const MARKET_INDICES = [
+  { label: 'KOSPI',   ticker: '^KS11', market: 'KRX' },
+  { label: 'NASDAQ',  ticker: '^IXIC', market: 'NASDAQ' },
+  { label: 'S&P 500', ticker: '^GSPC', market: 'NYSE' },
+]
+
+const MARKET_FILTERS = [
+  { key: 'all', label: '전체' },
+  { key: 'kr',  label: '한국', markets: ['KRX', 'KOSDAQ', 'KOSPI', 'NXT'] },
+  { key: 'us',  label: '미국', markets: ['NASDAQ', 'NYSE', 'AMEX'] },
+  { key: 'etf', label: 'ETF',  type: 'ETF' },
+]
+
+const RECENTLY_VIEWED_KEY = 'recentlyViewedStocks'
+
+// ─── 서브 컴포넌트 ─────────────────────────────────────────────────────────────
+
+function MarketIndexCard({ label, ticker, market }) {
+  const { data: quote, isLoading } = useStockPrice(ticker, market)
+
+  return (
+    <div className="flex-1 min-w-[100px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3">
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</p>
+      {isLoading ? (
+        <div className="animate-pulse space-y-1">
+          <div className="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
+          <div className="h-4 w-12 bg-gray-200 dark:bg-gray-700 rounded" />
+        </div>
+      ) : quote ? (
+        <>
+          <p className="text-base font-bold text-gray-900 dark:text-gray-100 leading-tight">
+            {quote.currentPrice?.toLocaleString() ?? '-'}
+          </p>
+          <p className={`text-xs font-semibold mt-0.5 ${quote.changePercent >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+            {formatPercent(quote.changePercent)}
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-gray-400">-</p>
+      )}
+    </div>
+  )
+}
+
+function DiscoveryPanel({ onSelectTicker }) {
+  const navigate = useNavigate()
+  const recentlyViewed = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]')
+    } catch {
+      return []
+    }
+  }, [])
+
+  return (
+    <div className="space-y-6">
+      {/* 시장 요약 */}
+      <section>
+        <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+          <BarChart2 className="w-4 h-4" />
+          시장 요약
+        </div>
+        <div className="flex gap-3 flex-wrap">
+          {MARKET_INDICES.map(idx => (
+            <MarketIndexCard key={idx.ticker} {...idx} />
+          ))}
+        </div>
+      </section>
+
+      {/* 최근 본 종목 */}
+      {recentlyViewed.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+            <Clock className="w-4 h-4" />
+            최근 본 종목
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {recentlyViewed.map(item => (
+              <button
+                key={item.ticker}
+                onClick={() => navigate(`/research/${item.ticker}?market=${item.market}`)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm"
+              >
+                <span className="font-medium text-gray-900 dark:text-gray-100">{item.ticker}</span>
+                <span className="text-gray-400 dark:text-gray-500 text-xs">{item.name}</span>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                  {item.market}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 인기 종목 */}
+      <section>
+        <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+          <TrendingUp className="w-4 h-4" />
+          인기 종목
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {POPULAR_TICKERS.map(item => (
+            <button
+              key={item.ticker}
+              onClick={() => onSelectTicker(item.ticker)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm"
+            >
+              <span className="font-medium text-gray-900 dark:text-gray-100">{item.ticker}</span>
+              <span className="text-gray-400 dark:text-gray-500 text-xs">{item.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
 
 // 검색 결과 카드 (실시간 가격 조회)
 function SearchResultCard({ item }) {
@@ -53,11 +184,22 @@ function SearchResultCard({ item }) {
   )
 }
 
+// ─── 메인 페이지 ───────────────────────────────────────────────────────────────
+
 export default function Research() {
   const [query, setQuery] = useState('')
+  const [marketFilter, setMarketFilter] = useState('all')
   const debouncedQuery = useDebounce(query, 300)
 
   const { data: searchResults, isLoading, isError } = useStockSearch(debouncedQuery)
+
+  const filteredResults = useMemo(() => {
+    if (!searchResults) return []
+    const filter = MARKET_FILTERS.find(f => f.key === marketFilter)
+    if (!filter || filter.key === 'all') return searchResults
+    if (filter.type === 'ETF') return searchResults.filter(r => r.type === 'ETF')
+    return searchResults.filter(r => filter.markets?.includes(r.market))
+  }, [searchResults, marketFilter])
 
   return (
     <div className="p-6 space-y-6">
@@ -77,6 +219,32 @@ export default function Research() {
         />
       </div>
 
+      {/* 시장 필터 탭 (검색 중일 때만 표시) */}
+      {debouncedQuery && (
+        <div className="flex gap-2">
+          {MARKET_FILTERS.map(f => (
+            <button
+              key={f.key}
+              onClick={() => setMarketFilter(f.key)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                marketFilter === f.key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-blue-400'
+              }`}
+            >
+              {f.label}
+              {f.key !== 'all' && searchResults && (
+                <span className="ml-1 text-xs opacity-70">
+                  {f.type === 'ETF'
+                    ? searchResults.filter(r => r.type === 'ETF').length
+                    : searchResults.filter(r => f.markets?.includes(r.market)).length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 검색 결과 */}
       {isLoading && debouncedQuery && <LoadingSpinner />}
 
@@ -86,34 +254,27 @@ export default function Research() {
         </div>
       )}
 
-      {searchResults && searchResults.length > 0 && (
+      {debouncedQuery && !isLoading && filteredResults.length > 0 && (
         <div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-            검색 결과 ({searchResults.length}건)
+            검색 결과 ({filteredResults.length}건)
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {searchResults.map((item) => (
+            {filteredResults.map((item) => (
               <SearchResultCard key={item.ticker} item={item} />
             ))}
           </div>
         </div>
       )}
 
-      {searchResults && searchResults.length === 0 && debouncedQuery && (
+      {debouncedQuery && !isLoading && filteredResults.length === 0 && searchResults && (
         <div className="text-center py-12">
           <p className="text-gray-500 dark:text-gray-400">"{debouncedQuery}"에 대한 검색 결과가 없습니다</p>
         </div>
       )}
 
-      {!debouncedQuery && (
-        <div className="text-center py-20">
-          <Search className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-          <p className="text-lg text-gray-500 dark:text-gray-400">종목을 검색해주세요</p>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
-            티커 또는 종목명으로 검색하여 상세 분석을 확인할 수 있습니다
-          </p>
-        </div>
-      )}
+      {/* 빈 검색어 → Discovery Panel */}
+      {!debouncedQuery && <DiscoveryPanel onSelectTicker={(t) => setQuery(t)} />}
     </div>
   )
 }

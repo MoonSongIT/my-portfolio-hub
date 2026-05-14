@@ -58,6 +58,19 @@ const RANGE_OPTIONS = [
   { value: '1y', label: '1년' },
 ]
 
+const RECENTLY_VIEWED_KEY = 'recentlyViewedStocks'
+
+function saveRecentlyViewed(ticker, name, market) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]')
+    const filtered = prev.filter(item => item.ticker !== ticker)
+    const next = [{ ticker, name, market, visitedAt: new Date().toISOString() }, ...filtered].slice(0, 10)
+    localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next))
+  } catch {
+    // localStorage 접근 실패 시 무시
+  }
+}
+
 function ChartTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
@@ -104,6 +117,13 @@ export default function StockDetail() {
 
   const { watchlist, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const isWatched = watchlist.some(w => w.ticker === ticker)
+
+  // 종목 상세 페이지 방문 기록 저장
+  useEffect(() => {
+    if (quote?.shortName || detail?.name) {
+      saveRecentlyViewed(ticker, quote?.shortName ?? detail?.name ?? ticker, market)
+    }
+  }, [ticker, market, quote?.shortName, detail?.name])
 
   // history/range 동기화 — range 변경과 history 도착을 한 effect에서 처리
   // (별도 effect로 분리하면 실행 순서로 인해 history가 [] 로 덮어쓰여지는 버그 발생)
