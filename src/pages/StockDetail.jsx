@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef, Component } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon, Loader2 } from 'lucide-react'
+import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon, Loader2, GitCompare } from 'lucide-react'
+import StockComparePanel from '../components/research/StockComparePanel'
 import { useResearchBundle } from '../hooks/useResearchBundle'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart,
@@ -106,6 +107,7 @@ export default function StockDetail() {
   const [loadedRange, setLoadedRange] = useState(null)
   const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [chartType, setChartType] = useState('line') // 'line' | 'candle'
+  const [compareMode, setCompareMode] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [bundleEnabled, setBundleEnabled] = useState(false)
   const [pendingOpen, setPendingOpen] = useState(false)
@@ -292,6 +294,15 @@ export default function StockDetail() {
               : <Bot className="w-4 h-4" />
             }
             {bundleLoading ? '데이터 수집 중...' : 'AI 분석'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCompareMode(m => !m)}
+            className={`gap-1 ${compareMode ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+          >
+            <GitCompare className="w-4 h-4" />
+            비교
           </Button>
           <Button
             variant={isWatched ? 'outline' : 'default'}
@@ -490,6 +501,15 @@ export default function StockDetail() {
           </ChartErrorBoundary>
         </CardContent>
       </Card>
+
+      {compareMode && (
+        <StockComparePanel
+          baseTicker={ticker}
+          baseMarket={market}
+          baseName={quote?.name || ticker}
+          onClose={() => setCompareMode(false)}
+        />
+      )}
 
       {/* 기업 정보 + 재무 지표 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

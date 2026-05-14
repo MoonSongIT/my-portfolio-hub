@@ -1,13 +1,16 @@
 // 종목 탐색 페이지 — Discovery Panel, 시장 필터, 검색 결과
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, ExternalLink, TrendingUp, Clock, BarChart2, X } from 'lucide-react'
+import { Search, ExternalLink, TrendingUp, Clock, BarChart2, X, Bot, Loader2 } from 'lucide-react'
 import { useStockSearch, useStockPrice } from '../hooks/useStockData'
 import { useDebounce } from '../hooks/useDebounce'
 import { formatCurrency, formatPercent } from '../utils/formatters'
 import { Card, CardContent } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import claudeApi from '../api/claudeApi'
+import useAiCredentialStore from '../store/aiCredentialStore'
+import { SCREENER_PROMPT, parseTickersFromText } from '../agents/researchAgent'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +68,86 @@ function MarketIndexCard({ label, ticker, market }) {
         <p className="text-sm text-gray-400">-</p>
       )}
     </div>
+  )
+}
+
+function AIScreenerSection({ onSelectTicker }) {
+  const navigate = useNavigate()
+  const { hasKey } = useAiCredentialStore()
+  const [query, setQuery] = useState('')
+  const [response, setResponse] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [tickers, setTickers] = useState([])
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!query.trim() || loading) return
+    setLoading(true)
+    setResponse(null)
+    setTickers([])
+    try {
+      const res = await claudeApi.post('/claude', {
+        systemPrompt: SCREENER_PROMPT,
+        messages: [{ role: 'user', content: query }],
+        maxTokens: 2048,
+      })
+      const text = res.data?.content?.[0]?.text ?? res.data?.text ?? ''
+      setResponse(text)
+      setTickers(parseTickersFromText(text))
+    } catch {
+      setResponse('AI 스크리너 호출에 실패했습니다. API 키 설정을 확인해 주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+        <Bot className="w-4 h-4" />
+        AI 자연어 스크리너
+      </div>
+      {!hasKey ? (
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          설정 → AI API 키를 등록하면 자연어로 종목을 찾을 수 있습니다.
+        </p>
+      ) : (
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="예: 반도체 업종에서 PER 낮고 ROE 높은 종목 추천해줘"
+            className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            disabled={loading || !query.trim()}
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm flex items-center gap-1 transition-colors"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+          </button>
+        </form>
+      )}
+      {response && (
+        <div className="mt-3 space-y-3">
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{response}</p>
+          {tickers.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {tickers.map(item => (
+                <button
+                  key={item.ticker}
+                  onClick={() => navigate(`/research/${item.ticker}?market=${item.market}`)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors text-sm"
+                >
+                  <span className="font-medium text-blue-700 dark:text-blue-300">{item.ticker}</span>
+                  <span className="text-xs text-blue-400">{item.market}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -156,6 +239,8 @@ function DiscoveryPanel({ onSelectTicker }) {
           ))}
         </div>
       </section>
+
+      <AIScreenerSection onSelectTicker={onSelectTicker} />
     </div>
   )
 }
