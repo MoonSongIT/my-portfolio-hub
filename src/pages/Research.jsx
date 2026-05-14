@@ -1,5 +1,5 @@
 // 종목 탐색 페이지 — Discovery Panel, 시장 필터, 검색 결과
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, ExternalLink, TrendingUp, Clock, BarChart2 } from 'lucide-react'
 import { useStockSearch, useStockPrice } from '../hooks/useStockData'
@@ -191,9 +191,12 @@ function SearchResultCard({ item }) {
 // ─── 메인 페이지 ───────────────────────────────────────────────────────────────
 
 export default function Research() {
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [marketFilter, setMarketFilter] = useState('all')
-  const debouncedQuery = useDebounce(query, 300)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const searchBoxRef = useRef(null)
+  const debouncedQuery = useDebounce(query, 200)
 
   const { data: searchResults, isLoading, isError } = useStockSearch(debouncedQuery)
 
@@ -205,6 +208,25 @@ export default function Research() {
     return searchResults.filter(r => filter.markets?.includes(r.market))
   }, [searchResults, marketFilter])
 
+  // 검색창 외부 클릭 시 드롭다운 닫기
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  function handleSuggestionClick(item) {
+    setDropdownOpen(false)
+    setQuery('')
+    navigate(`/research/${item.ticker}?market=${item.market}`)
+  }
+
+  const suggestions = debouncedQuery && searchResults?.length ? searchResults.slice(0, 8) : []
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -212,15 +234,38 @@ export default function Research() {
         <p className="text-gray-500 dark:text-gray-400 mt-1">신규 투자 후보를 찾고 분석하세요.</p>
       </div>
 
-      {/* 검색창 */}
-      <div className="relative max-w-xl">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+      {/* 검색창 + 자동완성 드롭다운 */}
+      <div className="relative max-w-xl" ref={searchBoxRef}>
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 z-10" />
         <Input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { setQuery(e.target.value); setDropdownOpen(true) }}
+          onFocus={() => suggestions.length && setDropdownOpen(true)}
           placeholder="종목명 또는 티커를 검색하세요 (예: 삼성전자, AAPL)"
           className="pl-10 h-12 text-base"
+          autoComplete="off"
         />
+        {/* 자동완성 드롭다운 */}
+        {dropdownOpen && suggestions.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 overflow-hidden">
+            {suggestions.map((item, idx) => (
+              <button
+                key={item.ticker}
+                onMouseDown={(e) => { e.preventDefault(); handleSuggestionClick(item) }}
+                className={`w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${idx !== 0 ? 'border-t border-gray-100 dark:border-gray-700' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">{item.ticker}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{item.market}</span>
+                  {item.type === 'ETF' && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">ETF</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 시장 필터 탭 (검색 중일 때만 표시) */}
