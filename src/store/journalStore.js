@@ -387,17 +387,59 @@ export const useJournalStore = create(
         const userId = useAuthStore.getState().currentUser?.id
         const now = new Date().toISOString()
 
-        const newEntries = entries.map((entry) => ({
-          id: crypto.randomUUID(),
-          createdAt: now,
-          pnl: null,
-          memo: '',
-          linkedCashFlowId: null,
-          userId,
-          source: 'eugene-hts',
-          importedAt: now,
-          ...entry,
-        }))
+        const newEntries = entries
+          .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '') || (a.createdAt ?? '').localeCompare(b.createdAt ?? ''))
+          .map((entry) => ({
+            id: crypto.randomUUID(),
+            createdAt: now,
+            pnl: null,
+            memo: '',
+            linkedCashFlowId: null,
+            userId,
+            source: 'eugene-hts',
+            importedAt: now,
+            ...entry,
+          }))
+
+        // 기존 보유 현황을 계좌별 평균단가 맵으로 초기화
+        const holdingMap = {}
+        for (const e of get().entries) {
+          if (!e.accountId) continue
+          const key = `${e.accountId}__${e.ticker}`
+          if (!holdingMap[key]) holdingMap[key] = { quantity: 0, totalCost: 0 }
+          const pos = holdingMap[key]
+          if (e.action === 'buy') {
+            pos.totalCost += e.price * e.quantity + (e.fee || 0)
+            pos.quantity += e.quantity
+          } else if (e.action === 'sell' && pos.quantity > 0) {
+            const avg = pos.totalCost / pos.quantity
+            pos.totalCost -= avg * Math.min(e.quantity, pos.quantity)
+            pos.quantity = Math.max(0, pos.quantity - e.quantity)
+          }
+        }
+
+        // 신규 항목을 날짜순으로 처리: 매도 시 pnl 계산 후 맵 갱신
+        for (const e of newEntries) {
+          if (!e.accountId) continue
+          const key = `${e.accountId}__${e.ticker}`
+          if (!holdingMap[key]) holdingMap[key] = { quantity: 0, totalCost: 0 }
+          const pos = holdingMap[key]
+
+          if (e.action === 'buy') {
+            pos.totalCost += e.price * e.quantity + (e.fee || 0)
+            pos.quantity += e.quantity
+          } else if (e.action === 'sell') {
+            if (e.pnl === null && pos.quantity > 0) {
+              const avgPrice = pos.totalCost / pos.quantity
+              e.pnl = Math.round((e.price - avgPrice) * e.quantity - (e.fee || 0))
+            }
+            if (pos.quantity > 0) {
+              const avg = pos.totalCost / pos.quantity
+              pos.totalCost -= avg * Math.min(e.quantity, pos.quantity)
+              pos.quantity = Math.max(0, pos.quantity - e.quantity)
+            }
+          }
+        }
 
         set((state) => {
           state.entries.push(...newEntries)

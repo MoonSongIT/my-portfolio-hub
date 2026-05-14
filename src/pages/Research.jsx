@@ -102,9 +102,34 @@ const SCREENER_MD_COMPONENTS = {
   td: ({ children }) => <td className="border border-gray-300 dark:border-gray-600 px-3 py-1.5">{children}</td>,
   h2: ({ children }) => <h2 className="mt-3 mb-1 text-base font-bold text-gray-800 dark:text-gray-200">{children}</h2>,
   h3: ({ children }) => <h3 className="mt-2 mb-1 text-sm font-bold text-gray-700 dark:text-gray-300">{children}</h3>,
-  ul: ({ children }) => <ul className="my-1 ml-4 list-disc space-y-0.5 text-sm">{children}</ul>,
-  ol: ({ children }) => <ol className="my-1 ml-4 list-decimal space-y-0.5 text-sm">{children}</ol>,
-  p: ({ children }) => <p className="my-1 text-sm leading-relaxed">{children}</p>,
+  ul: ({ children }) => (
+    <ul className="my-1 ml-4 list-disc space-y-0.5 text-sm">
+      {React.Children.map(children, (child, i) =>
+        React.isValidElement(child) ? React.cloneElement(child, { key: i }) : child
+      )}
+    </ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="my-1 ml-4 list-decimal space-y-0.5 text-sm">
+      {React.Children.map(children, (child, i) =>
+        React.isValidElement(child) ? React.cloneElement(child, { key: i }) : child
+      )}
+    </ol>
+  ),
+  li: ({ children }) => (
+    <li>
+      {React.Children.map(children, (child, i) =>
+        React.isValidElement(child) ? React.cloneElement(child, { key: i }) : child
+      )}
+    </li>
+  ),
+  p: ({ children }) => (
+    <p className="my-1 text-sm leading-relaxed">
+      {React.Children.map(children, (child, i) =>
+        React.isValidElement(child) ? React.cloneElement(child, { key: i }) : child
+      )}
+    </p>
+  ),
   strong: ({ children }) => <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>,
 }
 

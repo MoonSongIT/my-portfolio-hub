@@ -59,7 +59,7 @@ export default function HtsImportModal({ open, onClose }) {
         accountId,
         psychology: '기타',
         fee: (r.commission || 0) + (r.tax || 0),
-        pnl: r.action === 'sell' ? (r.realizedPnl || null) : null,
+        pnl: r.action === 'sell' ? (r.realizedPnl != null ? r.realizedPnl : null) : null,
       }))
       const count = addEntriesBulk(entries)
       toast.success(`${count}건을 가져왔습니다.`)
