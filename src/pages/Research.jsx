@@ -1,5 +1,5 @@
 // 종목 탐색 페이지 — Discovery Panel, 시장 필터, 검색 결과
-import { useState, useMemo, useEffect, useRef } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, ExternalLink, TrendingUp, Clock, BarChart2, X, Bot, Loader2 } from 'lucide-react'
 import { useStockSearch, useStockPrice } from '../hooks/useStockData'
@@ -80,6 +80,13 @@ const SCREENER_MD_COMPONENTS = {
     </div>
   ),
   thead: ({ children }) => <thead className="bg-gray-100 dark:bg-gray-700">{children}</thead>,
+  tr: ({ children }) => (
+    <tr>
+      {React.Children.map(children, (child, i) =>
+        React.isValidElement(child) ? React.cloneElement(child, { key: i }) : child
+      )}
+    </tr>
+  ),
   th: ({ children }) => <th className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-left font-semibold">{children}</th>,
   td: ({ children }) => <td className="border border-gray-300 dark:border-gray-600 px-3 py-1.5">{children}</td>,
   h2: ({ children }) => <h2 className="mt-3 mb-1 text-base font-bold text-gray-800 dark:text-gray-200">{children}</h2>,
