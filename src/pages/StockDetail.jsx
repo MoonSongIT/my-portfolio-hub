@@ -118,12 +118,11 @@ export default function StockDetail() {
   const { watchlist, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const isWatched = watchlist.some(w => w.ticker === ticker)
 
-  // 종목 상세 페이지 방문 기록 저장
+  // 종목 상세 페이지 방문 기록 저장 (quote.name 또는 detail.name 도착 시)
   useEffect(() => {
-    if (quote?.shortName || detail?.name) {
-      saveRecentlyViewed(ticker, quote?.shortName ?? detail?.name ?? ticker, market)
-    }
-  }, [ticker, market, quote?.shortName, detail?.name])
+    const name = quote?.name ?? detail?.name
+    if (name) saveRecentlyViewed(ticker, name, market)
+  }, [ticker, market, quote?.name, detail?.name])
 
   // history/range 동기화 — range 변경과 history 도착을 한 effect에서 처리
   // (별도 effect로 분리하면 실행 순서로 인해 history가 [] 로 덮어쓰여지는 버그 발생)

@@ -1,5 +1,5 @@
 // 종목 탐색 페이지 — Discovery Panel, 시장 필터, 검색 결과
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, ExternalLink, TrendingUp, Clock, BarChart2 } from 'lucide-react'
 import { useStockSearch, useStockPrice } from '../hooks/useStockData'
@@ -22,8 +22,9 @@ const POPULAR_TICKERS = [
   { ticker: 'AMZN',   name: 'Amazon',    market: 'NASDAQ' },
 ]
 
+// 지수 티커는 모두 Yahoo Finance로 조회 (Naver API는 ^ 지수 미지원)
 const MARKET_INDICES = [
-  { label: 'KOSPI',   ticker: '^KS11', market: 'KRX' },
+  { label: 'KOSPI',   ticker: '^KS11', market: 'NYSE' },
   { label: 'NASDAQ',  ticker: '^IXIC', market: 'NASDAQ' },
   { label: 'S&P 500', ticker: '^GSPC', market: 'NYSE' },
 ]
@@ -68,11 +69,13 @@ function MarketIndexCard({ label, ticker, market }) {
 
 function DiscoveryPanel({ onSelectTicker }) {
   const navigate = useNavigate()
-  const recentlyViewed = useMemo(() => {
+  const [recentlyViewed, setRecentlyViewed] = useState([])
+
+  useEffect(() => {
     try {
-      return JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]')
+      setRecentlyViewed(JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]'))
     } catch {
-      return []
+      setRecentlyViewed([])
     }
   }, [])
 
