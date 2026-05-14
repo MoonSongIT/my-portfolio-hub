@@ -25,6 +25,7 @@ const POPULAR_TICKERS = [
 // 지수 티커는 모두 Yahoo Finance로 조회 (Naver API는 ^ 지수 미지원)
 const MARKET_INDICES = [
   { label: 'KOSPI',   ticker: '^KS11', market: 'NYSE' },
+  { label: 'KOSDAQ',  ticker: '^KQ11', market: 'NYSE' },
   { label: 'NASDAQ',  ticker: '^IXIC', market: 'NASDAQ' },
   { label: 'S&P 500', ticker: '^GSPC', market: 'NYSE' },
 ]
