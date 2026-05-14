@@ -8,6 +8,8 @@ import { formatCurrency, formatPercent } from '../utils/formatters'
 import { Card, CardContent } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import claudeApi from '../api/claudeApi'
 import useAiCredentialStore from '../store/aiCredentialStore'
 import { SCREENER_PROMPT, parseTickersFromText } from '../agents/researchAgent'
@@ -71,6 +73,23 @@ function MarketIndexCard({ label, ticker, market }) {
   )
 }
 
+const SCREENER_MD_COMPONENTS = {
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="min-w-full border-collapse border border-gray-300 dark:border-gray-600 text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-gray-100 dark:bg-gray-700">{children}</thead>,
+  th: ({ children }) => <th className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-left font-semibold">{children}</th>,
+  td: ({ children }) => <td className="border border-gray-300 dark:border-gray-600 px-3 py-1.5">{children}</td>,
+  h2: ({ children }) => <h2 className="mt-3 mb-1 text-base font-bold text-gray-800 dark:text-gray-200">{children}</h2>,
+  h3: ({ children }) => <h3 className="mt-2 mb-1 text-sm font-bold text-gray-700 dark:text-gray-300">{children}</h3>,
+  ul: ({ children }) => <ul className="my-1 ml-4 list-disc space-y-0.5 text-sm">{children}</ul>,
+  ol: ({ children }) => <ol className="my-1 ml-4 list-decimal space-y-0.5 text-sm">{children}</ol>,
+  p: ({ children }) => <p className="my-1 text-sm leading-relaxed">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>,
+}
+
 function AIScreenerSection({ onSelectTicker }) {
   const navigate = useNavigate()
   const { hasKey } = useAiCredentialStore()
@@ -130,7 +149,9 @@ function AIScreenerSection({ onSelectTicker }) {
       )}
       {response && (
         <div className="mt-3 space-y-3">
-          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{response}</p>
+          <div className="text-sm text-gray-700 dark:text-gray-300">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={SCREENER_MD_COMPONENTS}>{response}</ReactMarkdown>
+          </div>
           {tickers.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {tickers.map(item => (
