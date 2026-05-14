@@ -90,13 +90,17 @@ const SCREENER_MD_COMPONENTS = {
   strong: ({ children }) => <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>,
 }
 
+const SCREENER_CACHE_KEY = 'aiScreenerCache'
+
 function AIScreenerSection({ onSelectTicker }) {
   const navigate = useNavigate()
   const { hasKey } = useAiCredentialStore()
-  const [query, setQuery] = useState('')
-  const [response, setResponse] = useState(null)
+
+  const cached = (() => { try { return JSON.parse(localStorage.getItem(SCREENER_CACHE_KEY) || 'null') } catch { return null } })()
+  const [query, setQuery] = useState(cached?.query ?? '')
+  const [response, setResponse] = useState(cached?.response ?? null)
   const [loading, setLoading] = useState(false)
-  const [tickers, setTickers] = useState([])
+  const [tickers, setTickers] = useState(cached?.tickers ?? [])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -111,8 +115,10 @@ function AIScreenerSection({ onSelectTicker }) {
         maxTokens: 2048,
       })
       const text = res.data?.content?.[0]?.text ?? res.data?.text ?? ''
+      const parsed = parseTickersFromText(text)
       setResponse(text)
-      setTickers(parseTickersFromText(text))
+      setTickers(parsed)
+      localStorage.setItem(SCREENER_CACHE_KEY, JSON.stringify({ query, response: text, tickers: parsed }))
     } catch {
       setResponse('AI 스크리너 호출에 실패했습니다. API 키 설정을 확인해 주세요.')
     } finally {
