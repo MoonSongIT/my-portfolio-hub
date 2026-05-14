@@ -44,6 +44,17 @@ const MARKET_FILTERS = [
 
 const RECENTLY_VIEWED_KEY = 'recentlyViewedStocks'
 
+const SECTOR_CARDS = [
+  { label: '반도체',        emoji: '💾', query: '한국 반도체 종목 추천해줘' },
+  { label: 'AI·소프트웨어', emoji: '🤖', query: '미국 AI 소프트웨어 종목 추천해줘' },
+  { label: '금융',          emoji: '🏦', query: '배당 좋은 한국 금융주 추천해줘' },
+  { label: '바이오',        emoji: '🧬', query: '한국 바이오 성장주 추천해줘' },
+  { label: '에너지',        emoji: '⚡', query: '미국 에너지 종목 추천해줘' },
+  { label: '소비재',        emoji: '🛒', query: '미국 소비재 대형주 추천해줘' },
+  { label: '산업재',        emoji: '🏭', query: '한국 산업재 저평가 종목 추천해줘' },
+  { label: 'ETF',           emoji: '📊', query: '미국 인기 ETF 추천해줘' },
+]
+
 // ─── 서브 컴포넌트 ─────────────────────────────────────────────────────────────
 
 function MarketIndexCard({ label, ticker, market }) {
@@ -99,7 +110,7 @@ const SCREENER_MD_COMPONENTS = {
 
 const SCREENER_CACHE_KEY = 'aiScreenerCache'
 
-function AIScreenerSection({ onSelectTicker }) {
+function AIScreenerSection({ onSelectTicker, pendingQuery = null, onPendingConsumed }) {
   const navigate = useNavigate()
   const { hasKey } = useAiCredentialStore()
 
@@ -109,28 +120,41 @@ function AIScreenerSection({ onSelectTicker }) {
   const [loading, setLoading] = useState(false)
   const [tickers, setTickers] = useState(cached?.tickers ?? [])
 
-  async function handleSubmit(e) {
-    e.preventDefault()
-    if (!query.trim() || loading) return
+  async function runQuery(q) {
+    if (!q.trim() || loading) return
     setLoading(true)
     setResponse(null)
     setTickers([])
     try {
       const res = await claudeApi.post('/claude', {
         systemPrompt: SCREENER_PROMPT,
-        messages: [{ role: 'user', content: query }],
+        messages: [{ role: 'user', content: q }],
         maxTokens: 2048,
       })
       const text = res.data?.content?.[0]?.text ?? res.data?.text ?? ''
       const parsed = parseTickersFromText(text)
       setResponse(text)
       setTickers(parsed)
-      localStorage.setItem(SCREENER_CACHE_KEY, JSON.stringify({ query, response: text, tickers: parsed }))
+      localStorage.setItem(SCREENER_CACHE_KEY, JSON.stringify({ query: q, response: text, tickers: parsed }))
     } catch {
       setResponse('AI 스크리너 호출에 실패했습니다. API 키 설정을 확인해 주세요.')
     } finally {
       setLoading(false)
     }
+  }
+
+  // 섹터 카드에서 쿼리 주입 시 자동 실행
+  useEffect(() => {
+    if (!pendingQuery || !hasKey) return
+    setQuery(pendingQuery)
+    runQuery(pendingQuery)
+    onPendingConsumed?.()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingQuery])
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    runQuery(query)
   }
 
   return (
@@ -188,6 +212,7 @@ function AIScreenerSection({ onSelectTicker }) {
 function DiscoveryPanel({ onSelectTicker }) {
   const navigate = useNavigate()
   const [recentlyViewed, setRecentlyViewed] = useState([])
+  const [pendingQuery, setPendingQuery] = useState(null)
 
   useEffect(() => {
     try {
@@ -215,6 +240,26 @@ function DiscoveryPanel({ onSelectTicker }) {
         <div className="flex gap-3 flex-wrap">
           {MARKET_INDICES.map(idx => (
             <MarketIndexCard key={idx.ticker} {...idx} />
+          ))}
+        </div>
+      </section>
+
+      {/* 섹터 브라우징 */}
+      <section>
+        <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+          <BarChart2 className="w-4 h-4" />
+          섹터별 탐색
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {SECTOR_CARDS.map(card => (
+            <button
+              key={card.label}
+              onClick={() => setPendingQuery(card.query)}
+              className="flex flex-col items-center gap-1 py-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-center"
+            >
+              <span className="text-xl">{card.emoji}</span>
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{card.label}</span>
+            </button>
           ))}
         </div>
       </section>
@@ -274,7 +319,11 @@ function DiscoveryPanel({ onSelectTicker }) {
         </div>
       </section>
 
-      <AIScreenerSection onSelectTicker={onSelectTicker} />
+      <AIScreenerSection
+        onSelectTicker={onSelectTicker}
+        pendingQuery={pendingQuery}
+        onPendingConsumed={() => setPendingQuery(null)}
+      />
     </div>
   )
 }

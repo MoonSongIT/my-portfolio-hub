@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useCallback, useRef, Component } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon, Loader2, GitCompare } from 'lucide-react'
+import { ArrowLeft, Star, StarOff, ExternalLink, Bot, CandlestickChart as CandleIcon, LineChart as LineIcon, Loader2, GitCompare, FileText } from 'lucide-react'
 import StockComparePanel from '../components/research/StockComparePanel'
 import { useResearchBundle } from '../hooks/useResearchBundle'
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart,
+  Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart,
 } from 'recharts'
 import { useStockPrice, useStockDetail, useStockHistory } from '../hooks/useStockData'
 import { fetchHistory, RANGE_ORDER, getNextRange } from '../api/stockApi'
@@ -72,6 +72,23 @@ function saveRecentlyViewed(ticker, name, market) {
   }
 }
 
+const STOCK_NOTES_KEY = 'stockNotes'
+
+function loadStockNote(ticker) {
+  try {
+    const notes = JSON.parse(localStorage.getItem(STOCK_NOTES_KEY) || '{}')
+    return notes[ticker]?.memo ?? ''
+  } catch { return '' }
+}
+
+function saveStockNote(ticker, memo) {
+  try {
+    const notes = JSON.parse(localStorage.getItem(STOCK_NOTES_KEY) || '{}')
+    notes[ticker] = { memo, updatedAt: new Date().toISOString() }
+    localStorage.setItem(STOCK_NOTES_KEY, JSON.stringify(notes))
+  } catch { /* localStorage 실패 시 무시 */ }
+}
+
 function ChartTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
@@ -107,11 +124,14 @@ export default function StockDetail() {
   const [loadedRange, setLoadedRange] = useState(null)
   const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [chartType, setChartType] = useState('line') // 'line' | 'candle'
+  const [showMA, setShowMA] = useState({ ma20: false, ma60: false })
   const [compareMode, setCompareMode] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [bundleEnabled, setBundleEnabled] = useState(false)
   const [pendingOpen, setPendingOpen] = useState(false)
   const [chatContext, setChatContext] = useState(null)
+  const [memo, setMemo] = useState(() => loadStockNote(ticker))
+  const memoTimerRef = useRef(null)
 
   const { data: quote, isLoading: quoteLoading, isError: quoteError } = useStockPrice(ticker, market)
   const { data: detail, isLoading: detailLoading } = useStockDetail(ticker, market)
@@ -224,6 +244,26 @@ export default function StockDetail() {
     }
   }
 
+  // ticker 변경 시 메모 재로드
+  useEffect(() => {
+    setMemo(loadStockNote(ticker))
+  }, [ticker])
+
+  // MA 계산 (history 기반 롤링 평균)
+  const maData = useMemo(() => {
+    const src = allHistory.length > 0 ? allHistory : (history ?? [])
+    if (!src.length) return src
+    return src.map((h, i) => ({
+      ...h,
+      ma20: i >= 19
+        ? +(src.slice(i - 19, i + 1).reduce((s, x) => s + x.close, 0) / 20).toFixed(2)
+        : null,
+      ma60: i >= 59
+        ? +(src.slice(i - 59, i + 1).reduce((s, x) => s + x.close, 0) / 60).toFixed(2)
+        : null,
+    }))
+  }, [allHistory, history])
+
   // 차트 Y축 범위
   const chartDomain = useMemo(() => {
     const src = allHistory.length > 0 ? allHistory : (history ?? [])
@@ -275,9 +315,12 @@ export default function StockDetail() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {quote?.name || ticker}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                {quote?.name || ticker}
+              </h2>
+              {memo && <FileText className="w-4 h-4 text-amber-500 flex-shrink-0" title="메모 있음" />}
+            </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">{ticker} · {market}</p>
           </div>
         </div>
@@ -443,6 +486,24 @@ export default function StockDetail() {
                   캔들
                 </button>
               </div>
+              {/* MA 토글 (라인 차트 전용) */}
+              {chartType === 'line' && (
+                <div className="flex gap-1">
+                  {[{ key: 'ma20', label: 'MA20', color: 'text-orange-500' }, { key: 'ma60', label: 'MA60', color: 'text-purple-500' }].map(({ key, label, color }) => (
+                    <button
+                      key={key}
+                      onClick={() => setShowMA(prev => ({ ...prev, [key]: !prev[key] }))}
+                      className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                        showMA[key]
+                          ? `border-current ${color} bg-opacity-10 bg-current`
+                          : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:border-gray-400'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* 기간 선택 */}
               <div className="flex gap-1">
                 {RANGE_OPTIONS.map(opt => (
@@ -478,7 +539,7 @@ export default function StockDetail() {
                 />
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={allHistory} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <AreaChart data={maData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                     <defs>
                       <linearGradient id="colorClose" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
@@ -492,6 +553,14 @@ export default function StockDetail() {
                     <Tooltip content={<ChartTooltip />} />
                     <Area type="monotone" dataKey="close" stroke="#3B82F6" strokeWidth={2}
                       fill="url(#colorClose)" dot={false} activeDot={{ r: 4 }} />
+                    {showMA.ma20 && (
+                      <Line type="monotone" dataKey="ma20" stroke="#f97316" strokeWidth={1.5}
+                        strokeDasharray="4 2" dot={false} activeDot={false} connectNulls />
+                    )}
+                    {showMA.ma60 && (
+                      <Line type="monotone" dataKey="ma60" stroke="#8b5cf6" strokeWidth={1.5}
+                        strokeDasharray="4 2" dot={false} activeDot={false} connectNulls />
+                    )}
                   </AreaChart>
                 </ResponsiveContainer>
               )
@@ -561,6 +630,24 @@ export default function StockDetail() {
                     {detail.description}
                   </p>
                 )}
+                {/* 종목 메모 */}
+                <div className="pt-3 border-t border-gray-100 dark:border-gray-800 mt-3">
+                  <p className="text-xs text-gray-500 mb-1.5 flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> 메모
+                  </p>
+                  <textarea
+                    value={memo}
+                    onChange={e => {
+                      const val = e.target.value
+                      setMemo(val)
+                      clearTimeout(memoTimerRef.current)
+                      memoTimerRef.current = setTimeout(() => saveStockNote(ticker, val), 500)
+                    }}
+                    placeholder="이 종목에 대한 메모를 남겨보세요..."
+                    rows={3}
+                    className="w-full text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                </div>
               </div>
             )}
           </CardContent>
