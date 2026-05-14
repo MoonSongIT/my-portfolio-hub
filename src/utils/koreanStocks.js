@@ -61,7 +61,8 @@ export const KOREAN_STOCKS = [
 ]
 
 // 한글 포함 여부 확인
-export const isKorean = (str) => /[가-힣]/.test(str)
+// 완성형(가-힣) + 자음/모음 낱자(ㄱ-ㅎ, ㅏ-ㅣ) 모두 포함
+export const isKorean = (str) => /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(str)
 
 // 한글 종목명 검색 (초성 검색 미지원, 단순 포함 검색)
 export const searchKoreanStocks = (query) => {

@@ -1,7 +1,7 @@
 // 종목 탐색 페이지 — Discovery Panel, 시장 필터, 검색 결과
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, ExternalLink, TrendingUp, Clock, BarChart2 } from 'lucide-react'
+import { Search, ExternalLink, TrendingUp, Clock, BarChart2, X } from 'lucide-react'
 import { useStockSearch, useStockPrice } from '../hooks/useStockData'
 import { useDebounce } from '../hooks/useDebounce'
 import { formatCurrency, formatPercent } from '../utils/formatters'
@@ -80,6 +80,13 @@ function DiscoveryPanel({ onSelectTicker }) {
     }
   }, [])
 
+  function removeRecentlyViewed(e, ticker) {
+    e.stopPropagation()
+    const next = recentlyViewed.filter(item => item.ticker !== ticker)
+    setRecentlyViewed(next)
+    localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next))
+  }
+
   return (
     <div className="space-y-6">
       {/* 시장 요약 */}
@@ -104,17 +111,27 @@ function DiscoveryPanel({ onSelectTicker }) {
           </div>
           <div className="flex flex-wrap gap-2">
             {recentlyViewed.map(item => (
-              <button
+              <div
                 key={item.ticker}
-                onClick={() => navigate(`/research/${item.ticker}?market=${item.market}`)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm"
+                className="flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm group"
               >
-                <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
-                <span className="text-gray-400 dark:text-gray-500 text-xs">{item.ticker}</span>
-                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                  {item.market}
-                </span>
-              </button>
+                <button
+                  onClick={() => navigate(`/research/${item.ticker}?market=${item.market}`)}
+                  className="flex items-center gap-1.5"
+                >
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
+                  <span className="text-gray-400 dark:text-gray-500 text-xs">{item.ticker}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                    {item.market}
+                  </span>
+                </button>
+                <button
+                  onClick={(e) => removeRecentlyViewed(e, item.ticker)}
+                  className="ml-0.5 p-0.5 rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             ))}
           </div>
         </section>

@@ -102,7 +102,11 @@ const naverPcApi = axios.create({
 // 캐시: { ticker → parValue } (세션 중 중복 요청 방지)
 const _parValueCache = {}
 
+// KRX 일반 주식 티커는 6자리 숫자 (펀드·채권 코드는 영문 포함이라 미지원)
+const isKrxStock = (ticker) => /^\d{6}$/.test(ticker)
+
 export const fetchNaverParValue = async (ticker) => {
+  if (!isKrxStock(ticker)) return null
   if (_parValueCache[ticker] !== undefined) return _parValueCache[ticker]
 
   try {
@@ -267,8 +271,8 @@ export const fetchNaverProfile = async (ticker) => {
       else if (recomm >= 2.5) recommendationKey = 'hold'
       else                    recommendationKey = 'sell'
     }
-  } else {
-    // integration에 없으면 별도 컨센서스 엔드포인트 시도
+  } else if (isKrxStock(ticker)) {
+    // 일반 주식만 컨센서스 엔드포인트 시도 (펀드·채권 코드는 미지원)
     try {
       const cnsRes = await naverApi.get(`/api/stock/${ticker}/consensus`, {
         params: { page: 1, pageSize: 1 },
