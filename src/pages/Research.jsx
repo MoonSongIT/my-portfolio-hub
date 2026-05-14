@@ -57,7 +57,7 @@ function MarketIndexCard({ label, ticker, market }) {
           <p className="text-base font-bold text-gray-900 dark:text-gray-100 leading-tight">
             {quote.currentPrice?.toLocaleString() ?? '-'}
           </p>
-          <p className={`text-xs font-semibold mt-0.5 ${quote.changePercent >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+          <p className={`text-xs font-semibold mt-0.5 ${quote.changePercent >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
             {formatPercent(quote.changePercent)}
           </p>
         </>
@@ -172,7 +172,7 @@ function SearchResultCard({ item }) {
             <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
               {formatCurrency(quote.currentPrice, quote.currency)}
             </p>
-            <span className={`text-sm font-semibold ${quote.changePercent >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+            <span className={`text-sm font-semibold ${quote.changePercent >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
               {formatPercent(quote.changePercent)}
             </span>
           </div>
