@@ -1,14 +1,18 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  BarChart, Bar, Cell,
 } from 'recharts'
 import { toast } from 'sonner'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useJournalStore } from '../store/journalStore'
+import { useCashFlowStore } from '../store/cashFlowStore'
 import { useAuthStore } from '../store/authStore'
 import { EXCHANGE_RATE } from '../data/samplePortfolio'
 import { fetchBenchmarkHistory } from '../api/stockApi'
 import { sendToAgent } from '../api/claudeApi'
+import { useApiKeyGuard } from '../hooks/useApiKeyGuard'
+import ApiKeyRequiredDialog from '../components/common/ApiKeyRequiredDialog'
 import {
   calculatePortfolioReturn, calculateTotalPnL,
   filterByDateRange, calculateWinRate,
@@ -17,7 +21,8 @@ import { formatPercent, formatShortDate, formatCurrencyShort } from '../utils/fo
 import { exportAsPNG, exportAsPDF } from '../utils/exportReport'
 import { saveScheduledReport, shouldGenerateWeeklyReport } from '../agents/reportAgent'
 import { getLatestReportByType } from '../utils/db'
-import AccountSelector from '../components/common/AccountSelector'
+import AccountSelector from '../components/account/AccountSelector'
+import AccountSetupModal from '../components/account/AccountSetupModal'
 import TradeHistoryTable from '../components/reports/TradeHistoryTable'
 import InsightsCard from '../components/reports/InsightsCard'
 import PerformanceRanking from '../components/reports/PerformanceRanking'
@@ -112,18 +117,54 @@ function ExportMenu({ onPNG, onPDF }) {
 }
 
 export default function Reports() {
-  const { accounts, selectedAccountId, getSelectedHoldings } = usePortfolioStore()
+  const { accounts, selectedAccountId, getSelectedHoldings, selectAccount } = usePortfolioStore()
   const { entries } = useJournalStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const { ensureKey, guardProps } = useApiKeyGuard()
   const [dateRange, setDateRange] = useState('1m')
   const [benchmark, setBenchmark] = useState({ KOSPI: [], SP500: [] })
   const [benchLoading, setBenchLoading] = useState(false)
   const [weeklyStatus, setWeeklyStatus] = useState('idle') // 'idle' | 'loading' | 'saved' | 'exists' | 'error'
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
   const reportRef = useRef(null)
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
   const totalReturn = useMemo(() => calculatePortfolioReturn(holdings, EXCHANGE_RATE), [holdings])
   const totalPnL = useMemo(() => calculateTotalPnL(holdings, EXCHANGE_RATE), [holdings])
+
+  // 배당 통계 계산
+  const cashFlows = useCashFlowStore(s => s.cashFlows)
+  const getNetCapital = useCashFlowStore(s => s.getNetCapital)
+
+  const dividendFlows = useMemo(() => {
+    const year = new Date().getFullYear().toString()
+    return cashFlows.filter(f =>
+      f.category === 'dividend' &&
+      f.date.startsWith(year) &&
+      (selectedAccountId === 'all' || f.accountId === selectedAccountId)
+    )
+  }, [cashFlows, selectedAccountId])
+
+  const annualDividend = useMemo(() =>
+    dividendFlows.reduce((sum, f) =>
+      sum + (f.currency === 'USD' ? f.amount * EXCHANGE_RATE : f.amount), 0
+    ), [dividendFlows])
+
+  const netCapital = useMemo(() =>
+    getNetCapital(selectedAccountId === 'all' ? 'all' : selectedAccountId)
+  , [getNetCapital, selectedAccountId, cashFlows])
+
+  const dividendYield = netCapital > 0 ? (annualDividend / netCapital) * 100 : null
+
+  const monthlyDividendData = useMemo(() => {
+    const map = {}
+    for (let m = 1; m <= 12; m++) map[m] = 0
+    dividendFlows.forEach(f => {
+      const month = parseInt(f.date.split('-')[1], 10)
+      map[month] += f.currency === 'USD' ? f.amount * EXCHANGE_RATE : f.amount
+    })
+    return Object.entries(map).map(([m, total]) => ({ month: `${m}월`, 배당금: Math.round(total) }))
+  }, [dividendFlows])
 
   const filteredEntries = useMemo(() => filterByDateRange(entries, dateRange), [entries, dateRange])
   const winRate = useMemo(() => calculateWinRate(filteredEntries), [filteredEntries])
@@ -172,6 +213,9 @@ export default function Reports() {
   }, [comparisonData])
 
   const handleSaveWeeklyReport = async () => {
+    const ok = await ensureKey()
+    if (!ok) return
+
     const userId = currentUser?.id
     if (!userId) {
       toast.error('로그인이 필요합니다.')
@@ -217,7 +261,7 @@ export default function Reports() {
       await exportAsPNG(reportRef.current, 'portfolio-report')
     } catch (e) {
       console.error('[Export PNG]', e)
-      alert(`PNG 저장 실패: ${e.message}`)
+      toast.error(`PNG 저장 실패: ${e.message}`)
     }
   }
   const handleExportPDF = async () => {
@@ -226,7 +270,7 @@ export default function Reports() {
       await exportAsPDF(reportRef.current, 'portfolio-report')
     } catch (e) {
       console.error('[Export PDF]', e)
-      alert(`PDF 저장 실패: ${e.message}`)
+      toast.error(`PDF 저장 실패: ${e.message}`)
     }
   }
 
@@ -253,7 +297,12 @@ export default function Reports() {
           <ExportMenu onPNG={handleExportPNG} onPDF={handleExportPDF} />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <AccountSelector />
+          <AccountSelector
+            value={selectedAccountId}
+            onChange={selectAccount}
+            showAllOption={true}
+            onAddClick={() => setAccountModalOpen(true)}
+          />
           <div className="flex gap-1">
             {DATE_RANGES.map(r => (
               <button
@@ -317,6 +366,7 @@ export default function Reports() {
           <TabsTrigger value="pnl" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">실현/미실현</TabsTrigger>
           <TabsTrigger value="trades" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">거래 내역</TabsTrigger>
           <TabsTrigger value="insights" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">AI 인사이트</TabsTrigger>
+          <TabsTrigger value="dividend" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">배당</TabsTrigger>
         </TabsList>
 
         {/* 성과 추이 탭 */}
@@ -462,7 +512,86 @@ export default function Reports() {
             </Card>
           </div>
         </TabsContent>
+        {/* 배당 통계 탭 */}
+        <TabsContent value="dividend">
+          <div className="space-y-4">
+            {/* KPI 카드 */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card className="border border-gray-200 dark:border-gray-700">
+                <CardContent className="p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">올해 배당금 수령 (KRW 환산)</p>
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {annualDividend > 0 ? `+${annualDividend.toLocaleString('ko-KR')}원` : '–'}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200 dark:border-gray-700">
+                <CardContent className="p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">배당수익률 (순투자원금 대비)</p>
+                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {dividendYield != null ? `${dividendYield.toFixed(2)}%` : '–'}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    순투자원금 {netCapital > 0 ? netCapital.toLocaleString('ko-KR') + '원' : '–'}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200 dark:border-gray-700">
+                <CardContent className="p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">배당 수령 건수 (올해)</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    {dividendFlows.length}건
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* 월별 배당금 차트 */}
+            <Card className="border border-gray-200 dark:border-gray-700">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">
+                  월별 배당금 수령 현황
+                  <span className="ml-2 text-sm font-normal text-gray-400">{new Date().getFullYear()}년</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {dividendFlows.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-[300px] text-gray-400">
+                    <p className="text-4xl mb-3">💰</p>
+                    <p className="text-sm">올해 배당금 수령 내역이 없습니다.</p>
+                    <p className="text-xs mt-1">자금관리 &gt; 입금에서 카테고리를 "배당금"으로 선택해 등록하세요.</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={monthlyDividendData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#9ca3af" />
+                      <YAxis
+                        tickFormatter={(v) => v === 0 ? '0' : v >= 10000 ? `${(v / 10000).toFixed(0)}만` : v.toLocaleString()}
+                        tick={{ fontSize: 11 }}
+                        stroke="#9ca3af"
+                        width={55}
+                      />
+                      <Tooltip
+                        formatter={(v) => [`${v.toLocaleString('ko-KR')}원`, '배당금']}
+                        contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '13px' }}
+                        labelStyle={{ color: '#e5e7eb' }}
+                      />
+                      <Bar dataKey="배당금" radius={[4, 4, 0, 0]}>
+                        {monthlyDividendData.map((_, i) => (
+                          <Cell key={i} fill={monthlyDividendData[i].배당금 > 0 ? '#10b981' : '#374151'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
       </Tabs>
+      <ApiKeyRequiredDialog {...guardProps} />
+      <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
     </div>
   )
 }

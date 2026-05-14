@@ -9,7 +9,7 @@ const naverApi = axios.create({
 
 // ─── 요청 throttle + 재시도 (m.stock.naver.com Rate Limit 대응) ─────────────
 const CONCURRENCY = 1
-const DELAY_MS = 800
+const DELAY_MS = 1500
 
 let _activeCount = 0
 const _queue = []
@@ -43,8 +43,10 @@ async function withRetry(fn) {
       return await fn()
     } catch (err) {
       const status = err?.response?.status
-      if ((status === 409 || status === 429) && attempt < MAX_RETRY) {
-        await new Promise(r => setTimeout(r, 1200 * (attempt + 1)))
+      // 409는 지속적 rate limit이라 재시도 무의미 → 즉시 throw
+      // 429만 백오프 재시도
+      if (status === 429 && attempt < MAX_RETRY) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)))
         lastErr = err
         continue
       }
@@ -100,7 +102,11 @@ const naverPcApi = axios.create({
 // 캐시: { ticker → parValue } (세션 중 중복 요청 방지)
 const _parValueCache = {}
 
+// KRX 일반 주식 티커는 6자리 숫자 (펀드·채권 코드는 영문 포함이라 미지원)
+const isKrxStock = (ticker) => /^\d{6}$/.test(ticker)
+
 export const fetchNaverParValue = async (ticker) => {
+  if (!isKrxStock(ticker)) return null
   if (_parValueCache[ticker] !== undefined) return _parValueCache[ticker]
 
   try {
@@ -148,7 +154,18 @@ export const fetchNaverQuote = (ticker) => {
       fiftyTwoWeekLow:  null,
       marketCap:        null,
       parValue,
+      industryCode:  data.industryCode ?? null,
+      sector:        getSectorName(data.industryCode) ?? null,
     }
+  }))
+}
+
+// ─── 1-b. 업종(sector) 단일 조회 — integration 엔드포인트만 사용 ────────────
+export const fetchNaverSector = (ticker) => {
+  if (!ticker) return Promise.resolve(null)
+  return throttled(() => withRetry(async () => {
+    const { data } = await naverApi.get(`/api/stock/${ticker}/integration`)
+    return getSectorName(data.industryCode) ?? null
   }))
 }
 
@@ -254,8 +271,8 @@ export const fetchNaverProfile = async (ticker) => {
       else if (recomm >= 2.5) recommendationKey = 'hold'
       else                    recommendationKey = 'sell'
     }
-  } else {
-    // integration에 없으면 별도 컨센서스 엔드포인트 시도
+  } else if (isKrxStock(ticker)) {
+    // 일반 주식만 컨센서스 엔드포인트 시도 (펀드·채권 코드는 미지원)
     try {
       const cnsRes = await naverApi.get(`/api/stock/${ticker}/consensus`, {
         params: { page: 1, pageSize: 1 },

@@ -8,17 +8,20 @@ import { useCashFlowStore } from '../store/cashFlowStore'
 import { useJournalStore } from '../store/journalStore'
 import { useDailyPnlStore } from '../store/dailyPnlStore'
 import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
-import { calculateTotalValue, calculatePortfolioReturn, calculateTotalPnL } from '../utils/calculator'
+import { calculateTotalValue, calculatePortfolioReturn, calculateTotalPnL, calcMorningComparePnl } from '../utils/calculator'
 import { formatCurrency, formatPercent, formatCurrencyShort } from '../utils/formatters'
 import { snapshotToday, backfillHistory } from '../api/dailyPnlService'
+import { getByTicker } from '../utils/stockMasterDb'
 import PortfolioTable from '../components/portfolio/PortfolioTable'
 import AddStockModal from '../components/portfolio/AddStockModal'
 import AllocationPieChart from '../components/charts/AllocationPieChart'
 import DailyPnlChart from '../components/charts/DailyPnlChart'
 import HoldingPnlTimeline from '../components/charts/HoldingPnlTimeline'
-import AccountSelector from '../components/common/AccountSelector'
+import AccountSelector from '../components/account/AccountSelector'
+import AccountSetupModal from '../components/account/AccountSetupModal'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import ChatPanel from '../components/chat/ChatPanel'
 
 export default function Portfolio() {
@@ -28,18 +31,23 @@ export default function Portfolio() {
     accounts, selectedAccountId, exchangeRate,
     getSelectedHoldings, getSelectedCash,
     updateAllPrices, updateExchangeRate, lastUpdated,
+    selectAccount,
   } = usePortfolioStore()
   const cashFlows = useCashFlowStore(s => s.cashFlows)
   const entries   = useJournalStore(s => s.entries)
   const snapshots = useDailyPnlStore(s => s.snapshots)
 
+  const [sectorMap, setSectorMap] = useState({})
   const [chatOpen, setChatOpen] = useState(false)
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
   const [addStockOpen, setAddStockOpen] = useState(false)
   // 종목 상세 드로어
   const [drawerTicker, setDrawerTicker] = useState(null) // { ticker, accountId, name, market }
   // 스냅샷 작업 상태
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [backfillLoading, setBackfillLoading] = useState(false)
+  const [overwriteConfirm, setOverwriteConfirm] = useState(false)
+  const [existingSnapshotTime, setExistingSnapshotTime] = useState('')
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId, entries])
   const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId, cashFlows, entries])
@@ -67,12 +75,39 @@ export default function Portfolio() {
   }, [batchData])
 
   useEffect(() => {
+    if (holdings.length === 0) return
+    const fromBatch = {}
+    if (batchData) {
+      batchData.forEach(r => {
+        if (r.success && r.data?.sector) fromBatch[r.ticker] = r.data.sector
+      })
+    }
+    const tickers = [...new Set(holdings.map(h => h.ticker))]
+    const missing = tickers.filter(t => !fromBatch[t])
+    if (missing.length === 0) {
+      setSectorMap(fromBatch)
+      return
+    }
+    Promise.all(missing.map(t => getByTicker(t).then(row => [t, row?.sector])))
+      .then(pairs => {
+        const fromDb = Object.fromEntries(pairs.filter(([, s]) => s))
+        setSectorMap({ ...fromBatch, ...fromDb })
+      })
+  }, [batchData, holdings.map(h => h.ticker).join(',')])
+
+  useEffect(() => {
     if (rateData?.rate) updateExchangeRate(rateData.rate)
   }, [rateData])
+
+  const holdingsWithSector = useMemo(
+    () => holdings.map(h => ({ ...h, sector: sectorMap[h.ticker] ?? h.sector })),
+    [holdings, sectorMap]
+  )
 
   const totalValue  = useMemo(() => calculateTotalValue(holdings, cashKRW, cashUSD, exchangeRate), [holdings, cashKRW, cashUSD, exchangeRate])
   const totalReturn = useMemo(() => calculatePortfolioReturn(holdings, exchangeRate), [holdings, exchangeRate])
   const totalPnL    = useMemo(() => calculateTotalPnL(holdings, exchangeRate), [holdings, exchangeRate])
+  const morningPnl  = useMemo(() => calcMorningComparePnl(holdings, batchData, exchangeRate), [holdings, batchData, exchangeRate])
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['batchQuotes'] })
@@ -83,16 +118,42 @@ export default function Portfolio() {
     ? new Date(lastUpdated).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : null
 
-  // 오늘 스냅샷 저장
-  const handleSnapshotToday = async () => {
+  // 오늘 스냅샷 저장 실행
+  const executeSnapshotToday = async () => {
+    setOverwriteConfirm(false)
     setSnapshotLoading(true)
     try {
-      await snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
-      toast.success('오늘 손익 스냅샷 저장 완료')
+      const { failed } = await snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
+      if (failed.length > 0) {
+        toast.warning(`일부 종목 가격 조회 실패: ${failed.join(', ')}`)
+      } else {
+        toast.success('오늘 손익 스냅샷 저장 완료')
+      }
     } catch {
       toast.error('오늘 손익 저장 실패. 다시 시도해주세요.')
     } finally {
       setSnapshotLoading(false)
+    }
+  }
+
+  // 오늘 스냅샷 저장 버튼 클릭 — 기존 스냅샷 있으면 덮어쓰기 확인
+  const handleSnapshotToday = () => {
+    const todayStr = new Date().toISOString().split('T')[0]
+
+    // 현재 선택 계좌의 보유 종목 중 오늘 스냅샷이 있는지 확인
+    const existing = Object.values(snapshots).find(
+      s => s.date === todayStr &&
+        (selectedAccountId === 'all' || s.accountId === selectedAccountId)
+    )
+
+    if (existing) {
+      const time = new Date(existing.createdAt).toLocaleTimeString('ko-KR', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul'
+      })
+      setExistingSnapshotTime(time)
+      setOverwriteConfirm(true)
+    } else {
+      executeSnapshotToday()
     }
   }
 
@@ -141,6 +202,22 @@ export default function Portfolio() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* 스냅샷 덮어쓰기 확인 다이얼로그 */}
+      <Dialog open={overwriteConfirm} onOpenChange={setOverwriteConfirm}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>스냅샷 덮어쓰기</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 dark:text-gray-300 py-2">
+            {existingSnapshotTime}에 저장된 스냅샷이 있는데 현시점으로 덮어쓰겠습니까?
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setOverwriteConfirm(false)}>취소</Button>
+            <Button onClick={executeSnapshotToday}>덮어쓰기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 페이지 헤더 */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -182,15 +259,20 @@ export default function Portfolio() {
             </Button>
           </div>
         </div>
-        <AccountSelector />
+        <AccountSelector
+          value={selectedAccountId}
+          onChange={selectAccount}
+          showAllOption={true}
+          onAddClick={() => setAccountModalOpen(true)}
+        />
       </div>
 
       {/* 요약 KPI 카드 */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border border-gray-200 dark:border-gray-700">
           <CardContent className="p-3 space-y-0.5 text-right">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400">총 평가금액</p>
-            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatCurrencyShort(totalValue)}</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatCurrency(totalValue)}</p>
           </CardContent>
         </Card>
         <Card className="border border-gray-200 dark:border-gray-700">
@@ -210,6 +292,25 @@ export default function Portfolio() {
             <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{formatCurrency(cashKRW)}</p>
             {cashUSD > 0 && (
               <p className="text-xs text-gray-500 dark:text-gray-400">{formatCurrency(cashUSD, 'USD')}</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-200 dark:border-gray-700">
+          <CardContent className="p-3 space-y-0.5 text-right">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">오늘 추정손익</p>
+            {priceLoading ? (
+              <p className="text-xl font-bold text-gray-400 dark:text-gray-500 animate-pulse flex items-center justify-end gap-1">
+                <Loader2 className="w-4 h-4 animate-spin" />계산 중…
+              </p>
+            ) : (
+              <>
+                <p className={`text-xl font-bold ${morningPnl.amount >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {morningPnl.amount >= 0 ? '+' : ''}{formatCurrency(morningPnl.amount)}
+                </p>
+                <p className={`text-xs ${morningPnl.rate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {morningPnl.rate >= 0 ? '+' : ''}{morningPnl.rate.toFixed(2)}%
+                </p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -260,7 +361,18 @@ export default function Portfolio() {
           </div>
         </CardHeader>
         <CardContent>
-          <HoldingPnlTimeline accountId={selectedAccountId} height={300} />
+          {selectedAccountId === 'all' && accounts.length >= 2
+            ? accounts.map(acc => {
+                const accTickers = holdings.filter(h => h.accountId === acc.id).map(h => h.ticker)
+                return (
+                  <div key={acc.id} className="mb-6 last:mb-0">
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{acc.name}</p>
+                    <HoldingPnlTimeline accountId={acc.id} activeTickers={accTickers} height={240} />
+                  </div>
+                )
+              })
+            : <HoldingPnlTimeline accountId={selectedAccountId} activeTickers={holdings.map(h => h.ticker)} height={300} />
+          }
         </CardContent>
       </Card>
 
@@ -270,7 +382,7 @@ export default function Portfolio() {
           <CardTitle className="text-lg">자산 배분</CardTitle>
         </CardHeader>
         <CardContent>
-          <AllocationPieChart holdings={holdings} accounts={accounts} selectedAccountId={selectedAccountId} />
+          <AllocationPieChart holdings={holdingsWithSector} accounts={accounts} selectedAccountId={selectedAccountId} />
         </CardContent>
       </Card>
 
@@ -352,6 +464,7 @@ export default function Portfolio() {
 
       {/* 종목 추가 모달 */}
       <AddStockModal open={addStockOpen} onClose={() => setAddStockOpen(false)} />
+      <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
 
       {/* AI 채팅 패널 */}
       <ChatPanel

@@ -61,15 +61,13 @@ export async function snapshotToday(accountId) {
 
   const todayStr = today()
   const results  = []
+  const failed   = []
 
   for (const account of accounts) {
     const holdings = journalStore.computeHoldings(account.id)
     if (holdings.length === 0) continue
 
     for (const holding of holdings) {
-      // 이미 오늘 스냅샷 있으면 스킵
-      if (dailyPnlStore.hasSnapshotToday(holding.ticker, account.id)) continue
-
       try {
         const quote = await fetchQuote(holding.ticker, holding.market || 'KRX')
 
@@ -105,11 +103,12 @@ export async function snapshotToday(accountId) {
         results.push(snapshot)
       } catch (err) {
         console.warn(`[dailyPnlService] snapshotToday failed for ${holding.ticker}:`, err.message)
+        failed.push(holding.ticker)
       }
     }
   }
 
-  return results
+  return { results, failed }
 }
 
 /**

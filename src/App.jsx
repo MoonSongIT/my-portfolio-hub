@@ -9,6 +9,7 @@ import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
+import useAiCredentialStore from './store/aiCredentialStore'
 import { getReportsByUser } from './utils/db'
 import { shouldGenerateWeeklyReport } from './agents/reportAgent'
 import { Toaster, toast } from 'sonner'
@@ -17,6 +18,8 @@ import Sidebar from './components/common/Sidebar'
 import OfflineBanner from './components/common/OfflineBanner'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import LoadingSpinner from './components/common/LoadingSpinner'
+import AutoSnapshotDialog from './components/common/AutoSnapshotDialog'
+import { useAutoSnapshot } from './hooks/useAutoSnapshot'
 
 // 페이지 컴포넌트 lazy 로딩 (코드 스플리팅)
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -40,17 +43,18 @@ function App() {
   const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
   const currentUser = useAuthStore(s => s.currentUser)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { dialogOpen, countdown, handleConfirm, handleDismiss } = useAutoSnapshot()
 
   // PWA 서비스 워커 등록
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
-    onRegistered(r) {
-      console.log('[SW] 서비스 워커 등록 완료:', r)
+    onRegistered(_r) {
+      // 서비스 워커 등록 완료 (프로덕션 로그 생략)
     },
     onOfflineReady() {
-      console.log('[SW] 오프라인 준비 완료')
+      // 오프라인 준비 완료 (프로덕션 로그 생략)
     },
   })
 
@@ -76,6 +80,11 @@ function App() {
   // 앱 시작 시 1회 DB 자동 정리 (24시간 경과 시에만 실행)
   useEffect(() => {
     runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 앱 시작 시 AI API 키 IDB → 메모리 로드
+  useEffect(() => {
+    useAiCredentialStore.getState().hydrate()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 앱 시작 시 1회: LocalStorage(stock-db-v1) → IndexedDB(StockMasterDB) 마이그레이션
@@ -124,8 +133,14 @@ function App() {
   }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Toaster position="bottom-right" richColors closeButton />
+      <AutoSnapshotDialog
+        open={dialogOpen}
+        countdown={countdown}
+        onConfirm={handleConfirm}
+        onDismiss={handleDismiss}
+      />
       {/* PWA 새 버전 알림 배너 */}
       {needRefresh && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-blue-600 text-white text-sm px-4 py-3 rounded-xl shadow-lg">

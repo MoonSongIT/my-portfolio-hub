@@ -15,10 +15,11 @@ const COLORS = [
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
+  const sorted = [...payload].sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-xs space-y-1 min-w-[160px]">
       <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm mb-1">{label}</p>
-      {payload.map((p) => (
+      {sorted.map((p) => (
         <div key={p.dataKey} className="flex items-center justify-between gap-3">
           <span style={{ color: p.color }} className="font-medium truncate max-w-[90px]">{p.name}</span>
           <span style={{ color: p.color }}>
@@ -31,19 +32,26 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 /**
- * HoldingPnlTimeline — 전체 보유 종목 누적 수익률 오버레이 차트
+ * HoldingPnlTimeline — 현재 보유 종목 누적 수익률 오버레이 차트
  * Props:
- *   accountId : string | 'all'
- *   height    : number  (기본 300)
+ *   accountId    : string | 'all'
+ *   activeTickers: string[]  현재 보유 중인 티커 목록 (없으면 전체 표시)
+ *   height       : number  (기본 300)
  */
-export default function HoldingPnlTimeline({ accountId, height = 300 }) {
+export default function HoldingPnlTimeline({ accountId, activeTickers, height = 300 }) {
   const snapshots = useDailyPnlStore(s => s.snapshots)
+  const tickerSet = useMemo(
+    () => activeTickers ? new Set(activeTickers) : null,
+    [activeTickers?.join(',')]
+  )
 
   // 종목별 { date -> cumulativePnlRate } 집계
   const { dates, tickers, tickerNames, merged } = useMemo(() => {
-    const all = Object.values(snapshots).filter(s =>
-      !accountId || accountId === 'all' || s.accountId === accountId
-    )
+    const all = Object.values(snapshots).filter(s => {
+      if (accountId && accountId !== 'all' && s.accountId !== accountId) return false
+      if (tickerSet && !tickerSet.has(s.ticker)) return false
+      return true
+    })
     if (all.length === 0) return { dates: [], tickers: [], tickerNames: {}, merged: [] }
 
     // 날짜 유니크 + 정렬
@@ -51,8 +59,8 @@ export default function HoldingPnlTimeline({ accountId, height = 300 }) {
     const dates   = [...dateSet].sort()
 
     // 종목 유니크
-    const tickerSet = new Set(all.map(s => s.ticker))
-    const tickers   = [...tickerSet]
+    const snapshotTickerSet = new Set(all.map(s => s.ticker))
+    const tickers           = [...snapshotTickerSet]
     const tickerNames = {}
     all.forEach(s => { tickerNames[s.ticker] = s.name || s.ticker })
 
@@ -126,7 +134,7 @@ export default function HoldingPnlTimeline({ accountId, height = 300 }) {
             key={ticker}
             type="monotone"
             dataKey={ticker}
-            name={ticker}
+            name={tickerNames[ticker] || ticker}
             stroke={COLORS[i % COLORS.length]}
             strokeWidth={2}
             dot={false}

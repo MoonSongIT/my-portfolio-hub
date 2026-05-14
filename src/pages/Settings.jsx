@@ -6,18 +6,22 @@ import { useSettingsStore } from '../store/settingsStore'
 import StorageInfo from '../components/common/StorageInfo'
 import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
+import AiKeyPanel from '../components/settings/AiKeyPanel'
+import DartKeyPanel from '../components/settings/DartKeyPanel'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
-import { useAuthStore } from '../store/authStore'
-import { db } from '../utils/db'
+import { useCashFlowStore } from '../store/cashFlowStore'
+import { useDailyPnlStore } from '../store/dailyPnlStore'
+import { useWatchlistStore } from '../store/watchlistStore'
 
 export default function Settings() {
   const { theme, toggleTheme, benchmarkIndex, setBenchmark } = useSettingsStore()
-  const loadFromDB = useJournalStore((s) => s.loadFromDB)
-  const clearEntries = useJournalStore((s) => s.clearEntries)
+  const deleteAllEntries = useJournalStore((s) => s.deleteAllEntries)
   const entryCount = useJournalStore((s) => s.entries.length)
   const recomputeFromJournal = usePortfolioStore((s) => s.recomputeFromJournal)
-  const currentUser = useAuthStore((s) => s.currentUser)
+  const deleteAllCashFlows = useCashFlowStore((s) => s.deleteAllCashFlows)
+  const deleteAllPnl = useDailyPnlStore((s) => s.deleteAllSnapshots)
+  const clearWatchlist = useWatchlistStore((s) => s.clearWatchlist)
 
   const fileInputRef = useRef(null)
 
@@ -25,44 +29,23 @@ export default function Settings() {
   const [importProgress, setImportProgress]     = useState(null)
   const [confirmOpen, setConfirmOpen]           = useState(false)
   const [pendingFile, setPendingFile]           = useState(null)
-  const [cleaning, setCleaning]                 = useState(false)
-  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
-  const [clearing, setClearing]                 = useState(false)
+  const [clearConfirmOpen, setClearConfirmOpen]   = useState(false)
+  const [clearing, setClearing]                   = useState(false)
+  const [storageRefreshKey, setStorageRefreshKey] = useState(0)
 
-  // ─── 계좌 미연결 HTS 항목 삭제 ───
-  async function handleCleanHtsNoAccount() {
-    if (!currentUser?.id) return
-    setCleaning(true)
-    try {
-      const targets = await db.transactions
-        .where('userId').equals(currentUser.id)
-        .filter((t) => t.source === 'eugene-hts' && !t.accountId)
-        .toArray()
-
-      if (targets.length === 0) {
-        toast.info('삭제할 항목이 없습니다.')
-        return
-      }
-
-      await db.transactions.bulkDelete(targets.map((t) => t.id))
-      await loadFromDB(currentUser.id)
-      toast.success(`${targets.length}건 삭제 완료`)
-    } catch (err) {
-      toast.error('삭제 실패: ' + (err?.message ?? '알 수 없는 오류'))
-    } finally {
-      setCleaning(false)
-    }
-  }
-
-  // ─── 거래 정보 일괄 삭제 ───
+  // ─── 전체 초기화 (거래내역 + 자금흐름 + 일별손익 + 관심종목) ───
   async function handleClearAll() {
     setClearing(true)
     try {
-      clearEntries()
+      deleteAllEntries()
+      deleteAllCashFlows()
+      deleteAllPnl()
+      clearWatchlist()
       recomputeFromJournal()
-      toast.success('모든 거래 정보가 삭제되었습니다.')
+      toast.success('모든 데이터가 초기화되었습니다.')
+      setStorageRefreshKey(k => k + 1)
     } catch (err) {
-      toast.error('삭제 실패: ' + (err?.message ?? '알 수 없는 오류'))
+      toast.error('초기화 실패: ' + (err?.message ?? '알 수 없는 오류'))
     } finally {
       setClearing(false)
       setClearConfirmOpen(false)
@@ -75,7 +58,7 @@ export default function Settings() {
       await exportAllData()
       toast.success('백업 파일이 다운로드되었습니다.')
     } catch (err) {
-      console.error(err)
+      console.error('[Settings] 데이터 내보내기 실패:', err)
       toast.error('내보내기 중 오류가 발생했습니다.')
     }
   }
@@ -106,7 +89,7 @@ export default function Settings() {
       })
       toast.success(`가져오기 완료 (백업일: ${new Date(result.importedAt).toLocaleDateString('ko-KR')})`)
     } catch (err) {
-      console.error(err)
+      console.error('[Settings] 데이터 가져오기 실패:', err)
       toast.error(`가져오기 실패: ${err.message}`)
     } finally {
       setImporting(false)
@@ -155,6 +138,13 @@ export default function Settings() {
             <option value="SP500">S&P 500</option>
           </select>
         </div>
+      </section>
+
+      {/* ─── AI 설정 ─── */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 설정</h2>
+        <AiKeyPanel />
+        <DartKeyPanel />
       </section>
 
       {/* ─── 종목 DB 관리 ─── */}
@@ -239,48 +229,31 @@ export default function Settings() {
         </div>
 
         {/* 저장소 현황 */}
-        <StorageInfo />
+        <StorageInfo refreshKey={storageRefreshKey} />
       </section>
 
       {/* ─── 데이터 정리 ─── */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">데이터 정리</h2>
 
-        {/* 계좌 미연결 HTS 항목 삭제 */}
+        {/* 전체 초기화 */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-800 px-5 py-4 space-y-3">
           <div>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">계좌 미연결 HTS import 항목 삭제</p>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">전체 초기화</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              계좌가 연결되지 않은 유진투자증권 HTS import 거래내역을 모두 삭제합니다.
-            </p>
-          </div>
-          <button
-            onClick={handleCleanHtsNoAccount}
-            disabled={cleaning}
-            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40 transition"
-          >
-            {cleaning ? '삭제 중…' : '계좌 미연결 HTS 항목 삭제'}
-          </button>
-        </div>
-
-        {/* 거래 정보 일괄 삭제 */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-800 px-5 py-4 space-y-3">
-          <div>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">거래 정보 일괄 삭제</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              매매 일지의 모든 거래 내역을 삭제합니다.
+              거래 내역, 자금 흐름, 일별 손익 데이터를 모두 삭제합니다.
               {entryCount > 0 && (
-                <span className="ml-1 text-red-500">현재 {entryCount.toLocaleString('ko-KR')}건</span>
+                <span className="ml-1 text-red-500">거래 {entryCount.toLocaleString('ko-KR')}건 포함</span>
               )}
             </p>
           </div>
           <button
             onClick={() => setClearConfirmOpen(true)}
-            disabled={clearing || entryCount === 0}
+            disabled={clearing}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40 transition"
           >
             <Trash2 className="w-4 h-4" />
-            {clearing ? '삭제 중…' : '전체 거래 삭제'}
+            {clearing ? '초기화 중…' : '전체 초기화'}
           </button>
         </div>
       </section>
@@ -339,14 +312,12 @@ export default function Settings() {
                 <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">거래 정보 일괄 삭제</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white">전체 초기화</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">되돌릴 수 없습니다</p>
               </div>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-300">
-              매매 일지의{' '}
-              <span className="font-semibold text-red-600">{entryCount.toLocaleString('ko-KR')}건</span>{' '}
-              거래 내역이 모두 삭제됩니다. 삭제 전 내보내기로 백업하는 것을 권장합니다.
+              거래 내역, 자금 흐름, 일별 손익 데이터가 모두 삭제됩니다. 삭제 전 내보내기로 백업하는 것을 권장합니다.
             </p>
             <div className="flex gap-3">
               <button

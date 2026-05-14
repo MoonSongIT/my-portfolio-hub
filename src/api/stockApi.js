@@ -94,6 +94,9 @@ export const fetchQuote = async (ticker, market = 'NASDAQ') => {
     return fetchNaverQuote(pureTicker)
   }
 
+  // 워런트·권리증 등 비표준 접미사 티커 (.W, .WS, .RT, .U 등)는 Yahoo 차트 미지원
+  if (/\.(W|WS|RT|U|R)$/i.test(ticker)) throw new Error(`미지원 티커 형식: ${ticker}`)
+
   const yahooTicker = toYahooTicker(ticker, market)
   const { data } = await yahooApi.get(`/v8/finance/chart/${yahooTicker}`, {
     params: { interval: '1d', range: '1d' },
@@ -249,7 +252,19 @@ export const fetchSearch = async (query, downloadedStocks = []) => {
     masterResults = dedupeByTicker(rows.map(masterRowToSearchResult))
   } catch { /* IDB 미준비(최초 설치) 시 폴백으로 계속 */ }
 
-  if (masterResults.length >= 5) return masterResults.slice(0, 20)
+  if (masterResults.length >= 5) {
+    // IDB 결과가 충분해도 한국 종목 로컬 DB 항상 보완 (SK → SK하이닉스 등 매칭)
+    const seen = new Set(masterResults.map(s => s.ticker))
+    const merged = [...masterResults]
+    searchKoreanStocks(q).forEach(s => {
+      const ticker = s.ticker.replace('.KS', '').replace('.KQ', '')
+      if (!seen.has(ticker)) {
+        seen.add(ticker)
+        merged.push({ ticker, name: s.name, type: s.type, exchange: s.exchange, market: s.market })
+      }
+    })
+    return filterStandard(merged).slice(0, 20)
+  }
 
   // ── 2순위: 기존 로컬 번들 + Yahoo 보완 ──────────────────────────
   const isKo = isKorean(q)
@@ -260,27 +275,27 @@ export const fetchSearch = async (query, downloadedStocks = []) => {
     if (!seen.has(s.ticker)) { seen.add(s.ticker); merged.push(s) }
   }
 
-  if (isKo) {
-    // 한글: 내장 한국 종목 DB
-    searchKoreanStocks(q).forEach(s => addIfNew({
-      ticker:   s.ticker.replace('.KS', '').replace('.KQ', ''),
+  // 한국 종목 DB — 한글 쿼리는 항상, 영문 쿼리도 항상 검색 (SK → SK하이닉스 등 매칭)
+  searchKoreanStocks(q).forEach(s => addIfNew({
+    ticker:   s.ticker.replace('.KS', '').replace('.KQ', ''),
+    name:     s.name,
+    type:     s.type,
+    exchange: s.exchange,
+    market:   s.market,
+  }))
+  downloadedStocks
+    .filter(s => (s.market === 'KRX' || s.exchange === 'KOSPI' || s.exchange === 'KOSDAQ')
+              && (s.name?.toLowerCase().includes(q.toLowerCase())
+               || s.ticker?.includes(q.toUpperCase())))
+    .forEach(s => addIfNew({
+      ticker:   s.ticker,
       name:     s.name,
-      type:     s.type,
-      exchange: s.exchange,
-      market:   s.market,
+      type:     s.type || 'EQUITY',
+      exchange: s.exchange || 'KOSPI',
+      market:   'KRX',
     }))
-    // 구형 downloadedStocks (stockDbStore) 폴백
-    downloadedStocks
-      .filter(s => (s.market === 'KRX' || s.exchange === 'KOSPI' || s.exchange === 'KOSDAQ')
-                && s.name?.includes(q))
-      .forEach(s => addIfNew({
-        ticker:   s.ticker,
-        name:     s.name,
-        type:     s.type || 'EQUITY',
-        exchange: s.exchange || 'KOSPI',
-        market:   'KRX',
-      }))
-  } else {
+
+  if (!isKo) {
     // 영문/티커: 내장 미국 종목 DB
     const ql = q.toLowerCase()
     searchUsStocks(q, 10).forEach(s => addIfNew({
@@ -306,9 +321,9 @@ export const fetchSearch = async (query, downloadedStocks = []) => {
       }))
   }
 
-  if (merged.length >= 8) return merged.slice(0, 15)
+  if (merged.length >= 8 || isKo) return filterStandard(merged).slice(0, 15)
 
-  // ── 3순위: Yahoo Finance 원격 보완 ──────────────────────────────
+  // ── 3순위: Yahoo Finance 원격 보완 (영문/티커 전용) ─────────────
   try {
     const { data } = await yahooApi.get('/v1/finance/search', {
       params: { q, quotesCount: 10, newsCount: 0, listsCount: 0 },
@@ -325,7 +340,12 @@ export const fetchSearch = async (query, downloadedStocks = []) => {
     }))
   } catch { /* Yahoo 실패 시 현재까지 결과 반환 */ }
 
-  return merged.slice(0, 15)
+  return filterStandard(merged).slice(0, 15)
+}
+
+// 워런트·권리증·유닛 등 비표준 접미사 티커 제거
+function filterStandard(stocks) {
+  return stocks.filter(s => !/\.(W|WS|RT|U|R)$/i.test(s.ticker))
 }
 
 // 5. 기업 상세 + 재무 지표

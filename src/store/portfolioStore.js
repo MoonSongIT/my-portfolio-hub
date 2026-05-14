@@ -103,8 +103,8 @@ export const usePortfolioStore = create(
         state.selectedAccountId = accountId
       }),
 
+      // 메모리만 초기화 (로그아웃 시 사용) — accountStore 데이터는 건드리지 않음
       clearAccounts: () => {
-        useAccountStore.getState().clearAccounts()
         set((state) => {
           state.accounts = []
           state.selectedAccountId = 'all'
@@ -157,7 +157,6 @@ export const usePortfolioStore = create(
             ...h,
             currentPrice: prices[h.ticker] ?? h.avgPrice,
             currency,
-            sector: 'ETC',
             accountName: account?.name || '알 수 없는 계좌',
             accountType: account?.type || 'GENERAL',
           }
@@ -167,33 +166,28 @@ export const usePortfolioStore = create(
       getSelectedCash: () => {
         const { selectedAccountId } = get()
         const cashFlowStore = useCashFlowStore.getState()
-        const journalStore  = useJournalStore.getState()
         const accountStore  = useAccountStore.getState()
 
-        // 계좌별 투자 가능 금액 계산 (입금 - 출금 - 현재 투자원가)
-        const calcAvailable = (accountId) => {
-          const deposit    = cashFlowStore.getTotalDeposit(accountId)
-          const withdrawal = cashFlowStore.getTotalWithdrawal(accountId)
-          const invested   = journalStore.computeHoldings(accountId)
-            .reduce((s, h) => s + (h.totalCost || 0), 0)
-          return deposit - withdrawal - invested
+        const getBalance = (accountId) => {
+          const running = cashFlowStore.getRunningBalance(accountId)
+          return running.length > 0 ? running[running.length - 1].balance : 0
         }
 
         if (selectedAccountId === 'all') {
           return accountStore.accounts.reduce((sum, acc) => {
-            const available = calcAvailable(acc.id)
+            const balance = getBalance(acc.id)
             return acc.currency === 'USD'
-              ? { krw: sum.krw, usd: sum.usd + available }
-              : { krw: sum.krw + available, usd: sum.usd }
+              ? { krw: sum.krw, usd: sum.usd + balance }
+              : { krw: sum.krw + balance, usd: sum.usd }
           }, { krw: 0, usd: 0 })
         }
 
         const acc = accountStore.accounts.find(a => a.id === selectedAccountId)
         if (!acc) return { krw: 0, usd: 0 }
-        const available = calcAvailable(selectedAccountId)
+        const balance = getBalance(selectedAccountId)
         return acc.currency === 'USD'
-          ? { krw: 0, usd: available }
-          : { krw: available, usd: 0 }
+          ? { krw: 0, usd: balance }
+          : { krw: balance, usd: 0 }
       },
 
       getTotalValue: () => {

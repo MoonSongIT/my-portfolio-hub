@@ -1,27 +1,27 @@
 import { useState } from 'react'
 import { useJournalStore, BUY_PSYCHOLOGY, SELL_PSYCHOLOGY } from '../../store/journalStore'
-import { useUserAccounts, useAccountStore } from '../../store/accountStore'
+import { useAccountStore } from '../../store/accountStore'
+import { filterByDateRange } from '../../utils/calculator'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import JournalEntryForm from './JournalEntryForm'
 
 const ALL_PSYCHOLOGY = ['전체', ...BUY_PSYCHOLOGY, ...SELL_PSYCHOLOGY.filter(p => !BUY_PSYCHOLOGY.includes(p))]
 
-export default function JournalList({ filterAccountId = '전체' }) {
+export default function JournalList({ filterAccountId = 'all', dateRange = 'all' }) {
   const { entries, deleteEntry } = useJournalStore()
-  const accounts = useUserAccounts()
   const getAccountLabel = useAccountStore((state) => state.getAccountLabel)
   const [filterPsychology, setFilterPsychology] = useState('전체')
   const [filterAction, setFilterAction] = useState('전체')
   const [searchTicker, setSearchTicker] = useState('')
   const [editEntry, setEditEntry] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
-
-  // 필터 적용
-  const filtered = entries
-    .filter(e => filterAccountId === '전체' || e.accountId === filterAccountId)
+  // 필터 적용 (날짜 → 계좌 → 매수/매도 → 심리 → 종목검색 순)
+  const dateFiltered = dateRange === 'all' ? entries : filterByDateRange(entries, dateRange)
+  const filtered = dateFiltered
+    .filter(e => filterAccountId === 'all' || e.accountId === filterAccountId)
     .filter(e => filterAction === '전체' || e.action === (filterAction === '매수' ? 'buy' : 'sell'))
     .filter(e => filterPsychology === '전체' || e.psychology === filterPsychology)
-    .filter(e => !searchTicker || e.name.includes(searchTicker) || e.ticker.includes(searchTicker.toUpperCase()))
+    .filter(e => !searchTicker || e.name.includes(searchTicker) || e.ticker.includes(searchTicker.toUpperCase()) || e.memo?.includes(searchTicker))
     .sort((a, b) => b.date.localeCompare(a.date))
 
   // 날짜별 그룹화

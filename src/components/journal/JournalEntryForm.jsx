@@ -3,19 +3,19 @@ import { toast } from 'sonner'
 import { useJournalStore } from '../../store/journalStore'
 import { useUserAccounts, useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
 import { useCashFlowStore } from '../../store/cashFlowStore'
+import { useWatchlistStore } from '../../store/watchlistStore'
+import { usePortfolioStore } from '../../store/portfolioStore'
 import { ensureHistory } from '../../api/dailyPnlService'
-import { KRX_STOCKS } from '../../data/krxStocks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import PsychologySelector from './PsychologySelector'
 import AccountSelector from '../account/AccountSelector'
 import { formatCurrencyShort } from '../../utils/formatters'
-import { Landmark, Wallet } from 'lucide-react'
+import { Landmark, Wallet, History } from 'lucide-react'
 
 // ─── 천단위 콤마 헬퍼 ───
 
-// raw 숫자 문자열 → 콤마 표시 (소수점·음수 보존)
 function formatNumDisplay(raw) {
   if (raw === '' || raw == null) return ''
   const str = String(raw)
@@ -27,26 +27,21 @@ function formatNumDisplay(raw) {
   return isNeg ? `-${result}` : result
 }
 
-// 입력 이벤트 → raw 문자열 (콤마 제거, 허용 문자만 통과)
 function parseNumInput(val, { allowNeg = false, allowDec = false } = {}) {
   let s = val.replace(/,/g, '')
-  // 허용 문자 필터
   const pattern = allowNeg && allowDec ? /[^0-9.\-]/g
                 : allowNeg            ? /[^0-9\-]/g
                 : allowDec            ? /[^0-9.]/g
                 :                       /[^0-9]/g
   s = s.replace(pattern, '')
-  // 소수점 중복 제거
   if (allowDec) {
     const parts = s.split('.')
     if (parts.length > 2) s = parts[0] + '.' + parts.slice(1).join('')
   }
-  // 음수 부호는 맨 앞에만
   if (allowNeg) s = s.replace(/(?!^)-/g, '')
   return s
 }
 
-// 계좌 유형 배지 색상
 const TYPE_COLOR = {
   GENERAL: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   IRP:     'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
@@ -55,30 +50,7 @@ const TYPE_COLOR = {
   ETC:     'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
 }
 
-// 로컬 종목 검색 (KRX + 미국 주요 종목 하드코딩)
-const US_STOCKS = [
-  { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ' },
-  { ticker: 'MSFT', name: 'Microsoft', market: 'NASDAQ' },
-  { ticker: 'NVDA', name: 'NVIDIA', market: 'NASDAQ' },
-  { ticker: 'GOOGL', name: 'Alphabet', market: 'NASDAQ' },
-  { ticker: 'AMZN', name: 'Amazon', market: 'NASDAQ' },
-  { ticker: 'META', name: 'Meta', market: 'NASDAQ' },
-  { ticker: 'TSLA', name: 'Tesla', market: 'NASDAQ' },
-  { ticker: 'QQQM', name: 'Invesco NASDAQ 100 ETF', market: 'NASDAQ' },
-  { ticker: 'SPY', name: 'SPDR S&P 500 ETF', market: 'NYSE' },
-  { ticker: 'QQQ', name: 'Invesco QQQ Trust', market: 'NASDAQ' },
-]
-const ALL_STOCKS = [...KRX_STOCKS, ...US_STOCKS]
-
-function searchStocks(query) {
-  if (!query || query.length < 1) return []
-  const q = query.toLowerCase()
-  return ALL_STOCKS.filter(s =>
-    s.name.toLowerCase().includes(q) ||
-    s.ticker.toLowerCase().includes(q) ||
-    (s.nameEn && s.nameEn.toLowerCase().includes(q))
-  ).slice(0, 10)
-}
+const ACTION_LABEL = { buy: '매수', sell: '매도' }
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -98,19 +70,57 @@ const INITIAL_FORM = {
 }
 
 export default function JournalEntryForm({ open, onClose, editEntry = null }) {
-  const { addEntry, updateEntry } = useJournalStore()
+  const { addEntry, updateEntry, entries } = useJournalStore()
   const accounts = useUserAccounts()
   const cashFlows = useCashFlowStore(s => s.cashFlows)
-  const entries   = useJournalStore(s => s.entries)
-  const { computeHoldings } = useJournalStore()
-  const { getTotalDeposit, getTotalWithdrawal } = useCashFlowStore()
+  const { getAvailableCash } = useCashFlowStore()
+  const watchlist = useWatchlistStore(s => s.watchlist)
+  const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
+
   const [form, setForm] = useState(INITIAL_FORM)
   const [errors, setErrors] = useState({})
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const isEdit = !!editEntry
 
-  const searchResults = useMemo(() => searchStocks(searchQuery), [searchQuery])
+  // 관심종목 + 보유종목 합산 후 ticker 중복 제거
+  const stockPool = useMemo(() => {
+    const holdings = getSelectedHoldings().map(h => ({ ticker: h.ticker, name: h.name, market: h.market }))
+    const watched  = watchlist.map(w => ({ ticker: w.ticker, name: w.name, market: w.market }))
+    const merged = [...holdings, ...watched]
+    const seen = new Set()
+    return merged.filter(s => { if (seen.has(s.ticker)) return false; seen.add(s.ticker); return true })
+  }, [watchlist, getSelectedHoldings])
+
+  // 최근 거래 종목 (빈 검색어일 때 드롭다운에 표시)
+  const recentTickers = useMemo(() => {
+    const seen = new Set()
+    return [...entries]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .filter(e => { if (seen.has(e.ticker)) return false; seen.add(e.ticker); return true })
+      .slice(0, 6)
+      .map(e => ({ ticker: e.ticker, name: e.name, market: e.market, isRecent: true }))
+  }, [entries])
+
+  // 선택된 종목의 최근 거래 히스토리 (최근 3건)
+  const tickerHistory = useMemo(() => {
+    if (!form.ticker) return []
+    return [...entries]
+      .filter(e => e.ticker === form.ticker)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 3)
+  }, [form.ticker, entries])
+
+  // 가장 최근 거래 (placeholder 힌트용)
+  const lastTrade = tickerHistory[0] ?? null
+
+  const searchResults = useMemo(() => {
+    if (!searchQuery || searchQuery.length < 1) return []
+    const q = searchQuery.toLowerCase()
+    return stockPool.filter(s =>
+      s.name.toLowerCase().includes(q) || s.ticker.toLowerCase().includes(q)
+    ).slice(0, 10)
+  }, [searchQuery, stockPool])
 
   // 수정 모드: 기존 데이터 채우기
   useEffect(() => {
@@ -130,7 +140,6 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
         pnl: editEntry.pnl !== null && editEntry.pnl !== undefined ? String(editEntry.pnl) : '',
       })
     } else {
-      // 신규 입력: 첫 번째 계좌를 기본 선택
       const defaultAccountId = accounts.length > 0 ? accounts[0].id : ''
       setForm({ ...INITIAL_FORM, date: today(), accountId: defaultAccountId })
     }
@@ -161,6 +170,24 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
     return Object.keys(e).length === 0
   }
 
+  const doSave = (entry) => {
+    if (isEdit) {
+      updateEntry(editEntry.id, entry)
+    } else {
+      addEntry(entry)
+      if (entry.action === 'buy' && entry.accountId) {
+        ensureHistory(entry.ticker, entry.accountId, entry.market).then(results => {
+          if (results.length > 0) {
+            toast.success(`${entry.name} 손익 히스토리 로드 완료 (${results.length}일)`)
+          }
+        }).catch(() => {
+          toast.error(`${entry.name} 손익 히스토리 로드 실패. 포트폴리오에서 수동으로 로드해주세요.`)
+        })
+      }
+    }
+    onClose()
+  }
+
   const handleSubmit = () => {
     if (!validate()) return
 
@@ -182,30 +209,34 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
       pnl: form.pnl !== '' ? Number(form.pnl) : null,
     }
 
-    if (isEdit) {
-      updateEntry(editEntry.id, entry)
-    } else {
-      addEntry(entry)
-      // 신규 매수 시 과거 손익 데이터 백필 (백그라운드, 비차단)
-      if (entry.action === 'buy' && entry.accountId) {
-        ensureHistory(entry.ticker, entry.accountId, entry.market).then(results => {
-          if (results.length > 0) {
-            toast.success(`${entry.name} 손익 히스토리 로드 완료 (${results.length}일)`)
+    if (!isEdit) {
+      const ticker = form.ticker.trim().toUpperCase()
+      const duplicate = entries.find(e =>
+        e.date === form.date &&
+        e.ticker === ticker &&
+        e.action === form.action &&
+        e.quantity === quantity
+      )
+      if (duplicate) {
+        toast.warning(
+          `동일한 거래가 이미 있습니다. (${form.date} ${ticker} ${ACTION_LABEL[form.action]} ${quantity}주)`,
+          {
+            action: { label: '계속 저장', onClick: () => doSave(entry) },
+            cancel: { label: '취소' },
+            duration: 8000,
           }
-        }).catch(() => {
-          toast.error(`${entry.name} 손익 히스토리 로드 실패. 포트폴리오에서 수동으로 로드해주세요.`)
-        })
+        )
+        return
       }
     }
 
-    onClose()
+    doSave(entry)
   }
 
   const amount = form.price && form.quantity
     ? (Number(form.price) * Number(form.quantity)).toLocaleString('ko-KR')
     : null
 
-  // 선택된 계좌 정보
   const selectedAccount = useMemo(
     () => accounts.find(a => a.id === form.accountId) || null,
     [form.accountId, accounts]
@@ -216,11 +247,12 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
   )
   const availableCash = useMemo(() => {
     if (!form.accountId) return null
-    const deposit    = getTotalDeposit(form.accountId)
-    const withdrawal = getTotalWithdrawal(form.accountId)
-    const invested   = computeHoldings(form.accountId).reduce((s, h) => s + (h.totalCost || 0), 0)
-    return deposit - withdrawal - invested
-  }, [form.accountId, cashFlows, entries])
+    return getAvailableCash(form.accountId)
+  }, [form.accountId, cashFlows])
+
+  // 드롭다운에 표시할 목록 (검색어 있으면 검색결과, 없으면 최근 거래)
+  const dropdownItems = searchQuery.length > 0 ? searchResults : recentTickers
+  const dropdownLabel = searchQuery.length > 0 ? null : '최근 거래 종목'
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -234,7 +266,6 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">계좌</label>
             <div className="mt-1 flex items-stretch gap-3">
-              {/* 왼쪽: 드롭다운 */}
               <div className="flex-1">
                 <AccountSelector
                   value={form.accountId}
@@ -243,7 +274,6 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
                 />
               </div>
 
-              {/* 오른쪽: 선택된 계좌 정보 카드 */}
               {selectedAccount ? (
                 <div className="flex-1 flex items-center gap-2.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 min-w-0">
                   <div className="w-8 h-8 rounded-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center shrink-0">
@@ -286,32 +316,75 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
           <div className="relative">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">종목</label>
             <Input
+              lang="ko"
+              autoComplete="off"
               value={isEdit ? `${form.name} (${form.ticker})` : searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true) }}
               onFocus={() => !isEdit && setShowSearch(true)}
+              onBlur={() => setTimeout(() => setShowSearch(false), 150)}
               placeholder="종목명 또는 티커 검색 (예: 삼성전자, AAPL)"
               disabled={isEdit}
               className="mt-1"
             />
-            {showSearch && searchResults && searchResults.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
-                {searchResults.map((item) => (
+
+            {/* 드롭다운: 검색결과 or 최근 거래 종목 */}
+            {showSearch && !isEdit && dropdownItems.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 max-h-52 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                {dropdownLabel && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-100 dark:border-gray-700">
+                    <History size={12} className="text-gray-400" />
+                    <span className="text-[11px] text-gray-400 font-medium">{dropdownLabel}</span>
+                  </div>
+                )}
+                {dropdownItems.map((item) => (
                   <button
                     key={item.ticker}
                     type="button"
-                    onClick={() => handleSelectStock(item)}
+                    onMouseDown={() => handleSelectStock(item)}
                     className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
                   >
                     <span className="font-medium">{item.name}</span>
-                    <span className="ml-2 text-gray-500">{item.ticker} · {item.market}</span>
+                    <span className="ml-2 text-gray-500 text-xs">{item.ticker} · {item.market}</span>
+                    {item.isRecent && (
+                      <span className="ml-1 text-[10px] text-blue-400">최근</span>
+                    )}
                   </button>
                 ))}
               </div>
             )}
+
             {form.ticker && !isEdit && (
               <p className="text-xs text-blue-600 mt-1">{form.name} ({form.ticker}) · {form.market}</p>
             )}
             {errors.ticker && <p className="text-red-500 text-xs mt-1">{errors.ticker}</p>}
+
+            {/* 선택된 종목 최근 거래 히스토리 */}
+            {form.ticker && !isEdit && tickerHistory.length > 0 && (
+              <div className="mt-2 rounded-lg border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2 space-y-1">
+                <div className="flex items-center gap-1 mb-1">
+                  <History size={11} className="text-blue-400" />
+                  <span className="text-[11px] font-medium text-blue-500 dark:text-blue-400">
+                    {form.name} 최근 거래
+                  </span>
+                </div>
+                {tickerHistory.map((h) => (
+                  <div key={h.id} className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
+                    <span className="text-gray-400 w-20 shrink-0">{h.date}</span>
+                    <span className={`font-medium shrink-0 ${h.action === 'buy' ? 'text-blue-600' : 'text-red-500'}`}>
+                      {ACTION_LABEL[h.action]}
+                    </span>
+                    <span>{Number(h.price).toLocaleString('ko-KR')}원</span>
+                    <span className="text-gray-400">×</span>
+                    <span>{h.quantity}주</span>
+                    {h.psychology && (
+                      <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 shrink-0">
+                        {h.psychology}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 구분 + 날짜 */}
@@ -362,11 +435,17 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
               <Input
                 type="text"
                 inputMode="decimal"
+                autoComplete="off"
                 value={formatNumDisplay(form.price)}
                 onChange={(e) => set('price', parseNumInput(e.target.value, { allowDec: true }))}
-                placeholder="209,500"
+                placeholder={lastTrade ? Number(lastTrade.price).toLocaleString('ko-KR') : '209,500'}
                 className="mt-1"
               />
+              {lastTrade && !form.price && (
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  최근: {Number(lastTrade.price).toLocaleString('ko-KR')}원
+                </p>
+              )}
               {errors.price && <p className="text-red-500 text-xs mt-1">{errors.price}</p>}
             </div>
             <div>
@@ -374,23 +453,31 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
               <Input
                 type="text"
                 inputMode="numeric"
+                autoComplete="off"
                 value={formatNumDisplay(form.quantity)}
                 onChange={(e) => set('quantity', parseNumInput(e.target.value))}
-                placeholder="10"
+                placeholder={lastTrade ? String(lastTrade.quantity) : '10'}
                 className="mt-1"
               />
+              {lastTrade && !form.quantity && (
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  최근: {lastTrade.quantity}주
+                </p>
+              )}
               {errors.quantity && <p className="text-red-500 text-xs mt-1">{errors.quantity}</p>}
             </div>
           </div>
+
           {/* 수수료 */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">수수료 (선택)</label>
             <Input
               type="text"
               inputMode="decimal"
+              autoComplete="off"
               value={formatNumDisplay(form.fee)}
               onChange={(e) => set('fee', parseNumInput(e.target.value, { allowDec: true }))}
-              placeholder="예: 1,500"
+              placeholder={lastTrade?.fee ? Number(lastTrade.fee).toLocaleString('ko-KR') : '예: 1,500'}
               className="mt-1"
             />
           </div>
@@ -421,6 +508,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
               <Input
                 type="text"
                 inputMode="decimal"
+                autoComplete="off"
                 value={formatNumDisplay(form.pnl)}
                 onChange={(e) => set('pnl', parseNumInput(e.target.value, { allowNeg: true, allowDec: true }))}
                 placeholder="예: 150,000 또는 -50,000"
@@ -438,10 +526,16 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
             <textarea
               value={form.memo}
               onChange={(e) => set('memo', e.target.value)}
-              placeholder="매매 이유, 시장 상황, 느낀 점 등 자유롭게..."
+              autoComplete="off"
+              placeholder={lastTrade?.memo || '매매 이유, 시장 상황, 느낀 점 등 자유롭게...'}
               rows={2}
               className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            {lastTrade?.memo && !form.memo && (
+              <p className="text-[11px] text-gray-400 mt-0.5 truncate">
+                최근 메모: {lastTrade.memo}
+              </p>
+            )}
           </div>
         </div>
 

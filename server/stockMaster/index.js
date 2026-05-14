@@ -272,7 +272,7 @@ function buildManifest() {
  */
 export async function handleStockMaster(req, res) {
   const env     = loadEnv('development', process.cwd(), '')
-  const dartKey = env.DART_API_KEY || ''
+  const dartKey = req.headers?.['x-dart-api-key'] || env.DART_API_KEY || ''
 
   const rawUrl = req.url || ''
   const urlObj = new URL(rawUrl, 'http://localhost')

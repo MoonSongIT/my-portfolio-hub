@@ -42,7 +42,6 @@ export default function Header({ onToggleSidebar }) {
 
   const handleLogout = () => {
     clearAccounts()
-    clearWatchlist()
     clearEntries()
     clearCashFlows()
     clearDailyPnl()

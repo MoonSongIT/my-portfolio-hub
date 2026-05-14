@@ -1,5 +1,6 @@
 // Anthropic Claude API 호출 — 서버사이드 프록시 경유
 import axios from 'axios'
+import useAiCredentialStore from '../store/aiCredentialStore.js'
 import { routeToAgent, AGENT_LABELS } from '../agents/orchestrator.js'
 import { RESEARCH_PROMPT, RESEARCH_TOOL_USE_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
@@ -15,6 +16,26 @@ const claudeApi = axios.create({
   timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+// request interceptor — 사용자 API 키를 X-User-Api-Key 헤더에 자동 첨부
+claudeApi.interceptors.request.use((config) => {
+  const { apiKey } = useAiCredentialStore.getState()
+  if (apiKey) {
+    config.headers['X-User-Api-Key'] = apiKey
+  }
+  return config
+})
+
+// response interceptor — 401 수신 시 isValid 자동 false 갱신
+claudeApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      useAiCredentialStore.setState({ isValid: false })
+    }
+    return Promise.reject(error)
+  }
+)
 
 /**
  * 에이전트별 시스템 프롬프트 맵

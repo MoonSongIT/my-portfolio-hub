@@ -244,3 +244,25 @@ export async function extractTicker(message) {
 
   return null
 }
+
+export const SCREENER_PROMPT = `당신은 종목 스크리닝 전문 에이전트입니다.
+규칙:
+- 종목 추천 시 티커와 종목명을 함께 표기하세요. 예: AAPL(Apple), 005930(삼성전자)
+- 추천 이유를 간결하게 설명하세요 (1~2문장)
+- 최대 5개 종목 추천
+- 면책 문구 필수: "이 추천은 참고용이며 투자 결정의 책임은 본인에게 있습니다."
+- 응답은 한국어로 작성하세요.`
+
+const STOP_WORDS = new Set(['AND','OR','PER','ROE','EPS','USD','KRW','ETF','TOP','CEO','IPO'])
+
+export function parseTickersFromText(text) {
+  const matches = []
+  const krPattern = /\b(\d{6})\b/g
+  const usPattern = /\b([A-Z]{2,6})\b/g
+  let m
+  while ((m = krPattern.exec(text)) !== null) matches.push({ ticker: m[1], market: 'KRX' })
+  while ((m = usPattern.exec(text)) !== null) {
+    if (!STOP_WORDS.has(m[1])) matches.push({ ticker: m[1], market: 'NASDAQ' })
+  }
+  return matches.slice(0, 5)
+}

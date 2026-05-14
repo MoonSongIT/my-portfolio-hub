@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { toast } from 'sonner'
 import { db, addTransaction, updateTransaction, deleteTransaction, getTransactionsByUser, deleteTransactionsByUser } from '../utils/db'
 import { useCashFlowStore } from './cashFlowStore'
 import { useWatchlistStore } from './watchlistStore'
@@ -15,6 +16,7 @@ export const BUY_PSYCHOLOGY = [
   '뉴스 편승',
   '저가 매수',
   '목표가 도달',
+  '기술적 분석(20일상승)',
   '기타',
 ]
 
@@ -24,6 +26,7 @@ export const SELL_PSYCHOLOGY = [
   '공포에 매도',
   '수익 실현 (조급)',
   '리밸런싱',
+  '기술적 분석(20일하락)',
   '기타',
 ]
 
@@ -55,16 +58,19 @@ export const useJournalStore = create(
           const holding = currentHoldings.find(h => h.ticker === newEntry.ticker)
           if (holding && holding.avgPrice > 0) {
             // pnl은 해당 종목의 원화폐 단위로 저장 (USD → KRW 변환은 집계 시 처리)
-            newEntry.pnl = Math.round((newEntry.price - holding.avgPrice) * newEntry.quantity)
+            newEntry.pnl = Math.round(
+              (newEntry.price - holding.avgPrice) * newEntry.quantity - (newEntry.fee || 0)
+            )
           }
         }
 
         // 매수/매도 시 현금 흐름 자동 연동
         // 매수: price*qty + fee (수수료 포함 실제 출금액)
-        // 매도: price*qty       (수수료는 실현손익에 이미 반영)
+        // 매도: price*qty - fee (수수료 차감 실제 입금액)
         if (newEntry.accountId && newEntry.price && newEntry.quantity) {
-          const fee = newEntry.action === 'buy' ? (newEntry.fee || 0) : 0
-          const amount = newEntry.price * newEntry.quantity + fee
+          const buyFee  = newEntry.action === 'buy'  ? (newEntry.fee || 0) : 0
+          const sellFee = newEntry.action === 'sell' ? (newEntry.fee || 0) : 0
+          const amount = newEntry.price * newEntry.quantity + buyFee - sellFee
           const cashFlowType = newEntry.action === 'buy' ? 'withdrawal' : 'deposit'
           const label = newEntry.action === 'buy'
             ? `매수: ${newEntry.name || newEntry.ticker}`
@@ -84,7 +90,10 @@ export const useJournalStore = create(
 
         set((state) => { state.entries.push(newEntry) })
         // IndexedDB에도 저장 (비동기, 실패해도 로컬스토리지 백업 유지)
-        addTransaction(newEntry).catch(err => console.warn('[DB] addTransaction failed:', err))
+        addTransaction(newEntry).catch(err => {
+          console.warn('[DB] addTransaction failed:', err)
+          toast.warning('로컬 DB 저장 실패 — 앱 데이터는 보존됩니다.')
+        })
 
         // 매수 종목은 관심종목에 자동 등록 (중복은 watchlistStore에서 방지)
         if (newEntry.action === 'buy' && newEntry.ticker) {
@@ -97,9 +106,42 @@ export const useJournalStore = create(
       },
 
       updateEntry: (id, updates) => {
+        const entry = get().entries.find(e => e.id === id)
+
+        // 연결된 자동 현금 흐름도 함께 동기화
+        if (entry?.linkedCashFlowId) {
+          const cashFlowUpdates = {}
+
+          if (updates.accountId !== undefined && updates.accountId !== entry.accountId) {
+            cashFlowUpdates.accountId = updates.accountId
+          }
+
+          const newAction  = updates.action   ?? entry.action
+          const newPrice   = updates.price    ?? entry.price
+          const newQty     = updates.quantity ?? entry.quantity
+          const newFee     = updates.fee      ?? entry.fee
+          const newMarket  = updates.market   ?? entry.market
+          const newBuyFee  = newAction === 'buy'  ? (newFee || 0) : 0
+          const newSellFee = newAction === 'sell' ? (newFee || 0) : 0
+          const newAmount  = newPrice * newQty + newBuyFee - newSellFee
+          // 실제 저장된 cashFlow 금액과 비교 (재계산 비교 시 이전 버그와 일치해 버리는 문제 방지)
+          const storedCashFlow = useCashFlowStore.getState().cashFlows.find(f => f.id === entry.linkedCashFlowId)
+          const oldAmount  = storedCashFlow?.amount ?? newAmount
+
+          if (newAmount !== oldAmount || newAction !== entry.action || newMarket !== entry.market) {
+            cashFlowUpdates.amount   = newAmount
+            cashFlowUpdates.type     = newAction === 'buy' ? 'withdrawal' : 'deposit'
+            cashFlowUpdates.currency = newMarket === 'NYSE' || newMarket === 'NASDAQ' ? 'USD' : 'KRW'
+          }
+
+          if (Object.keys(cashFlowUpdates).length > 0) {
+            useCashFlowStore.getState().updateCashFlow(entry.linkedCashFlowId, cashFlowUpdates)
+          }
+        }
+
         set((state) => {
-          const entry = state.entries.find(e => e.id === id)
-          if (entry) Object.assign(entry, updates)
+          const e = state.entries.find(e => e.id === id)
+          if (e) Object.assign(e, updates)
         })
         updateTransaction(id, updates).catch(err => console.warn('[DB] updateTransaction failed:', err))
       },
@@ -116,11 +158,49 @@ export const useJournalStore = create(
         deleteTransaction(id).catch(err => console.warn('[DB] deleteTransaction failed:', err))
       },
 
+      // 매매일지 accountId 기준으로 연결된 cashFlow accountId를 강제 동기화
+      // linkedCashFlowId가 있는 항목만 대상, 계좌 불일치 건만 업데이트
+      syncCashFlowsToJournals: () => {
+        const entries = get().entries
+        const cashFlowStore = useCashFlowStore.getState()
+        let synced = 0
+        entries.forEach(entry => {
+          if (!entry.linkedCashFlowId) return
+          const flow = cashFlowStore.cashFlows.find(f => f.id === entry.linkedCashFlowId)
+          if (flow && flow.accountId !== entry.accountId) {
+            cashFlowStore.updateCashFlow(entry.linkedCashFlowId, { accountId: entry.accountId })
+            synced++
+          }
+        })
+        return synced
+      },
+
+      // 특정 계좌의 모든 거래 내역을 다른 계좌로 이동
+      moveEntriesByAccount: (fromAccountId, toAccountId) => {
+        const ids = get().entries
+          .filter(e => e.accountId === fromAccountId)
+          .map(e => e.id)
+        set((state) => {
+          state.entries.forEach(e => {
+            if (e.accountId === fromAccountId) e.accountId = toAccountId
+          })
+        })
+        ids.forEach(id => updateTransaction(id, { accountId: toAccountId })
+          .catch(err => console.warn('[DB] moveEntries failed:', err)))
+        return ids.length
+      },
+
+      // 메모리만 초기화 (로그아웃/사용자 전환 시 사용)
       clearEntries: () => {
+        set((state) => { state.entries = [] })
+      },
+
+      // 메모리 + IndexedDB 모두 삭제 (설정 > 데이터 초기화 전용)
+      deleteAllEntries: () => {
         const userId = useAuthStore.getState().currentUser?.id
         set((state) => { state.entries = [] })
         if (userId) {
-          deleteTransactionsByUser(userId).catch(err => console.warn('[DB] clearEntries failed:', err))
+          deleteTransactionsByUser(userId).catch(err => console.warn('[DB] deleteAllEntries failed:', err))
         }
       },
 
@@ -165,6 +245,7 @@ export const useJournalStore = create(
               ticker: e.ticker,
               name: e.name,
               market: e.market || 'KRX',
+              sector: e.sector || 'ETC',
               quantity: 0,
               totalCost: 0,
               accountId: e.accountId,
@@ -174,6 +255,7 @@ export const useJournalStore = create(
           if (e.action === 'buy') {
             pos.totalCost += e.price * e.quantity + (e.fee || 0)
             pos.quantity += e.quantity
+            pos.sector = e.sector || pos.sector
           } else {
             // 매도: 평균단가 기준으로 총원가 감소
             if (pos.quantity > 0) {
@@ -220,8 +302,9 @@ export const useJournalStore = create(
       },
 
       // 심리 유형별 수익률 집계 (선택적 accountId 필터, 환율 적용)
-      getProfitByPsychology: (accountId, exchangeRate = 1350) => {
-        let entries = get().entries
+      // baseEntries: 날짜 필터 등 외부 사전 필터 배열. 미전달 시 스토어 전체 사용
+      getProfitByPsychology: (accountId, exchangeRate = 1350, baseEntries) => {
+        let entries = baseEntries ?? get().entries
         if (accountId) entries = entries.filter(e => e.accountId === accountId)
 
         const map = {}
@@ -304,17 +387,59 @@ export const useJournalStore = create(
         const userId = useAuthStore.getState().currentUser?.id
         const now = new Date().toISOString()
 
-        const newEntries = entries.map((entry) => ({
-          id: crypto.randomUUID(),
-          createdAt: now,
-          pnl: null,
-          memo: '',
-          linkedCashFlowId: null,
-          userId,
-          source: 'eugene-hts',
-          importedAt: now,
-          ...entry,
-        }))
+        const newEntries = entries
+          .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '') || (a.createdAt ?? '').localeCompare(b.createdAt ?? ''))
+          .map((entry) => ({
+            id: crypto.randomUUID(),
+            createdAt: now,
+            pnl: null,
+            memo: '',
+            linkedCashFlowId: null,
+            userId,
+            source: 'eugene-hts',
+            importedAt: now,
+            ...entry,
+          }))
+
+        // 기존 보유 현황을 계좌별 평균단가 맵으로 초기화
+        const holdingMap = {}
+        for (const e of get().entries) {
+          if (!e.accountId) continue
+          const key = `${e.accountId}__${e.ticker}`
+          if (!holdingMap[key]) holdingMap[key] = { quantity: 0, totalCost: 0 }
+          const pos = holdingMap[key]
+          if (e.action === 'buy') {
+            pos.totalCost += e.price * e.quantity + (e.fee || 0)
+            pos.quantity += e.quantity
+          } else if (e.action === 'sell' && pos.quantity > 0) {
+            const avg = pos.totalCost / pos.quantity
+            pos.totalCost -= avg * Math.min(e.quantity, pos.quantity)
+            pos.quantity = Math.max(0, pos.quantity - e.quantity)
+          }
+        }
+
+        // 신규 항목을 날짜순으로 처리: 매도 시 pnl 계산 후 맵 갱신
+        for (const e of newEntries) {
+          if (!e.accountId) continue
+          const key = `${e.accountId}__${e.ticker}`
+          if (!holdingMap[key]) holdingMap[key] = { quantity: 0, totalCost: 0 }
+          const pos = holdingMap[key]
+
+          if (e.action === 'buy') {
+            pos.totalCost += e.price * e.quantity + (e.fee || 0)
+            pos.quantity += e.quantity
+          } else if (e.action === 'sell') {
+            if (e.pnl === null && pos.quantity > 0) {
+              const avgPrice = pos.totalCost / pos.quantity
+              e.pnl = Math.round((e.price - avgPrice) * e.quantity - (e.fee || 0))
+            }
+            if (pos.quantity > 0) {
+              const avg = pos.totalCost / pos.quantity
+              pos.totalCost -= avg * Math.min(e.quantity, pos.quantity)
+              pos.quantity = Math.max(0, pos.quantity - e.quantity)
+            }
+          }
+        }
 
         set((state) => {
           state.entries.push(...newEntries)
@@ -330,8 +455,9 @@ export const useJournalStore = create(
       },
 
       // 전체 통계 요약 (선택적 accountId 필터)
-      getSummaryStats: (accountId) => {
-        let entries = get().entries
+      // baseEntries: 날짜 필터 등 외부 사전 필터 배열. 미전달 시 스토어 전체 사용
+      getSummaryStats: (accountId, baseEntries) => {
+        let entries = baseEntries ?? get().entries
         if (accountId) entries = entries.filter(e => e.accountId === accountId)
 
         const buyCount = entries.filter(e => e.action === 'buy').length
