@@ -320,6 +320,13 @@ export default function Watchlist() {
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
 
+  // 삭제된 태그가 필터로 선택된 채 남지 않도록 자동 초기화
+  useEffect(() => {
+    if (groupFilter && !groups.find(g => g.id === groupFilter)) {
+      setGroupFilter(null)
+    }
+  }, [groups])
+
   // 이미 알림이 발생한 alert id 추적 (중복 toast 방지)
   const firedAlertsRef = useRef(new Set())
 
@@ -684,7 +691,12 @@ export default function Watchlist() {
         </div>
       ) : filteredAndSorted.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
-          <p>{marketFilter} 시장에 관심종목이 없습니다</p>
+          <p>
+            {groupFilter
+              ? `선택한 태그에 해당하는 종목이 없습니다`
+              : `${marketFilter} 시장에 관심종목이 없습니다`
+            }
+          </p>
         </div>
       ) : viewMode === 'card' ? (
         /* ── 카드 뷰 ──────────────────────────────────── */
