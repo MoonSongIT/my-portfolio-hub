@@ -167,8 +167,17 @@ function AIScreenerSection({ onSelectTicker, pendingQuery = null, onPendingConsu
       setResponse(text)
       setTickers(parsed)
       localStorage.setItem(SCREENER_CACHE_KEY, JSON.stringify({ query: q, response: text, tickers: parsed }))
-    } catch {
-      setResponse('AI 스크리너 호출에 실패했습니다. API 키 설정을 확인해 주세요.')
+    } catch (err) {
+      const status = err?.response?.status
+      if (status === 529 || status === 503) {
+        setResponse('⚠️ AI 서버가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해 주세요.')
+      } else if (status === 401 || status === 403) {
+        setResponse('🔑 API 키가 유효하지 않습니다. 설정에서 API 키를 확인해 주세요.')
+      } else if (status === 429) {
+        setResponse('⏱️ 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.')
+      } else {
+        setResponse(`AI 스크리너 호출에 실패했습니다. (${status ? `HTTP ${status}` : err?.message ?? '알 수 없는 오류'})`)
+      }
     } finally {
       setLoadingState(false)
     }
