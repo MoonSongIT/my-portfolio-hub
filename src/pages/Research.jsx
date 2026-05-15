@@ -43,6 +43,7 @@ const MARKET_FILTERS = [
 ]
 
 const RECENTLY_VIEWED_KEY = 'recentlyViewedStocks'
+const SECTOR_CARD_QUERIES_KEY = 'sectorCardQueries'
 
 const SECTOR_CARDS = [
   { label: '반도체',        emoji: '💾', query: '한국 반도체 종목 추천해줘' },
@@ -135,7 +136,7 @@ const SCREENER_MD_COMPONENTS = {
 
 const SCREENER_CACHE_KEY = 'aiScreenerCache'
 
-function AIScreenerSection({ onSelectTicker, pendingQuery = null, onPendingConsumed }) {
+function AIScreenerSection({ onSelectTicker, pendingQuery = null, onPendingConsumed, onLoadingChange }) {
   const navigate = useNavigate()
   const { hasKey } = useAiCredentialStore()
 
@@ -145,9 +146,14 @@ function AIScreenerSection({ onSelectTicker, pendingQuery = null, onPendingConsu
   const [loading, setLoading] = useState(false)
   const [tickers, setTickers] = useState(cached?.tickers ?? [])
 
+  function setLoadingState(v) {
+    setLoading(v)
+    onLoadingChange?.(v)
+  }
+
   async function runQuery(q) {
     if (!q.trim() || loading) return
-    setLoading(true)
+    setLoadingState(true)
     setResponse(null)
     setTickers([])
     try {
@@ -164,7 +170,7 @@ function AIScreenerSection({ onSelectTicker, pendingQuery = null, onPendingConsu
     } catch {
       setResponse('AI 스크리너 호출에 실패했습니다. API 키 설정을 확인해 주세요.')
     } finally {
-      setLoading(false)
+      setLoadingState(false)
     }
   }
 
@@ -238,7 +244,14 @@ function DiscoveryPanel({ onSelectTicker }) {
   const navigate = useNavigate()
   const [recentlyViewed, setRecentlyViewed] = useState([])
   const [pendingQuery, setPendingQuery] = useState(null)
-  const [cardQueries, setCardQueries] = useState(() => SECTOR_CARDS.map(c => c.query))
+  const [activeCardIndex, setActiveCardIndex] = useState(null)
+  const [cardQueries, setCardQueries] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SECTOR_CARD_QUERIES_KEY) || 'null')
+      if (Array.isArray(saved) && saved.length === SECTOR_CARDS.length) return saved
+    } catch { /* ignore */ }
+    return SECTOR_CARDS.map(c => c.query)
+  })
 
   useEffect(() => {
     try {
@@ -277,32 +290,51 @@ function DiscoveryPanel({ onSelectTicker }) {
           섹터별 탐색
         </div>
         <div className="grid grid-cols-2 gap-2">
-          {SECTOR_CARDS.map((card, i) => (
-            <div
-              key={card.label}
-              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 space-y-1.5"
-            >
-              {/* 첫 번째 줄: 아이콘 + 섹터명 + 실행 버튼 */}
-              <div className="flex items-center gap-2">
-                <span className="text-lg leading-none">{card.emoji}</span>
-                <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex-1">{card.label}</span>
-                <button
-                  onClick={() => setPendingQuery(cardQueries[i])}
-                  className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60 transition-colors font-medium whitespace-nowrap"
-                >
-                  검색
-                </button>
+          {SECTOR_CARDS.map((card, i) => {
+            const isActive = activeCardIndex === i
+            return (
+              <div
+                key={card.label}
+                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 space-y-1.5"
+              >
+                {/* 첫 번째 줄: 아이콘 + 섹터명 + 실행 버튼 */}
+                <div className="flex items-center gap-2">
+                  {isActive
+                    ? <Loader2 className="w-4 h-4 text-blue-500 animate-spin flex-shrink-0" />
+                    : <span className="text-lg leading-none">{card.emoji}</span>
+                  }
+                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex-1">{card.label}</span>
+                  <button
+                    disabled={isActive}
+                    onClick={() => {
+                      setActiveCardIndex(i)
+                      setPendingQuery(cardQueries[i])
+                    }}
+                    className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60 disabled:opacity-40 transition-colors font-medium whitespace-nowrap"
+                  >
+                    검색
+                  </button>
+                </div>
+                {/* 두 번째 줄: 편집 가능한 쿼리 입력 */}
+                <input
+                  type="text"
+                  value={cardQueries[i]}
+                  onChange={e => {
+                    const next = cardQueries.map((q, j) => j === i ? e.target.value : q)
+                    setCardQueries(next)
+                    localStorage.setItem(SECTOR_CARD_QUERIES_KEY, JSON.stringify(next))
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      setActiveCardIndex(i)
+                      setPendingQuery(cardQueries[i])
+                    }
+                  }}
+                  className="w-full text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
+                />
               </div>
-              {/* 두 번째 줄: 편집 가능한 쿼리 입력 */}
-              <input
-                type="text"
-                value={cardQueries[i]}
-                onChange={e => setCardQueries(prev => prev.map((q, j) => j === i ? e.target.value : q))}
-                onKeyDown={e => { if (e.key === 'Enter') setPendingQuery(cardQueries[i]) }}
-                className="w-full text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
-              />
-            </div>
-          ))}
+            )
+          })}
         </div>
       </section>
 
@@ -365,6 +397,7 @@ function DiscoveryPanel({ onSelectTicker }) {
         onSelectTicker={onSelectTicker}
         pendingQuery={pendingQuery}
         onPendingConsumed={() => setPendingQuery(null)}
+        onLoadingChange={v => { if (!v) setActiveCardIndex(null) }}
       />
     </div>
   )
