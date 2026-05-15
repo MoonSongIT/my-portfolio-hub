@@ -86,6 +86,58 @@ export const useWatchlistStore = create(
     // 초기화 (로그아웃 시 호출)
     clearWatchlist: () => set({ watchlist: [], alerts: [] }),
 
+    // 관심종목 메모 업데이트
+    updateWatchlistMemo: (ticker, memo) => set((state) => ({
+      watchlist: state.watchlist.map(item =>
+        item.ticker === ticker ? { ...item, memo } : item
+      ),
+    })),
+
+    // 관심종목 태그 업데이트
+    updateWatchlistGroups: (ticker, groupIds) => set((state) => ({
+      watchlist: state.watchlist.map(item =>
+        item.ticker === ticker ? { ...item, groupIds } : item
+      ),
+    })),
+
+    // 목표가·손절가·매입가 업데이트 (알림과 독립)
+    updateWatchlistTargets: (ticker, { targetPrice, stopLoss, entryPrice }) => set((state) => ({
+      watchlist: state.watchlist.map(item =>
+        item.ticker === ticker
+          ? { ...item, targetPrice, stopLoss, entryPrice }
+          : item
+      ),
+    })),
+
+    // DnD 재정렬
+    reorderWatchlist: (newOrder) => set({ watchlist: newOrder }),
+
+    // ─── 태그(그룹) CRUD ───
+
+    addGroup: (name, color) => set((state) => {
+      if (state.groups.length >= 10) return state
+      return {
+        groups: [...state.groups, {
+          id: crypto.randomUUID(),
+          name,
+          color,
+          createdAt: new Date().toISOString(),
+        }],
+      }
+    }),
+
+    renameGroup: (id, name) => set((state) => ({
+      groups: state.groups.map(g => g.id === id ? { ...g, name } : g),
+    })),
+
+    removeGroup: (id) => set((state) => ({
+      groups: state.groups.filter(g => g.id !== id),
+      watchlist: state.watchlist.map(item => ({
+        ...item,
+        groupIds: (item.groupIds ?? []).filter(gid => gid !== id),
+      })),
+    })),
+
     // ─── 알림 CRUD ───
 
     addAlert: (alert) => set((state) => ({
@@ -95,6 +147,7 @@ export const useWatchlistStore = create(
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           triggered: false,
+          paused: false,
           ...alert,
         },
       ],
@@ -104,19 +157,19 @@ export const useWatchlistStore = create(
       alerts: state.alerts.filter(a => a.id !== alertId),
     })),
 
-    // 관심종목 메모 업데이트
-    updateWatchlistMemo: (ticker, memo) => set((state) => ({
-      watchlist: state.watchlist.map(item =>
-        item.ticker === ticker ? { ...item, memo } : item
+    toggleAlertPaused: (alertId) => set((state) => ({
+      alerts: state.alerts.map(a =>
+        a.id === alertId ? { ...a, paused: !a.paused } : a
       ),
     })),
 
-    // 현재 가격과 알림 조건 체크 → 조건 충족 알림 배열 반환
+    // 현재 가격과 알림 조건 체크 → 조건 충족 알림 배열 반환 (paused 건너뜀)
     checkAlerts: (priceMap) => {
       const { alerts } = get()
       const triggered = []
 
       alerts.forEach(alert => {
+        if (alert.paused) return
         const price = priceMap[alert.ticker]?.currentPrice
         if (price == null) return
 
@@ -129,14 +182,46 @@ export const useWatchlistStore = create(
 
       return triggered
     },
+
+    // ─── 알림 이력 ───
+
+    addAlertHistory: (entry) => set((state) => {
+      const next = [
+        { id: crypto.randomUUID(), firedAt: new Date().toISOString(), read: false, ...entry },
+        ...state.alertHistory,
+      ]
+      return { alertHistory: next.slice(0, 100) }
+    }),
+
+    markAlertHistoryRead: (id) => set((state) => ({
+      alertHistory: state.alertHistory.map(h => h.id === id ? { ...h, read: true } : h),
+    })),
+
+    markAllAlertHistoryRead: () => set((state) => ({
+      alertHistory: state.alertHistory.map(h => ({ ...h, read: true })),
+    })),
+
+    clearAlertHistory: () => set({ alertHistory: [] }),
   }),
   {
     name: 'watchlist-storage',
-    version: 4,
+    version: 6,
     migrate: (persisted) => ({
-      watchlist: persisted?.watchlist || [],
-      alerts: persisted?.alerts || [],
-      watchlistUserId: persisted?.watchlistUserId || null,
+      watchlist: (persisted?.watchlist ?? []).map(item => ({
+        priceAtAdded: null,
+        groupIds: [],
+        targetPrice: null,
+        stopLoss: null,
+        entryPrice: null,
+        ...item,
+      })),
+      alerts: (persisted?.alerts ?? []).map(a => ({
+        paused: false,
+        ...a,
+      })),
+      groups: persisted?.groups ?? [],
+      alertHistory: persisted?.alertHistory ?? [],
+      watchlistUserId: persisted?.watchlistUserId ?? null,
     }),
   })
 )
