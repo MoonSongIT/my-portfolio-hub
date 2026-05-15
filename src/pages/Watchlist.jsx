@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Plus, LayoutGrid, List, ExternalLink, RefreshCw, Bot, Bell,
-  TrendingUp, TrendingDown, Pencil, Check, X, SlidersHorizontal,
+  TrendingUp, TrendingDown, Pencil, Check, X, SlidersHorizontal, Tags,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWatchlistStore } from '../store/watchlistStore'
@@ -21,6 +21,9 @@ import {
 } from '../components/ui/dialog'
 import ChatPanel from '../components/chat/ChatPanel'
 import AlarmDialog from '../components/watchlist/AlarmDialog'
+import GroupManager from '../components/watchlist/GroupManager'
+import TargetPriceBar from '../components/watchlist/TargetPriceBar'
+import AlertHistoryDrawer from '../components/watchlist/AlertHistoryDrawer'
 import Sparkline from '../components/watchlist/Sparkline'
 
 // ── 등락률 긴급/주의 배지 ──────────────────────────────────────
@@ -110,6 +113,65 @@ function MemoEditor({ ticker, memo, onSave }) {
   )
 }
 
+// ── 태그 칩 + 토글 팝오버 ────────────────────────────────────
+function TagChipsEditor({ ticker, groupIds, groups, onUpdate }) {
+  const [open, setOpen] = useState(false)
+  const attached = groupIds ?? []
+
+  const toggle = (gid) => {
+    const next = attached.includes(gid)
+      ? attached.filter(id => id !== gid)
+      : [...attached, gid]
+    onUpdate(ticker, next)
+  }
+
+  return (
+    <div className="relative mt-2 flex flex-wrap items-center gap-1">
+      {attached.map(gid => {
+        const g = groups.find(gr => gr.id === gid)
+        if (!g) return null
+        return (
+          <span
+            key={gid}
+            className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium text-white cursor-pointer hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: g.color }}
+            onClick={() => toggle(gid)}
+            title="클릭하여 제거"
+          >
+            {g.name}
+          </span>
+        )
+      })}
+      {groups.length > 0 && (
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          title="태그 추가"
+        >
+          + 태그
+        </button>
+      )}
+      {open && (
+        <div className="absolute left-0 top-6 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-2 min-w-[130px]">
+          {groups.map(g => (
+            <button
+              key={g.id}
+              onClick={() => { toggle(g.id); setOpen(false) }}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-left"
+            >
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: g.color }} />
+              <span className={attached.includes(g.id) ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'}>
+                {g.name}
+              </span>
+              {attached.includes(g.id) && <Check className="w-3 h-3 ml-auto text-emerald-500" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── 정렬 옵션 ─────────────────────────────────────────────────
 const SORT_OPTIONS = [
   { value: 'change_desc', label: '등락률 ↓' },
@@ -125,7 +187,11 @@ const MARKET_FILTERS = ['전체', 'KRX', 'KOSDAQ', 'NASDAQ', 'NYSE']
 export default function Watchlist() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { watchlist, alerts, addToWatchlist, removeFromWatchlist, updateWatchlistMemo, checkAlerts } = useWatchlistStore()
+  const {
+    watchlist, alerts, groups, alertHistory,
+    addToWatchlist, removeFromWatchlist, updateWatchlistMemo,
+    updateWatchlistGroups, checkAlerts, addAlertHistory,
+  } = useWatchlistStore()
 
   const [viewMode, setViewMode] = useState('card')
   const [addOpen, setAddOpen] = useState(false)
@@ -136,7 +202,10 @@ export default function Watchlist() {
 
   const [sortBy, setSortBy] = useState('change_desc')
   const [marketFilter, setMarketFilter] = useState('전체')
+  const [groupFilter, setGroupFilter] = useState(null)
   const [showSortPanel, setShowSortPanel] = useState(false)
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // 이미 알림이 발생한 alert id 추적 (중복 toast 방지)
   const firedAlertsRef = useRef(new Set())
@@ -170,6 +239,16 @@ export default function Watchlist() {
       if (firedAlertsRef.current.has(alert.id)) return
       firedAlertsRef.current.add(alert.id)
 
+      // 알림 이력 기록
+      addAlertHistory({
+        ticker: alert.ticker,
+        name: alert.name,
+        condition: alert.condition,
+        targetPrice: alert.targetPrice,
+        currentPrice: alert.currentPrice,
+        currency: alert.currency,
+      })
+
       const icon = alert.condition === 'above' ? '📈' : '📉'
       const condLabel = alert.condition === 'above' ? '이상' : '이하'
       toast.warning(
@@ -201,6 +280,10 @@ export default function Watchlist() {
     let list = marketFilter === '전체'
       ? [...enrichedWatchlist]
       : enrichedWatchlist.filter(w => w.market === marketFilter)
+
+    if (groupFilter) {
+      list = list.filter(w => (w.groupIds ?? []).includes(groupFilter))
+    }
 
     switch (sortBy) {
       case 'change_desc': list.sort((a, b) => (b.change ?? -Infinity) - (a.change ?? -Infinity)); break
@@ -273,6 +356,30 @@ export default function Watchlist() {
           >
             <Bot className="w-4 h-4" />
             오늘 브리핑
+          </Button>
+
+          {/* 알림 이력 벨 배지 */}
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="relative p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+            title="알림 이력"
+          >
+            <Bell className="w-4 h-4" />
+            {alertHistory.filter(h => !h.read).length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 text-[10px] font-bold bg-red-500 text-white rounded-full flex items-center justify-center">
+                {alertHistory.filter(h => !h.read).length > 99 ? '99+' : alertHistory.filter(h => !h.read).length}
+              </span>
+            )}
+          </button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setGroupManagerOpen(true)}
+            className="gap-1.5 text-gray-600 dark:text-gray-400"
+          >
+            <Tags className="w-4 h-4" />
+            태그 관리
           </Button>
 
           {/* 정렬 패널 토글 */}
@@ -360,6 +467,37 @@ export default function Watchlist() {
               </button>
             )
           })}
+        </div>
+      )}
+
+      {/* ── 태그 필터 탭 ───────────────────────────────── */}
+      {groups.length > 0 && watchlist.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap">
+          <button
+            onClick={() => setGroupFilter(null)}
+            className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+              groupFilter === null
+                ? 'bg-gray-800 text-white border-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:border-gray-200'
+                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+            }`}
+          >
+            전체 태그
+          </button>
+          {groups.map(g => (
+            <button
+              key={g.id}
+              onClick={() => setGroupFilter(groupFilter === g.id ? null : g.id)}
+              className={`flex items-center gap-1.5 px-3 py-1 text-sm rounded-full border transition-colors ${
+                groupFilter === g.id
+                  ? 'text-white border-transparent'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+              style={groupFilter === g.id ? { backgroundColor: g.color, borderColor: g.color } : {}}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: g.color }} />
+              {g.name}
+            </button>
+          ))}
         </div>
       )}
 
@@ -451,6 +589,19 @@ export default function Watchlist() {
                   onSave={updateWatchlistMemo}
                 />
 
+                {/* 태그 칩 */}
+                {groups.length > 0 && (
+                  <TagChipsEditor
+                    ticker={stock.ticker}
+                    groupIds={stock.groupIds}
+                    groups={groups}
+                    onUpdate={updateWatchlistGroups}
+                  />
+                )}
+
+                {/* 목표가·손절가 달성률 바 */}
+                <TargetPriceBar stock={stock} />
+
                 {/* 하단 액션 */}
                 <div className="mt-3 flex items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
                   <button
@@ -500,6 +651,14 @@ export default function Watchlist() {
                           </span>
                           {stock.memo && (
                             <span className="text-xs text-gray-400 block">{stock.memo}</span>
+                          )}
+                          {groups.length > 0 && (
+                            <TagChipsEditor
+                              ticker={stock.ticker}
+                              groupIds={stock.groupIds}
+                              groups={groups}
+                              onUpdate={updateWatchlistGroups}
+                            />
                           )}
                         </div>
                       </TableCell>
@@ -629,6 +788,25 @@ export default function Watchlist() {
         onOpenChange={(v) => { if (!v) setAlarmStock(null) }}
         stock={alarmStock}
       />
+
+      {/* ── 알림 이력 드로어 ────────────────────────────── */}
+      <AlertHistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} />
+
+      {/* ── 태그 관리 다이얼로그 ────────────────────────── */}
+      <Dialog open={groupManagerOpen} onOpenChange={setGroupManagerOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Tags className="w-4 h-4 text-blue-600" />
+              태그 관리
+            </DialogTitle>
+          </DialogHeader>
+          <GroupManager />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGroupManagerOpen(false)}>닫기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── AI 채팅 패널 ────────────────────────────────── */}
       <ChatPanel
