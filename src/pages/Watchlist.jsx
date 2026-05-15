@@ -459,18 +459,30 @@ export default function Watchlist() {
 
   // ── CSV 내보내기 ──────────────────────────────────────────
   const handleCsvExport = () => {
+    // KRX·KOSDAQ 종목코드 6자리 0-패딩
+    const padTicker = (ticker, market) => {
+      if ((market === 'KRX' || market === 'KOSDAQ') && /^\d+$/.test(String(ticker))) {
+        return String(ticker).padStart(6, '0')
+      }
+      return String(ticker)
+    }
+
     const BOM = '\uFEFF'
     const headers = ['티커', '종목명', '시장', '현재가', '변동률(%)', '추가일', '메모', '목표가', '손절가', '추가후수익률(%)']
     const rows = filteredAndSorted.map(s => {
+      const ticker = padTicker(s.ticker, s.market)
       const since = (s.priceAtAdded && s.currentPrice && s.priceAtAdded > 0)
         ? ((s.currentPrice - s.priceAtAdded) / s.priceAtAdded * 100).toFixed(2)
         : ''
-      return [
-        s.ticker, s.name, s.market,
+      // 티커는 ="005930" 형식으로 Excel 숫자 자동변환 차단
+      const tickerCell = `="${ticker}"`
+      const rest = [
+        s.name, s.market,
         s.currentPrice || '', s.change != null ? s.change.toFixed(2) : '',
         s.addedAt ? s.addedAt.slice(0, 10) : '',
         s.memo || '', s.targetPrice || '', s.stopLoss || '', since,
-      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`)
+      return [tickerCell, ...rest].join(',')
     })
     const csv = BOM + [headers.join(','), ...rows].join('\r\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
