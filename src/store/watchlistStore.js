@@ -1,3 +1,4 @@
+// 관심종목·알림·그룹·알림이력 상태를 관리하는 Zustand 스토어
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { sampleWatchlistByUser } from '../data/sampleWatchlist'
@@ -5,17 +6,22 @@ import { getByTicker } from '../utils/stockMasterDb'
 
 export const useWatchlistStore = create(
   persist((set, get) => ({
-    // 현재 사용자의 관심종목 목록
+    // 관심종목 목록
     watchlist: [],
 
-    // 가격 알림 목록 [{ id, ticker, name, condition: 'above'|'below', targetPrice }]
+    // 가격 알림 목록
     alerts: [],
 
-    // 현재 로드된 사용자 ID (다중 사용자 전환 감지용)
+    // 태그/그룹 목록 [{ id, name, color, createdAt }]
+    groups: [],
+
+    // 알림 발동 이력 (최대 100건)
+    alertHistory: [],
+
+    // 현재 로드된 사용자 ID
     watchlistUserId: null,
 
     // 사용자별 관심종목 로드 (로그인 시 호출)
-    // 같은 사용자 재로그인이면 기존 데이터 유지, 다른 사용자 전환 시에만 초기화
     loadUserWatchlist: (userId) => {
       const { watchlistUserId, watchlist } = get()
       if (watchlistUserId === userId && watchlist.length > 0) return
@@ -28,10 +34,17 @@ export const useWatchlistStore = create(
       })
     },
 
-    // 관심종목 추가 (중복 방지)
+    // 관심종목 추가 (중복 방지, priceAtAdded 스냅샷 포함)
     addToWatchlist: (item) => set((state) => ({
-      watchlist: [...state.watchlist, { ...item, addedAt: new Date().toISOString() }]
-        .filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
+      watchlist: [...state.watchlist, {
+        ...item,
+        addedAt: new Date().toISOString(),
+        priceAtAdded: item.currentPrice ?? null,
+        groupIds: item.groupIds ?? [],
+        targetPrice: item.targetPrice ?? null,
+        stopLoss: item.stopLoss ?? null,
+        entryPrice: item.entryPrice ?? null,
+      }].filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
     })),
 
     /**
