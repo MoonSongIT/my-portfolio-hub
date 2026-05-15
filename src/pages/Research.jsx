@@ -44,6 +44,7 @@ const MARKET_FILTERS = [
 
 const RECENTLY_VIEWED_KEY = 'recentlyViewedStocks'
 const SECTOR_CARD_QUERIES_KEY = 'sectorCardQueries'
+const POPULAR_TICKERS_KEY = 'popularTickers'
 
 const SECTOR_CARDS = [
   { label: '반도체',        emoji: '💾', query: '한국 반도체 종목 추천해줘' },
@@ -261,6 +262,16 @@ function DiscoveryPanel({ onSelectTicker }) {
     } catch { /* ignore */ }
     return SECTOR_CARDS.map(c => c.query)
   })
+  const [popularTickers, setPopularTickers] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(POPULAR_TICKERS_KEY) || 'null')
+      if (Array.isArray(saved) && saved.length > 0) return saved
+    } catch { /* ignore */ }
+    return POPULAR_TICKERS
+  })
+  const [dragOverIndex, setDragOverIndex] = useState(null)
+  const [isDraggingOverZone, setIsDraggingOverZone] = useState(false)
+  const dragRef = useRef(null)  // { source: 'recent'|'popular', item, fromIndex? }
 
   useEffect(() => {
     try {
@@ -275,6 +286,42 @@ function DiscoveryPanel({ onSelectTicker }) {
     const next = recentlyViewed.filter(item => item.ticker !== ticker)
     setRecentlyViewed(next)
     localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next))
+  }
+
+  function savePopular(next) {
+    setPopularTickers(next)
+    localStorage.setItem(POPULAR_TICKERS_KEY, JSON.stringify(next))
+  }
+
+  function removePopular(e, ticker) {
+    e.stopPropagation()
+    savePopular(popularTickers.filter(t => t.ticker !== ticker))
+  }
+
+  function handlePopularDrop(e) {
+    e.preventDefault()
+    const drag = dragRef.current
+    if (!drag) return
+    const insertAt = dragOverIndex ?? popularTickers.length
+
+    if (drag.source === 'recent') {
+      if (popularTickers.some(t => t.ticker === drag.item.ticker)) {
+        setDragOverIndex(null)
+        setIsDraggingOverZone(false)
+        return
+      }
+      const next = [...popularTickers]
+      next.splice(insertAt, 0, drag.item)
+      savePopular(next)
+    } else if (drag.source === 'popular' && drag.fromIndex !== undefined) {
+      const next = popularTickers.filter(t => t.ticker !== drag.item.ticker)
+      const target = insertAt > drag.fromIndex ? insertAt - 1 : insertAt
+      next.splice(target, 0, drag.item)
+      savePopular(next)
+    }
+    setDragOverIndex(null)
+    setIsDraggingOverZone(false)
+    dragRef.current = null
   }
 
   return (
@@ -354,11 +401,17 @@ function DiscoveryPanel({ onSelectTicker }) {
             <Clock className="w-4 h-4" />
             최근 본 종목
           </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+            ↓ 아래 인기 종목으로 드래그해서 추가할 수 있습니다.
+          </p>
           <div className="flex flex-wrap gap-2">
             {recentlyViewed.map(item => (
               <div
                 key={item.ticker}
-                className="flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm group"
+                draggable
+                onDragStart={() => { dragRef.current = { source: 'recent', item } }}
+                onDragEnd={() => { dragRef.current = null; setDragOverIndex(null); setIsDraggingOverZone(false) }}
+                className="flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm group cursor-grab active:cursor-grabbing"
               >
                 <button
                   onClick={() => navigate(`/research/${item.ticker}?market=${item.market}`)}
@@ -382,23 +435,57 @@ function DiscoveryPanel({ onSelectTicker }) {
         </section>
       )}
 
-      {/* 인기 종목 */}
+      {/* 인기 종목 — 드래그앤드롭으로 순서변경·추가·삭제 */}
       <section>
         <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
           <TrendingUp className="w-4 h-4" />
           인기 종목
+          <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-1">드래그로 순서변경 · 추가</span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {POPULAR_TICKERS.map(item => (
-            <button
-              key={item.ticker}
-              onClick={() => onSelectTicker(item.ticker)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm"
-            >
-              <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
-              <span className="text-gray-400 dark:text-gray-500 text-xs">{item.ticker}</span>
-            </button>
+        <div
+          onDragOver={e => { e.preventDefault(); setIsDraggingOverZone(true) }}
+          onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) { setIsDraggingOverZone(false); setDragOverIndex(null) } }}
+          onDrop={handlePopularDrop}
+          className={`flex flex-wrap gap-2 min-h-[40px] rounded-lg transition-colors p-1 -m-1 ${isDraggingOverZone ? 'bg-blue-50 dark:bg-blue-900/10 ring-2 ring-blue-300 dark:ring-blue-700 ring-dashed' : ''}`}
+        >
+          {popularTickers.map((item, i) => (
+            <div key={item.ticker} className="relative flex items-center">
+              {/* 삽입 위치 표시선 */}
+              {dragOverIndex === i && (
+                <div className="absolute -left-1.5 top-0 bottom-0 w-0.5 bg-blue-500 rounded-full" />
+              )}
+              <div
+                draggable
+                onDragStart={() => { dragRef.current = { source: 'popular', item, fromIndex: i } }}
+                onDragEnd={() => { dragRef.current = null; setDragOverIndex(null); setIsDraggingOverZone(false) }}
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOverIndex(i) }}
+                className="flex items-center gap-1.5 pl-3 pr-1 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-sm cursor-grab active:cursor-grabbing group"
+              >
+                <button
+                  onClick={() => onSelectTicker(item.ticker)}
+                  className="flex items-center gap-1.5"
+                >
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
+                  <span className="text-gray-400 dark:text-gray-500 text-xs">{item.ticker}</span>
+                </button>
+                <button
+                  onClick={e => removePopular(e, item.ticker)}
+                  className="ml-0.5 p-0.5 rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
           ))}
+          {/* 끝에 드롭 시 삽입 위치 표시 */}
+          {isDraggingOverZone && dragOverIndex === null && (
+            <div className="flex items-center">
+              <div className="w-0.5 h-7 bg-blue-500 rounded-full" />
+            </div>
+          )}
+          {popularTickers.length === 0 && !isDraggingOverZone && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 py-1">최근 본 종목을 여기로 드래그하세요.</p>
+          )}
         </div>
       </section>
 
