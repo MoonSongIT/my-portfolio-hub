@@ -414,7 +414,7 @@ export default function Watchlist() {
       case 'custom':      /* watchlist 원본 순서 유지 — 정렬 없음 */ break
     }
     return list
-  }, [enrichedWatchlist, marketFilter, sortBy])
+  }, [enrichedWatchlist, marketFilter, groupFilter, sortBy])
 
   // ── 검색 자동완성 ─────────────────────────────────────────
   const { data: searchResults } = useStockSearch(debouncedSearch)
