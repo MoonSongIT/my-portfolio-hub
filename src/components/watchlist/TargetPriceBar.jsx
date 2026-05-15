@@ -4,30 +4,112 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useWatchlistStore } from '../../store/watchlistStore'
 import { formatCurrency } from '../../utils/formatters'
 
+// 천단위 콤마 포맷 (소수점 보존, 빈값·부호 그대로)
+function toComma(val) {
+  const s = String(val ?? '').replace(/,/g, '')
+  if (s === '' || s === '-') return s
+  const negative = s.startsWith('-')
+  const abs = negative ? s.slice(1) : s
+  const [int, dec] = abs.split('.')
+  const formatted = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return (negative ? '-' : '') + formatted + (dec !== undefined ? '.' + dec : '')
+}
+
+// 콤마 제거 후 숫자 (NaN이면 null)
+function fromComma(val) {
+  const n = parseFloat(String(val ?? '').replace(/,/g, ''))
+  return isNaN(n) ? null : n
+}
+
+// KRW 정수 반올림, USD 소수점 2자리
+function roundPrice(price, currency) {
+  return currency === 'KRW' ? Math.round(price) : Math.round(price * 100) / 100
+}
+
+// 두 가격으로 % 계산 → 문자열
+function pctFromPrices(price, entry) {
+  if (!entry || entry === 0) return ''
+  const pct = ((price - entry) / entry) * 100
+  return isFinite(pct) ? String(Math.round(pct * 10) / 10) : ''
+}
+
+// % + 매입가로 가격 계산 → 숫자 or null
+function priceFromPct(pct, entry, currency) {
+  const p = parseFloat(pct)
+  if (isNaN(p) || !entry || entry === 0) return null
+  return roundPrice(entry * (1 + p / 100), currency)
+}
+
 export default function TargetPriceBar({ stock }) {
   const { updateWatchlistTargets } = useWatchlistStore()
   const [open, setOpen] = useState(false)
+
+  // draft: 콤마 없는 숫자 문자열로 보관
   const [draft, setDraft] = useState({
-    targetPrice: stock.targetPrice ?? '',
-    stopLoss: stock.stopLoss ?? '',
-    entryPrice: stock.entryPrice ?? '',
+    entryPrice:   stock.entryPrice  != null ? String(stock.entryPrice)  : '',
+    targetPrice:  stock.targetPrice != null ? String(stock.targetPrice) : '',
+    targetPct:    '',
+    stopLoss:     stock.stopLoss    != null ? String(stock.stopLoss)    : '',
+    stopLossPct:  '',
   })
 
+  const currency     = stock.currency || 'KRW'
   const currentPrice = stock.currentPrice ?? 0
-  const currency = stock.currency || 'KRW'
-
   const hasAnyTarget = stock.targetPrice || stock.stopLoss || stock.entryPrice
+
+  // ── 입력 핸들러 ────────────────────────────────────────────────
+
+  // 매입가 변경 → 목표가·손절가 % 재계산
+  const handleEntryChange = (raw) => {
+    const digits = raw.replace(/[^\d.]/g, '')
+    const entry  = fromComma(digits)
+    const target = fromComma(draft.targetPrice)
+    const stop   = fromComma(draft.stopLoss)
+
+    setDraft(d => ({
+      ...d,
+      entryPrice:   digits,
+      targetPct:    entry && target   ? pctFromPrices(target, entry) : d.targetPct,
+      stopLossPct:  entry && stop     ? pctFromPrices(stop,   entry) : d.stopLossPct,
+    }))
+  }
+
+  // 가격 직접 입력 → % 자동 계산
+  const handlePriceChange = (priceKey, pctKey, raw) => {
+    const digits = raw.replace(/[^\d.]/g, '')
+    const price  = fromComma(digits)
+    const entry  = fromComma(draft.entryPrice)
+
+    setDraft(d => ({
+      ...d,
+      [priceKey]: digits,
+      [pctKey]:   price && entry ? pctFromPrices(price, entry) : d[pctKey],
+    }))
+  }
+
+  // % 입력 → 가격 자동 계산 (음수·소수 허용)
+  const handlePctChange = (priceKey, pctKey, raw) => {
+    const cleaned  = raw.replace(/[^\d.\-]/g, '')
+    const entry    = fromComma(draft.entryPrice)
+    const newPrice = priceFromPct(cleaned, entry, currency)
+
+    setDraft(d => ({
+      ...d,
+      [pctKey]:   cleaned,
+      [priceKey]: newPrice != null ? String(newPrice) : d[priceKey],
+    }))
+  }
 
   const handleSave = () => {
     updateWatchlistTargets(stock.ticker, {
-      targetPrice: draft.targetPrice !== '' ? Number(draft.targetPrice) : null,
-      stopLoss: draft.stopLoss !== '' ? Number(draft.stopLoss) : null,
-      entryPrice: draft.entryPrice !== '' ? Number(draft.entryPrice) : null,
+      targetPrice: fromComma(draft.targetPrice),
+      stopLoss:    fromComma(draft.stopLoss),
+      entryPrice:  fromComma(draft.entryPrice),
     })
     setOpen(false)
   }
 
-  // 목표가 달성률 계산
+  // ── 달성률 계산 ────────────────────────────────────────────────
   const progressPct = (() => {
     if (!stock.targetPrice || !currentPrice) return null
     const base = stock.entryPrice || stock.priceAtAdded || currentPrice
@@ -36,12 +118,19 @@ export default function TargetPriceBar({ stock }) {
     return Math.round(pct)
   })()
 
-  const aboveTarget = stock.targetPrice && currentPrice >= stock.targetPrice
-  const belowStopLoss = stock.stopLoss && currentPrice <= stock.stopLoss
+  const aboveTarget  = stock.targetPrice && currentPrice >= stock.targetPrice
+  const belowStopLoss = stock.stopLoss   && currentPrice <= stock.stopLoss
+
+  // 공용 클래스
+  const priceInputCls =
+    'flex-1 min-w-0 text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 outline-none focus:border-blue-400'
+  const pctInputCls =
+    'w-16 text-xs px-2 py-1 pr-5 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 outline-none focus:border-blue-400 text-right'
 
   return (
     <div className="mt-2 border-t border-gray-100 dark:border-gray-700 pt-2">
-      {/* 요약 행 — 항상 표시 */}
+
+      {/* ── 요약 행 ─────────────────────────────────────────── */}
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
@@ -69,7 +158,7 @@ export default function TargetPriceBar({ stock }) {
         {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
       </button>
 
-      {/* 달성률 바 */}
+      {/* ── 달성률 바 ───────────────────────────────────────── */}
       {progressPct !== null && !open && (
         <div className="mt-1.5">
           <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
@@ -87,25 +176,71 @@ export default function TargetPriceBar({ stock }) {
         </div>
       )}
 
-      {/* 입력 폼 — 펼침 시 */}
+      {/* ── 입력 폼 ─────────────────────────────────────────── */}
       {open && (
         <div className="mt-2 space-y-1.5">
-          {[
-            { key: 'entryPrice', label: '매입가' },
-            { key: 'targetPrice', label: '목표가' },
-            { key: 'stopLoss', label: '손절가' },
-          ].map(({ key, label }) => (
-            <div key={key} className="flex items-center gap-2">
-              <label className="text-[11px] text-gray-500 w-12 shrink-0">{label}</label>
+
+          {/* 매입가 */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-500 w-12 shrink-0">매입가</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={toComma(draft.entryPrice)}
+              onChange={e => handleEntryChange(e.target.value)}
+              placeholder={currency === 'KRW' ? '75,000' : '195.50'}
+              className={priceInputCls}
+            />
+          </div>
+
+          {/* 목표가 + % */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-500 w-12 shrink-0">목표가</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={toComma(draft.targetPrice)}
+              onChange={e => handlePriceChange('targetPrice', 'targetPct', e.target.value)}
+              placeholder={currency === 'KRW' ? '90,000' : '234.60'}
+              className={priceInputCls}
+            />
+            <div className="relative flex-shrink-0">
               <input
-                type="number"
-                value={draft[key]}
-                onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
-                placeholder={currency === 'KRW' ? '예: 75000' : '예: 195.5'}
-                className="flex-1 text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 outline-none focus:border-blue-400"
+                type="text"
+                inputMode="decimal"
+                value={draft.targetPct}
+                onChange={e => handlePctChange('targetPrice', 'targetPct', e.target.value)}
+                placeholder="+20"
+                className={pctInputCls}
               />
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">%</span>
             </div>
-          ))}
+          </div>
+
+          {/* 손절가 + % */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-500 w-12 shrink-0">손절가</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={toComma(draft.stopLoss)}
+              onChange={e => handlePriceChange('stopLoss', 'stopLossPct', e.target.value)}
+              placeholder={currency === 'KRW' ? '65,000' : '175.95'}
+              className={priceInputCls}
+            />
+            <div className="relative flex-shrink-0">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={draft.stopLossPct}
+                onChange={e => handlePctChange('stopLoss', 'stopLossPct', e.target.value)}
+                placeholder="-10"
+                className={pctInputCls}
+              />
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">%</span>
+            </div>
+          </div>
+
           <div className="flex gap-1.5 pt-1">
             <button
               onClick={handleSave}
