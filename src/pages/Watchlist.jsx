@@ -4,7 +4,12 @@ import { toast } from 'sonner'
 import {
   Plus, LayoutGrid, List, ExternalLink, RefreshCw, Bot, Bell,
   TrendingUp, TrendingDown, Pencil, Check, X, SlidersHorizontal, Tags,
+  Download, GripVertical, ChevronDown,
 } from 'lucide-react'
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useQueryClient } from '@tanstack/react-query'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { useBatchQuotes, useStockSearch, useWatchlistSparklines } from '../hooks/useStockData'
@@ -179,7 +184,115 @@ const SORT_OPTIONS = [
   { value: 'name',        label: '이름 순' },
   { value: 'price_desc',  label: '현재가 ↓' },
   { value: 'added',       label: '추가일 순' },
+  { value: 'custom',      label: '수동 정렬 ✦' },
 ]
+
+// ── 섹터 파이차트 색상 ──────────────────────────────────────────
+const SECTOR_COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6']
+
+// ── 추가일 대비 수익률 배지 ───────────────────────────────────
+function SinceReturnBadge({ priceAtAdded, currentPrice }) {
+  if (!priceAtAdded || !currentPrice || priceAtAdded <= 0) return null
+  const pct = ((currentPrice - priceAtAdded) / priceAtAdded) * 100
+  const isPos = pct >= 0
+  return (
+    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+      isPos
+        ? 'bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400'
+        : 'bg-blue-50 text-blue-500 dark:bg-blue-900/20 dark:text-blue-400'
+    }`}>
+      since {isPos ? '+' : ''}{pct.toFixed(1)}%
+    </span>
+  )
+}
+
+// ── 섹터 분포 파이차트 패널 ────────────────────────────────────
+function SectorMiniChart({ items }) {
+  const [open, setOpen] = useState(false)
+
+  const data = useMemo(() => {
+    const counts = {}
+    items.forEach(s => {
+      const sector = s.sector || '기타'
+      counts[sector] = (counts[sector] || 0) + 1
+    })
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+  }, [items])
+
+  if (data.length === 0 || items.length === 0) return null
+
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750"
+      >
+        <span>섹터 분포</span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-4 mt-3">
+            <ResponsiveContainer width={130} height={130}>
+              <PieChart>
+                <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius={32} outerRadius={55}>
+                  {data.map((_, i) => (
+                    <Cell key={i} fill={SECTOR_COLORS[i % SECTOR_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(v, n) => [`${v}종목`, n]} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex-1 space-y-1.5">
+              {data.map((d, i) => (
+                <div key={d.name} className="flex items-center gap-2 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: SECTOR_COLORS[i % SECTOR_COLORS.length] }} />
+                  <span className="text-gray-600 dark:text-gray-400 flex-1 truncate">{d.name}</span>
+                  <span className="text-gray-500 dark:text-gray-300 font-medium tabular-nums">{d.value}종목</span>
+                  <span className="text-gray-400 tabular-nums">
+                    {Math.round(d.value / items.length * 100)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── DnD 정렬 가능 카드 래퍼 ───────────────────────────────────
+function SortableCard({ id, isDndActive, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !isDndActive,
+  })
+  const style = isDndActive ? {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  } : {}
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative">
+      {isDndActive && (
+        <button
+          {...attributes}
+          {...listeners}
+          className="absolute top-2 left-2 z-10 p-0.5 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 cursor-grab active:cursor-grabbing touch-none"
+          title="드래그하여 순서 변경"
+        >
+          <GripVertical className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {children}
+    </div>
+  )
+}
 
 // ── 시장 필터 탭 ──────────────────────────────────────────────
 const MARKET_FILTERS = ['전체', 'KRX', 'KOSDAQ', 'NASDAQ', 'NYSE']
@@ -190,7 +303,7 @@ export default function Watchlist() {
   const {
     watchlist, alerts, groups, alertHistory,
     addToWatchlist, removeFromWatchlist, updateWatchlistMemo,
-    updateWatchlistGroups, checkAlerts, addAlertHistory,
+    updateWatchlistGroups, checkAlerts, addAlertHistory, reorderWatchlist,
   } = useWatchlistStore()
 
   const [viewMode, setViewMode] = useState('card')
@@ -291,6 +404,7 @@ export default function Watchlist() {
       case 'name':        list.sort((a, b) => a.name.localeCompare(b.name, 'ko')); break
       case 'price_desc':  list.sort((a, b) => (b.currentPrice ?? 0) - (a.currentPrice ?? 0)); break
       case 'added':       list.sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0)); break
+      case 'custom':      /* watchlist 원본 순서 유지 — 정렬 없음 */ break
     }
     return list
   }, [enrichedWatchlist, marketFilter, sortBy])
@@ -323,6 +437,43 @@ export default function Watchlist() {
   }
 
   const handleOpenAlarm = (stock) => setAlarmStock(stock)
+
+  // ── DnD 센서 (5px 이상 움직여야 드래그 시작) ──────────────
+  const isDndActive = sortBy === 'custom'
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  const handleDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return
+    const oldIdx = watchlist.findIndex(w => w.ticker === active.id)
+    const newIdx = watchlist.findIndex(w => w.ticker === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    reorderWatchlist(arrayMove([...watchlist], oldIdx, newIdx))
+  }
+
+  // ── CSV 내보내기 ──────────────────────────────────────────
+  const handleCsvExport = () => {
+    const BOM = '\uFEFF'
+    const headers = ['티커', '종목명', '시장', '현재가', '변동률(%)', '추가일', '메모', '목표가', '손절가', '추가후수익률(%)']
+    const rows = filteredAndSorted.map(s => {
+      const since = (s.priceAtAdded && s.currentPrice && s.priceAtAdded > 0)
+        ? ((s.currentPrice - s.priceAtAdded) / s.priceAtAdded * 100).toFixed(2)
+        : ''
+      return [
+        s.ticker, s.name, s.market,
+        s.currentPrice || '', s.change != null ? s.change.toFixed(2) : '',
+        s.addedAt ? s.addedAt.slice(0, 10) : '',
+        s.memo || '', s.targetPrice || '', s.stopLoss || '', since,
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+    })
+    const csv = BOM + [headers.join(','), ...rows].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `watchlist_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   // ── 마켓별 종목 수 ────────────────────────────────────────
   const marketCounts = useMemo(() => {
@@ -414,6 +565,16 @@ export default function Watchlist() {
             )}
           </div>
 
+          {filteredAndSorted.length > 0 && (
+            <button
+              onClick={handleCsvExport}
+              className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+              title="CSV 내보내기"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          )}
+
           <button
             onClick={handleRefresh}
             className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -501,6 +662,11 @@ export default function Watchlist() {
         </div>
       )}
 
+      {/* ── 섹터 분포 차트 ─────────────────────────────── */}
+      {filteredAndSorted.length > 1 && (
+        <SectorMiniChart items={filteredAndSorted} />
+      )}
+
       {/* ── 관심종목 리스트 ─────────────────────────────── */}
       {filteredAndSorted.length === 0 && watchlist.length === 0 ? (
         <div className="text-center py-24">
@@ -522,16 +688,18 @@ export default function Watchlist() {
         </div>
       ) : viewMode === 'card' ? (
         /* ── 카드 뷰 ──────────────────────────────────── */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredAndSorted.map((stock) => {
-            const isPositive = (stock.change ?? 0) >= 0
-            const sparkData = sparklineMap[stock.ticker]
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={filteredAndSorted.map(s => s.ticker)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredAndSorted.map((stock) => {
+                const isPositive = (stock.change ?? 0) >= 0
+                const sparkData = sparklineMap[stock.ticker]
 
-            return (
-              <div
-                key={stock.ticker}
-                className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-shadow"
-              >
+                return (
+                  <SortableCard key={stock.ticker} id={stock.ticker} isDndActive={isDndActive}>
+                    <div
+                      className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-shadow"
+                    >
                 {/* 삭제 버튼 */}
                 <button
                   onClick={() => removeFromWatchlist(stock.ticker)}
@@ -568,6 +736,7 @@ export default function Watchlist() {
                         {stock.change != null ? formatPercent(stock.change) : '---'}
                       </span>
                       <AlertBadge changePercent={stock.change} />
+                      <SinceReturnBadge priceAtAdded={stock.priceAtAdded} currentPrice={stock.currentPrice} />
                     </div>
                   </div>
 
@@ -618,10 +787,13 @@ export default function Watchlist() {
                     알림 설정
                   </button>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+                    </div>
+                  </SortableCard>
+                )
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
       ) : (
         /* ── 테이블 뷰 ────────────────────────────────── */
         <Card className="border border-gray-200 dark:border-gray-700">
@@ -634,6 +806,7 @@ export default function Watchlist() {
                   <TableHead className="text-right">현재가</TableHead>
                   <TableHead className="text-right">변동률</TableHead>
                   <TableHead className="hidden md:table-cell w-24">추이</TableHead>
+                  <TableHead className="hidden lg:table-cell text-right w-24">추가후 변동</TableHead>
                   <TableHead className="text-center w-32">관리</TableHead>
                 </TableRow>
               </TableHeader>
@@ -676,6 +849,9 @@ export default function Watchlist() {
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <Sparkline data={sparkData} width={72} height={28} positive={isPositive} />
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-right">
+                        <SinceReturnBadge priceAtAdded={stock.priceAtAdded} currentPrice={stock.currentPrice} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-center gap-2">
