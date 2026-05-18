@@ -304,6 +304,7 @@ export default function Watchlist() {
     watchlist, alerts, groups, alertHistory,
     addToWatchlist, removeFromWatchlist, updateWatchlistMemo,
     updateWatchlistGroups, checkAlerts, addAlertHistory, reorderWatchlist,
+    updateHighWaterMark,
   } = useWatchlistStore()
 
   const [viewMode, setViewMode] = useState('card')
@@ -319,6 +320,7 @@ export default function Watchlist() {
   const [showSortPanel, setShowSortPanel] = useState(false)
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [confirmDeleteTicker, setConfirmDeleteTicker] = useState(null)
 
   // 삭제된 태그가 필터로 선택된 채 남지 않도록 자동 초기화
   useEffect(() => {
@@ -335,7 +337,7 @@ export default function Watchlist() {
     watchlist.map(w => ({ ticker: w.ticker, market: w.market })),
     [watchlist]
   )
-  const { data: batchData, isLoading: priceLoading } = useBatchQuotes(watchHoldings)
+  const { data: batchData, isLoading: priceLoading, isFetching: priceRefetching } = useBatchQuotes(watchHoldings)
 
   // ── 스파크라인 히스토리 (병렬 fetch, 1h 캐시) ─────────────
   const sparklineMap = useWatchlistSparklines(watchlist)
@@ -380,6 +382,14 @@ export default function Watchlist() {
       )
     })
   }, [priceMap, alerts, batchData, checkAlerts])
+
+  // ── 고점 낙폭 모니터링 — priceMap 갱신마다 highWaterMark 업데이트 ──
+  useEffect(() => {
+    if (!priceMap || Object.keys(priceMap).length === 0) return
+    Object.entries(priceMap).forEach(([ticker, data]) => {
+      if (data?.currentPrice) updateHighWaterMark(ticker, data.currentPrice)
+    })
+  }, [priceMap])
 
   // ── 관심종목 + 실시간 가격 병합 ───────────────────────────
   const enrichedWatchlist = useMemo(() =>
@@ -599,7 +609,7 @@ export default function Watchlist() {
             className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
             title="새로고침"
           >
-            <RefreshCw className={`w-4 h-4 text-gray-500 ${priceLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-gray-500 ${priceLoading || priceRefetching ? 'animate-spin' : ''}`} />
           </button>
 
           <div className="flex border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -724,14 +734,27 @@ export default function Watchlist() {
                     <div
                       className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-shadow"
                     >
-                {/* 삭제 버튼 */}
+                {/* 삭제 버튼 / 확인 UI */}
+                {confirmDeleteTicker === stock.ticker ? (
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <button
+                      onClick={() => { removeFromWatchlist(stock.ticker); setConfirmDeleteTicker(null) }}
+                      className="text-[11px] px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
+                    >삭제</button>
+                    <button
+                      onClick={() => setConfirmDeleteTicker(null)}
+                      className="text-[11px] px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >취소</button>
+                  </div>
+                ) : (
                 <button
-                  onClick={() => removeFromWatchlist(stock.ticker)}
+                  onClick={() => setConfirmDeleteTicker(stock.ticker)}
                   className="absolute top-2 right-2 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-300 hover:text-red-500 text-xs transition-colors"
                   title="삭제"
                 >
                   ✕
                 </button>
+                )}
 
                 {/* 종목 정보 헤더 */}
                 <div className="flex items-start justify-between pr-5">
@@ -790,6 +813,18 @@ export default function Watchlist() {
                     groups={groups}
                     onUpdate={updateWatchlistGroups}
                   />
+                )}
+
+                {/* 고점 낙폭 경고 배지 */}
+                {stock.trailingAlert && stock.highWaterMark > 0 && (
+                  <div className="mb-2 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400">
+                    <TrendingDown className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      고점 대비{' '}
+                      {(((stock.currentPrice - stock.highWaterMark) / stock.highWaterMark) * 100).toFixed(1)}%
+                      낙폭 — 모니터링 기준 초과
+                    </span>
+                  </div>
                 )}
 
                 {/* 목표가·손절가 달성률 바 */}
@@ -891,12 +926,25 @@ export default function Watchlist() {
                           >
                             <Bell className="w-3 h-3" /> 알림
                           </button>
+                          {confirmDeleteTicker === stock.ticker ? (
+                            <>
+                              <button
+                                onClick={() => { removeFromWatchlist(stock.ticker); setConfirmDeleteTicker(null) }}
+                                className="text-[11px] px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
+                              >삭제</button>
+                              <button
+                                onClick={() => setConfirmDeleteTicker(null)}
+                                className="text-[11px] px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                              >취소</button>
+                            </>
+                          ) : (
                           <button
-                            onClick={() => removeFromWatchlist(stock.ticker)}
+                            onClick={() => setConfirmDeleteTicker(stock.ticker)}
                             className="text-gray-400 hover:text-red-500 text-xs"
                           >
                             삭제
                           </button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1019,6 +1067,24 @@ export default function Watchlist() {
         forceAgent="alert"
         initialMessage="오늘 관심종목 시장 브리핑해줘"
       />
+
+      {/* ── 가격 새로고침 스피너 오버레이 ───────────────────── */}
+      {priceRefetching && !priceLoading && (
+        <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
+          <div className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm rounded-2xl px-6 py-4 flex items-center gap-3 shadow-lg border border-gray-200 dark:border-gray-700">
+            <svg
+              className="w-5 h-5 animate-spin text-blue-500"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+            <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">시세 갱신 중</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

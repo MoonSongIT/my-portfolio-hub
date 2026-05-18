@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { sampleWatchlistByUser } from '../data/sampleWatchlist'
 import { getByTicker } from '../utils/stockMasterDb'
+import { useSettingsStore } from './settingsStore'
 
 export const useWatchlistStore = create(
   persist((set, get) => ({
@@ -34,18 +35,31 @@ export const useWatchlistStore = create(
       })
     },
 
-    // 관심종목 추가 (중복 방지, priceAtAdded 스냅샷 포함)
-    addToWatchlist: (item) => set((state) => ({
-      watchlist: [...state.watchlist, {
-        ...item,
-        addedAt: new Date().toISOString(),
-        priceAtAdded: item.currentPrice ?? null,
-        groupIds: item.groupIds ?? [],
-        targetPrice: item.targetPrice ?? null,
-        stopLoss: item.stopLoss ?? null,
-        entryPrice: item.entryPrice ?? null,
-      }].filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
-    })),
+    // 관심종목 추가 (중복 방지, priceAtAdded 스냅샷 + 설정 기반 기본값 적용)
+    addToWatchlist: (item) => set((state) => {
+      const { watchlistDefaults } = useSettingsStore.getState()
+      const base = item.currentPrice > 0 ? item.currentPrice : null
+      const targetPrice = item.targetPrice ?? (
+        base ? Math.round(base * (1 + watchlistDefaults.targetPct / 100)) : null
+      )
+      const stopLoss = item.stopLoss ?? (
+        base ? Math.round(base * (1 - watchlistDefaults.stopLossPct / 100)) : null
+      )
+      return {
+        watchlist: [...state.watchlist, {
+          ...item,
+          addedAt: new Date().toISOString(),
+          priceAtAdded: item.currentPrice ?? null,
+          groupIds: item.groupIds ?? [],
+          targetPrice,
+          stopLoss,
+          entryPrice: item.entryPrice ?? null,
+          highWaterMark: null,
+          trailingDropPct: null,
+          trailingAlert: false,
+        }].filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
+      }
+    }),
 
     /**
      * 마스터 DB 검증 후 관심종목 추가
@@ -108,6 +122,34 @@ export const useWatchlistStore = create(
           : item
       ),
     })),
+
+    // 개별 종목 고점 낙폭 모니터링 % 설정 (null = 설정 기본값으로 복원)
+    updateTrailingDropPct: (ticker, pct) => set((state) => ({
+      watchlist: state.watchlist.map(item =>
+        item.ticker === ticker ? { ...item, trailingDropPct: pct } : item
+      ),
+    })),
+
+    // 가격 갱신 시 호출 — highWaterMark 누적 + trailingAlert 계산
+    // entryPrice 없는 종목은 스킵 (매입 전은 모니터링 불필요)
+    updateHighWaterMark: (ticker, currentPrice) => set((state) => {
+      const item = state.watchlist.find(w => w.ticker === ticker)
+      if (!item || !item.entryPrice) return state
+
+      const { watchlistDefaults } = useSettingsStore.getState()
+      const effectivePct = item.trailingDropPct ?? watchlistDefaults.trailingDropPct
+      const currentHWM = item.highWaterMark ?? item.entryPrice
+      const newHWM = currentPrice > currentHWM ? currentPrice : currentHWM
+      const trailingAlert = currentPrice < newHWM * (1 - effectivePct / 100)
+
+      return {
+        watchlist: state.watchlist.map(w =>
+          w.ticker === ticker
+            ? { ...w, highWaterMark: newHWM, trailingAlert }
+            : w
+        ),
+      }
+    }),
 
     // DnD 재정렬
     reorderWatchlist: (newOrder) => set({ watchlist: newOrder }),
@@ -205,7 +247,7 @@ export const useWatchlistStore = create(
   }),
   {
     name: 'watchlist-storage',
-    version: 6,
+    version: 7,
     migrate: (persisted) => ({
       watchlist: (persisted?.watchlist ?? []).map(item => ({
         priceAtAdded: null,
@@ -213,6 +255,9 @@ export const useWatchlistStore = create(
         targetPrice: null,
         stopLoss: null,
         entryPrice: null,
+        highWaterMark: null,
+        trailingDropPct: null,
+        trailingAlert: false,
         ...item,
       })),
       alerts: (persisted?.alerts ?? []).map(a => ({
