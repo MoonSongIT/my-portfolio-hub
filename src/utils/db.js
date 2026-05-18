@@ -322,6 +322,17 @@ export async function getLatestReportByType(type, userId) {
   return results[0] || null
 }
 
+export async function getAllReportsByUser(userId, type) {
+  const results = type
+    ? await db.reports.where('[type+userId]').equals([type, userId]).toArray()
+    : await db.reports.where('userId').equals(userId).toArray()
+  return results.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+}
+
+export async function deleteReport(id) {
+  return db.reports.delete(id)
+}
+
 // ─── aiCredentials CRUD ───
 
 export async function getAiCredential(provider = 'anthropic') {

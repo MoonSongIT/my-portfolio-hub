@@ -223,6 +223,59 @@ export const calculateComprehensiveReturn = (unrealizedPnl, realizedPnl, dividen
   return ((unrealizedPnl + realizedPnl + dividends) / totalInvestment) * 100
 }
 
+// ─── 심리 분석 헬퍼 ───
+
+// 심리 유형별 그룹핑
+export const groupByPsychology = (entries) => {
+  return entries.reduce((acc, e) => {
+    const key = e.psychology || '미분류'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(e)
+    return acc
+  }, {})
+}
+
+// 심리 유형별 평균손익·승률·거래수 통계
+export const calcPsychologyStats = (entries) => {
+  const groups = groupByPsychology(entries)
+  return Object.entries(groups).map(([psychology, items]) => {
+    const pnlItems = items.filter(e => e.pnl != null)
+    const avgPnl = pnlItems.length > 0
+      ? pnlItems.reduce((sum, e) => sum + e.pnl, 0) / pnlItems.length
+      : null
+    const wins = pnlItems.filter(e => e.pnl > 0).length
+    const winRate = pnlItems.length > 0
+      ? Math.round((wins / pnlItems.length) * 100)
+      : null
+    return { psychology, count: items.length, avgPnl, winRate }
+  }).sort((a, b) => (b.avgPnl ?? -Infinity) - (a.avgPnl ?? -Infinity))
+}
+
+// 반복 실수 패턴: 같은 심리 유형으로 3회 이상 손실
+export const findRepeatedMistakes = (entries) => {
+  const groups = groupByPsychology(entries)
+  return Object.entries(groups)
+    .map(([psychology, items]) => {
+      const losses = items.filter(e => e.pnl != null && e.pnl < 0)
+      return { psychology, lossCount: losses.length }
+    })
+    .filter(({ lossCount }) => lossCount >= 3)
+    .sort((a, b) => b.lossCount - a.lossCount)
+}
+
+// 잘된 결정 강화: 수익률 상위 30% 거래의 공통 심리 유형 (최대 3개)
+export const findBestPatterns = (entries) => {
+  const pnlEntries = entries.filter(e => e.pnl != null)
+  if (pnlEntries.length === 0) return []
+  const sorted = [...pnlEntries].sort((a, b) => b.pnl - a.pnl)
+  const top30 = sorted.slice(0, Math.ceil(sorted.length * 0.3))
+  const groups = groupByPsychology(top30)
+  return Object.entries(groups)
+    .map(([psychology, items]) => ({ psychology, count: items.length }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)
+}
+
 // 순 투자원금 계산 — isCapital=true 카테고리 입출금만 합산
 // 배당금·이자·조정 항목은 잔고에는 반영되나 수익률 분모에서 제외
 export const calculateNetCapital = (cashFlows, accountId = 'all', exchangeRate = EXCHANGE_RATE) => {

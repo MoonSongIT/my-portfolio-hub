@@ -27,11 +27,13 @@ import TradeHistoryTable from '../components/reports/TradeHistoryTable'
 import InsightsCard from '../components/reports/InsightsCard'
 import PerformanceRanking from '../components/reports/PerformanceRanking'
 import RealizedVsUnrealized from '../components/reports/RealizedVsUnrealized'
+import PsychologyAnalysis from '../components/reports/PsychologyAnalysis'
+import ReportHistoryDrawer from '../components/reports/ReportHistoryDrawer'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import {
   TrendingUp, TrendingDown, BarChart2, Target, Loader2,
-  Download, ChevronDown, CalendarCheck, CheckCircle2, AlertCircle,
+  Download, ChevronDown, CalendarCheck, CheckCircle2, AlertCircle, History,
 } from 'lucide-react'
 
 const DATE_RANGES = [
@@ -39,6 +41,7 @@ const DATE_RANGES = [
   { key: '1w', label: '1주' },
   { key: '1m', label: '1개월' },
   { key: '1y', label: '1년' },
+  { key: 'custom', label: '직접 설정' },
 ]
 
 const toApiRange = (dr) => {
@@ -122,10 +125,12 @@ export default function Reports() {
   const currentUser = useAuthStore(s => s.currentUser)
   const { ensureKey, guardProps } = useApiKeyGuard()
   const [dateRange, setDateRange] = useState('1m')
+  const [customRange, setCustomRange] = useState({ from: '', to: '' })
   const [benchmark, setBenchmark] = useState({ KOSPI: [], SP500: [] })
   const [benchLoading, setBenchLoading] = useState(false)
   const [weeklyStatus, setWeeklyStatus] = useState('idle') // 'idle' | 'loading' | 'saved' | 'exists' | 'error'
   const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const reportRef = useRef(null)
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
@@ -166,7 +171,12 @@ export default function Reports() {
     return Object.entries(map).map(([m, total]) => ({ month: `${m}월`, 배당금: Math.round(total) }))
   }, [dividendFlows])
 
-  const filteredEntries = useMemo(() => filterByDateRange(entries, dateRange), [entries, dateRange])
+  const filteredEntries = useMemo(() => {
+    if (dateRange === 'custom' && customRange.from && customRange.to) {
+      return entries.filter(e => e.date >= customRange.from && e.date <= customRange.to)
+    }
+    return filterByDateRange(entries, dateRange)
+  }, [entries, dateRange, customRange])
   const winRate = useMemo(() => calculateWinRate(filteredEntries), [filteredEntries])
 
   useEffect(() => {
@@ -303,7 +313,7 @@ export default function Reports() {
             showAllOption={true}
             onAddClick={() => setAccountModalOpen(true)}
           />
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1 items-center">
             {DATE_RANGES.map(r => (
               <button
                 key={r.key}
@@ -317,6 +327,23 @@ export default function Reports() {
                 {r.label}
               </button>
             ))}
+            {dateRange === 'custom' && (
+              <div className="flex items-center gap-1 ml-1">
+                <input
+                  type="date"
+                  value={customRange.from}
+                  onChange={e => setCustomRange(prev => ({ ...prev, from: e.target.value }))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                />
+                <span className="text-xs text-gray-400">~</span>
+                <input
+                  type="date"
+                  value={customRange.to}
+                  onChange={e => setCustomRange(prev => ({ ...prev, to: e.target.value }))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -367,6 +394,7 @@ export default function Reports() {
           <TabsTrigger value="trades" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">거래 내역</TabsTrigger>
           <TabsTrigger value="insights" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">AI 인사이트</TabsTrigger>
           <TabsTrigger value="dividend" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">배당</TabsTrigger>
+          <TabsTrigger value="psychology" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">심리 분석</TabsTrigger>
         </TabsList>
 
         {/* 성과 추이 탭 */}
@@ -482,6 +510,12 @@ export default function Reports() {
                     {weeklyStatus === 'exists' && <CheckCircle2 className="w-4 h-4 text-blue-500" />}
                     {weeklyStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
                     <button
+                      onClick={() => setHistoryOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    >
+                      <History className="w-3.5 h-3.5" /> 히스토리
+                    </button>
+                    <button
                       onClick={handleSaveWeeklyReport}
                       disabled={weeklyStatus === 'loading'}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -589,9 +623,29 @@ export default function Reports() {
             </Card>
           </div>
         </TabsContent>
+
+        {/* 심리 분석 탭 */}
+        <TabsContent value="psychology">
+          <Card className="border border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">
+                심리 패턴 분석
+                <span className="ml-2 text-sm font-normal text-gray-400">
+                  {dateRange === 'custom' && customRange.from && customRange.to
+                    ? `${customRange.from} ~ ${customRange.to}`
+                    : DATE_RANGES.find(r => r.key === dateRange)?.label} 기준
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PsychologyAnalysis entries={filteredEntries} />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
       <ApiKeyRequiredDialog {...guardProps} />
       <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
+      <ReportHistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} userId={currentUser?.id} />
     </div>
   )
 }
