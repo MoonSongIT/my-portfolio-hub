@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
   BarChart, Bar, Cell,
@@ -8,6 +8,8 @@ import { usePortfolioStore } from '../store/portfolioStore'
 import { useJournalStore } from '../store/journalStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
 import { useAuthStore } from '../store/authStore'
+import { useDailyPnlStore } from '../store/dailyPnlStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { EXCHANGE_RATE } from '../data/samplePortfolio'
 import { fetchBenchmarkHistory } from '../api/stockApi'
 import { sendToAgent } from '../api/claudeApi'
@@ -29,6 +31,8 @@ import PerformanceRanking from '../components/reports/PerformanceRanking'
 import RealizedVsUnrealized from '../components/reports/RealizedVsUnrealized'
 import PsychologyAnalysis from '../components/reports/PsychologyAnalysis'
 import ReportHistoryDrawer from '../components/reports/ReportHistoryDrawer'
+import RiskKpiCards from '../components/reports/RiskKpiCards'
+import PnlHeatmapCalendar from '../components/reports/PnlHeatmapCalendar'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import {
@@ -123,6 +127,9 @@ export default function Reports() {
   const { accounts, selectedAccountId, getSelectedHoldings, selectAccount } = usePortfolioStore()
   const { entries } = useJournalStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const snapshots = useDailyPnlStore(s => s.snapshots)
+  const annualTargetReturn = useSettingsStore(s => s.annualTargetReturn)
+  const setAnnualTargetReturn = useSettingsStore(s => s.setAnnualTargetReturn)
   const { ensureKey, guardProps } = useApiKeyGuard()
   const [dateRange, setDateRange] = useState('1m')
   const [customRange, setCustomRange] = useState({ from: '', to: '' })
@@ -130,8 +137,19 @@ export default function Reports() {
   const [benchLoading, setBenchLoading] = useState(false)
   const [weeklyStatus, setWeeklyStatus] = useState('idle') // 'idle' | 'loading' | 'saved' | 'exists' | 'error'
   const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const now = new Date()
+  const [calYear, setCalYear] = useState(now.getFullYear())
+  const [calMonth, setCalMonth] = useState(now.getMonth())
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [targetEditing, setTargetEditing] = useState(false)
+  const [targetDraft, setTargetDraft] = useState('')
   const reportRef = useRef(null)
+
+  const handleTargetSave = useCallback(() => {
+    const v = parseFloat(targetDraft)
+    if (!isNaN(v) && v > 0) setAnnualTargetReturn(v)
+    setTargetEditing(false)
+  }, [targetDraft, setAnnualTargetReturn])
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
   const totalReturn = useMemo(() => calculatePortfolioReturn(holdings, EXCHANGE_RATE), [holdings])
@@ -385,6 +403,71 @@ export default function Reports() {
         />
       </div>
 
+      {/* 리스크 KPI */}
+      <RiskKpiCards snapshots={snapshots} dateRange={dateRange} customRange={customRange} />
+
+      {/* 연간 목표 달성률 게이지 */}
+      {(() => {
+        const target = annualTargetReturn || 10
+        const progress = target > 0 ? Math.min(100, Math.max(0, (totalReturn / target) * 100)) : 0
+        const start = new Date(now.getFullYear(), 0, 1)
+        const daysElapsed = Math.max(1, Math.round((now - start) / 86400000) + 1)
+        const projected = Math.round((totalReturn / daysElapsed) * 365 * 100) / 100
+        const isAhead = projected >= target
+        return (
+          <Card className="border border-gray-200 dark:border-gray-700">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <CalendarCheck className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">연간 목표 달성률</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {targetEditing ? (
+                    <>
+                      <input
+                        type="number"
+                        value={targetDraft}
+                        onChange={e => setTargetDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleTargetSave(); if (e.key === 'Escape') setTargetEditing(false) }}
+                        className="w-16 text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-right"
+                        autoFocus
+                      />
+                      <span className="text-xs text-gray-400">%</span>
+                      <button onClick={handleTargetSave} className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+                      <button onClick={() => setTargetEditing(false)} className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600">취소</button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => { setTargetDraft(String(target)); setTargetEditing(true) }}
+                      className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline underline-offset-2"
+                    >
+                      목표 {target}%
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <span>현재 {totalReturn >= 0 ? '+' : ''}{totalReturn.toFixed(2)}%</span>
+                  <span>{Math.round(progress)}% 달성</span>
+                </div>
+                <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-3 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${progress >= 100 ? 'bg-emerald-500' : totalReturn >= 0 ? 'bg-red-500' : 'bg-blue-500'}`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>연말 예상 <span className={isAhead ? 'text-emerald-500 font-medium' : 'text-gray-500'}>{projected >= 0 ? '+' : ''}{projected}%</span></span>
+                  <span>목표 {target}%</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       {/* 탭 */}
       <Tabs defaultValue="performance" className="!flex !flex-col">
         <TabsList className="mb-4 !flex !flex-row !h-auto gap-1 bg-gray-800/50 rounded-lg p-1 w-fit flex-wrap">
@@ -626,6 +709,20 @@ export default function Reports() {
 
         {/* 심리 분석 탭 */}
         <TabsContent value="psychology">
+          <div className="space-y-4">
+          <Card className="border border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">수익/손실 캘린더</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PnlHeatmapCalendar
+                entries={filteredEntries}
+                year={calYear}
+                month={calMonth}
+                onMonthChange={(y, m) => { setCalYear(y); setCalMonth(m) }}
+              />
+            </CardContent>
+          </Card>
           <Card className="border border-gray-200 dark:border-gray-700">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">
@@ -641,6 +738,7 @@ export default function Reports() {
               <PsychologyAnalysis entries={filteredEntries} />
             </CardContent>
           </Card>
+          </div>
         </TabsContent>
       </Tabs>
       <ApiKeyRequiredDialog {...guardProps} />

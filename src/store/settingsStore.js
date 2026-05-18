@@ -13,6 +13,7 @@ export const useSettingsStore = create(
       stopLossPct: 10,      // 손절가 기본 % (매입가 대비 -10%)
       trailingDropPct: 10,  // 고점 낙폭 모니터링 기본 %
     },
+    annualTargetReturn: 10, // 연간 목표 수익률 (%)
 
     setTheme: (theme) => set({ theme }),
     toggleTheme: () => set((state) => ({
@@ -25,6 +26,7 @@ export const useSettingsStore = create(
     setWatchlistDefaults: (defaults) => set((state) => ({
       watchlistDefaults: { ...state.watchlistDefaults, ...defaults },
     })),
+    setAnnualTargetReturn: (value) => set({ annualTargetReturn: value }),
   }),
   { name: 'settings-storage' })
 )

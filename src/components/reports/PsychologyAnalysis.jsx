@@ -1,9 +1,13 @@
 // 심리 유형별 수익 패턴 분석 컴포넌트
+import { useMemo } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Cell,
 } from 'recharts'
-import { calcPsychologyStats, findRepeatedMistakes, findBestPatterns } from '../../utils/calculator'
+import {
+  calcPsychologyStats, findRepeatedMistakes, findBestPatterns,
+  calcDayOfWeekStats, calcHoldingPeriodDistribution, calcSectorStats,
+} from '../../utils/calculator'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { AlertTriangle, Star } from 'lucide-react'
 
@@ -20,6 +24,16 @@ export default function PsychologyAnalysis({ entries }) {
   const stats = calcPsychologyStats(entries)
   const mistakes = findRepeatedMistakes(entries)
   const bestPatterns = findBestPatterns(entries)
+
+  const tickerSectorMap = useMemo(() => {
+    const map = {}
+    entries.forEach((e) => { if (e.ticker && e.sector) map[e.ticker] = e.sector })
+    return map
+  }, [entries])
+
+  const dowStats = useMemo(() => calcDayOfWeekStats(entries), [entries])
+  const holdingDist = useMemo(() => calcHoldingPeriodDistribution(entries), [entries])
+  const sectorStats = useMemo(() => calcSectorStats(entries, tickerSectorMap), [entries, tickerSectorMap])
 
   const hasData = entries.some(e => e.psychology)
 
@@ -158,6 +172,105 @@ export default function PsychologyAnalysis({ entries }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* 요일별 평균 손익 */}
+      {dowStats.length > 0 && (
+        <Card className="border border-gray-200 dark:border-gray-700">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">요일별 평균 손익</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={dowStats} margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} vertical={false} />
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="#9ca3af" />
+                <YAxis
+                  tickFormatter={(v) => Math.abs(v) >= 10000 ? `${(v / 10000).toFixed(0)}만` : `${(v / 1000).toFixed(0)}천`}
+                  tick={{ fontSize: 11 }}
+                  stroke="#9ca3af"
+                />
+                <Tooltip
+                  formatter={(v) => [formatPnl(v), '평균손익']}
+                  contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
+                  labelStyle={{ color: '#e5e7eb' }}
+                />
+                <Bar dataKey="avgPnl" radius={[4, 4, 0, 0]}>
+                  {dowStats.map((s, i) => (
+                    <Cell key={i} fill={s.avgPnl >= 0 ? '#ef4444' : '#3b82f6'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 보유기간 분포 */}
+      {holdingDist.some((b) => b.count > 0) && (
+        <Card className="border border-gray-200 dark:border-gray-700">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">보유기간 분포</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={holdingDist} margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} vertical={false} />
+                <XAxis dataKey="range" tick={{ fontSize: 12 }} stroke="#9ca3af" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                <Tooltip
+                  formatter={(v) => [`${v}건`, '거래수']}
+                  contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
+                  labelStyle={{ color: '#e5e7eb' }}
+                />
+                <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 업종별 평균 손익 */}
+      {sectorStats.length > 0 && (
+        <Card className="border border-gray-200 dark:border-gray-700">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">업종별 평균 손익</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={Math.max(160, sectorStats.length * 36)}>
+              <BarChart
+                data={sectorStats}
+                layout="vertical"
+                margin={{ top: 4, right: 20, left: 8, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} horizontal={false} />
+                <XAxis
+                  type="number"
+                  tickFormatter={(v) => Math.abs(v) >= 10000 ? `${(v / 10000).toFixed(0)}만` : `${(v / 1000).toFixed(0)}천`}
+                  tick={{ fontSize: 11 }}
+                  stroke="#9ca3af"
+                />
+                <YAxis
+                  type="category"
+                  dataKey="sector"
+                  tick={{ fontSize: 11 }}
+                  stroke="#9ca3af"
+                  width={70}
+                />
+                <Tooltip
+                  formatter={(v) => [formatPnl(v), '평균손익']}
+                  contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
+                  labelStyle={{ color: '#e5e7eb' }}
+                />
+                <Bar dataKey="avgPnl" radius={[0, 4, 4, 0]}>
+                  {sectorStats.map((s, i) => (
+                    <Cell key={i} fill={s.avgPnl >= 0 ? '#ef4444' : '#3b82f6'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
