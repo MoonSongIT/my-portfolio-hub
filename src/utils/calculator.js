@@ -223,8 +223,136 @@ export const calculateComprehensiveReturn = (unrealizedPnl, realizedPnl, dividen
   return ((unrealizedPnl + realizedPnl + dividends) / totalInvestment) * 100
 }
 
+// ─── 심리 분석 헬퍼 ───
+
+// 심리 유형별 그룹핑
+export const groupByPsychology = (entries) => {
+  return entries.reduce((acc, e) => {
+    const key = e.psychology || '미분류'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(e)
+    return acc
+  }, {})
+}
+
+// 심리 유형별 평균손익·승률·거래수 통계
+export const calcPsychologyStats = (entries) => {
+  const groups = groupByPsychology(entries)
+  return Object.entries(groups).map(([psychology, items]) => {
+    const pnlItems = items.filter(e => e.pnl != null)
+    const avgPnl = pnlItems.length > 0
+      ? pnlItems.reduce((sum, e) => sum + e.pnl, 0) / pnlItems.length
+      : null
+    const wins = pnlItems.filter(e => e.pnl > 0).length
+    const winRate = pnlItems.length > 0
+      ? Math.round((wins / pnlItems.length) * 100)
+      : null
+    return { psychology, count: items.length, avgPnl, winRate }
+  }).sort((a, b) => (b.avgPnl ?? -Infinity) - (a.avgPnl ?? -Infinity))
+}
+
+// 반복 실수 패턴: 같은 심리 유형으로 3회 이상 손실
+export const findRepeatedMistakes = (entries) => {
+  const groups = groupByPsychology(entries)
+  return Object.entries(groups)
+    .map(([psychology, items]) => {
+      const losses = items.filter(e => e.pnl != null && e.pnl < 0)
+      return { psychology, lossCount: losses.length }
+    })
+    .filter(({ lossCount }) => lossCount >= 3)
+    .sort((a, b) => b.lossCount - a.lossCount)
+}
+
+// 잘된 결정 강화: 수익률 상위 30% 거래의 공통 심리 유형 (최대 3개)
+export const findBestPatterns = (entries) => {
+  const pnlEntries = entries.filter(e => e.pnl != null)
+  if (pnlEntries.length === 0) return []
+  const sorted = [...pnlEntries].sort((a, b) => b.pnl - a.pnl)
+  const top30 = sorted.slice(0, Math.ceil(sorted.length * 0.3))
+  const groups = groupByPsychology(top30)
+  return Object.entries(groups)
+    .map(([psychology, items]) => ({ psychology, count: items.length }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)
+}
+
 // 순 투자원금 계산 — isCapital=true 카테고리 입출금만 합산
 // 배당금·이자·조정 항목은 잔고에는 반영되나 수익률 분모에서 제외
+// 요일별 평균 손익·건수 — 1=월 ~ 5=금, 0=일/6=토 제외
+export const calcDayOfWeekStats = (entries) => {
+  const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
+  const groups = {}
+  entries.forEach((e) => {
+    if (!e.date || e.pnl == null) return
+    const dow = new Date(e.date).getDay()
+    if (dow === 0 || dow === 6) return
+    if (!groups[dow]) groups[dow] = []
+    groups[dow].push(e.pnl)
+  })
+  return Object.entries(groups)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([dow, pnls]) => ({
+      day: DAY_NAMES[dow],
+      avgPnl: Math.round(pnls.reduce((s, v) => s + v, 0) / pnls.length),
+      count: pnls.length,
+    }))
+}
+
+// 보유기간 분포 — 매수→매도 쌍으로 보유일 계산
+export const calcHoldingPeriodDistribution = (entries) => {
+  const sells = entries.filter(e => e.action === 'sell' && e.date && e.buyDate)
+  const buckets = { '당일': 0, '2~7일': 0, '8~30일': 0, '30일+': 0 }
+  sells.forEach((e) => {
+    const diff = Math.round((new Date(e.date) - new Date(e.buyDate)) / 86400000)
+    if (diff <= 1) buckets['당일']++
+    else if (diff <= 7) buckets['2~7일']++
+    else if (diff <= 30) buckets['8~30일']++
+    else buckets['30일+']++
+  })
+  return Object.entries(buckets).map(([range, count]) => ({ range, count }))
+}
+
+// 업종별 평균 손익 — tickerSectorMap: { ticker: sectorName }
+export const calcSectorStats = (entries, tickerSectorMap = {}) => {
+  const groups = {}
+  entries.forEach((e) => {
+    if (e.pnl == null) return
+    const sector = tickerSectorMap[e.ticker] || '기타'
+    if (!groups[sector]) groups[sector] = []
+    groups[sector].push(e.pnl)
+  })
+  return Object.entries(groups)
+    .map(([sector, pnls]) => ({
+      sector,
+      avgPnl: Math.round(pnls.reduce((s, v) => s + v, 0) / pnls.length),
+      count: pnls.length,
+    }))
+    .sort((a, b) => b.avgPnl - a.avgPnl)
+}
+
+// 최대낙폭(MDD) 계산 — 입력: [{ date, value }] 누적 수익률 시계열
+export const calculateMDD = (series) => {
+  if (!series || series.length < 2) return null
+  let peak = series[0].value
+  let mdd = 0
+  for (const { value } of series) {
+    if (value > peak) peak = value
+    const drawdown = peak !== 0 ? (value - peak) / Math.abs(peak) : 0
+    if (drawdown < mdd) mdd = drawdown
+  }
+  return Math.round(mdd * 10000) / 100 // % (음수)
+}
+
+// 연환산 변동성 계산 — 입력: 일간 수익률 배열 (소수), 출력: 연환산 변동성 %
+export const calculateVolatility = (dailyReturns) => {
+  if (!dailyReturns || dailyReturns.length < 2) return null
+  const n = dailyReturns.length
+  const mean = dailyReturns.reduce((s, v) => s + v, 0) / n
+  const variance = dailyReturns.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1)
+  const annualized = Math.sqrt(variance * 252) * 100
+  return Math.round(annualized * 100) / 100 // %
+}
+
 export const calculateNetCapital = (cashFlows, accountId = 'all', exchangeRate = EXCHANGE_RATE) => {
   const allCategories = Object.values(CASH_FLOW_CATEGORIES)
   const capitalFlows = cashFlows.filter(f => {

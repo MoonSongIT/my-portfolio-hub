@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
   BarChart, Bar, Cell,
@@ -8,6 +8,8 @@ import { usePortfolioStore } from '../store/portfolioStore'
 import { useJournalStore } from '../store/journalStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
 import { useAuthStore } from '../store/authStore'
+import { useDailyPnlStore } from '../store/dailyPnlStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { EXCHANGE_RATE } from '../data/samplePortfolio'
 import { fetchBenchmarkHistory } from '../api/stockApi'
 import { sendToAgent } from '../api/claudeApi'
@@ -19,7 +21,7 @@ import {
 } from '../utils/calculator'
 import { formatPercent, formatShortDate, formatCurrencyShort } from '../utils/formatters'
 import { exportAsPNG, exportAsPDF } from '../utils/exportReport'
-import { saveScheduledReport, shouldGenerateWeeklyReport } from '../agents/reportAgent'
+import { saveScheduledReport, shouldGenerateWeeklyReport, shouldGenerateMonthlyReport } from '../agents/reportAgent'
 import { getLatestReportByType } from '../utils/db'
 import AccountSelector from '../components/account/AccountSelector'
 import AccountSetupModal from '../components/account/AccountSetupModal'
@@ -27,11 +29,15 @@ import TradeHistoryTable from '../components/reports/TradeHistoryTable'
 import InsightsCard from '../components/reports/InsightsCard'
 import PerformanceRanking from '../components/reports/PerformanceRanking'
 import RealizedVsUnrealized from '../components/reports/RealizedVsUnrealized'
+import PsychologyAnalysis from '../components/reports/PsychologyAnalysis'
+import ReportHistoryDrawer from '../components/reports/ReportHistoryDrawer'
+import RiskKpiCards from '../components/reports/RiskKpiCards'
+import PnlHeatmapCalendar from '../components/reports/PnlHeatmapCalendar'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import {
   TrendingUp, TrendingDown, BarChart2, Target, Loader2,
-  Download, ChevronDown, CalendarCheck, CheckCircle2, AlertCircle,
+  Download, ChevronDown, CalendarCheck, CheckCircle2, AlertCircle, History,
 } from 'lucide-react'
 
 const DATE_RANGES = [
@@ -39,6 +45,7 @@ const DATE_RANGES = [
   { key: '1w', label: '1주' },
   { key: '1m', label: '1개월' },
   { key: '1y', label: '1년' },
+  { key: 'custom', label: '직접 설정' },
 ]
 
 const toApiRange = (dr) => {
@@ -120,13 +127,32 @@ export default function Reports() {
   const { accounts, selectedAccountId, getSelectedHoldings, selectAccount } = usePortfolioStore()
   const { entries } = useJournalStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const snapshots = useDailyPnlStore(s => s.snapshots)
+  const annualTargetReturn = useSettingsStore(s => s.annualTargetReturn)
+  const setAnnualTargetReturn = useSettingsStore(s => s.setAnnualTargetReturn)
   const { ensureKey, guardProps } = useApiKeyGuard()
   const [dateRange, setDateRange] = useState('1m')
-  const [benchmark, setBenchmark] = useState({ KOSPI: [], SP500: [] })
+  const [customRange, setCustomRange] = useState({ from: '', to: '' })
+  const [benchmark, setBenchmark] = useState({ KOSPI: [], SP500: [], KOSDAQ: [], NASDAQ: [] })
+  const [activeBenchmarks, setActiveBenchmarks] = useState(['KOSPI'])
   const [benchLoading, setBenchLoading] = useState(false)
   const [weeklyStatus, setWeeklyStatus] = useState('idle') // 'idle' | 'loading' | 'saved' | 'exists' | 'error'
+  const [monthlyStatus, setMonthlyStatus] = useState('idle') // 'idle' | 'loading' | 'saved' | 'error'
+  const [monthlyBannerVisible, setMonthlyBannerVisible] = useState(false)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const now = new Date()
+  const [calYear, setCalYear] = useState(now.getFullYear())
+  const [calMonth, setCalMonth] = useState(now.getMonth())
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [targetEditing, setTargetEditing] = useState(false)
+  const [targetDraft, setTargetDraft] = useState('')
   const reportRef = useRef(null)
+
+  const handleTargetSave = useCallback(() => {
+    const v = parseFloat(targetDraft)
+    if (!isNaN(v) && v > 0) setAnnualTargetReturn(v)
+    setTargetEditing(false)
+  }, [targetDraft, setAnnualTargetReturn])
 
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
   const totalReturn = useMemo(() => calculatePortfolioReturn(holdings, EXCHANGE_RATE), [holdings])
@@ -166,8 +192,22 @@ export default function Reports() {
     return Object.entries(map).map(([m, total]) => ({ month: `${m}월`, 배당금: Math.round(total) }))
   }, [dividendFlows])
 
-  const filteredEntries = useMemo(() => filterByDateRange(entries, dateRange), [entries, dateRange])
+  const filteredEntries = useMemo(() => {
+    if (dateRange === 'custom' && customRange.from && customRange.to) {
+      return entries.filter(e => e.date >= customRange.from && e.date <= customRange.to)
+    }
+    return filterByDateRange(entries, dateRange)
+  }, [entries, dateRange, customRange])
   const winRate = useMemo(() => calculateWinRate(filteredEntries), [filteredEntries])
+
+  useEffect(() => {
+    if (sessionStorage.getItem('monthlyBannerDismissed')) return
+    const userId = currentUser?.id
+    if (!userId) return
+    getLatestReportByType('monthly', userId).then(latest => {
+      if (shouldGenerateMonthlyReport(latest?.generatedAt)) setMonthlyBannerVisible(true)
+    }).catch(() => {})
+  }, [currentUser?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -182,25 +222,29 @@ export default function Reports() {
   const comparisonData = useMemo(() => {
     const kospi = benchmark.KOSPI || []
     const sp500 = benchmark.SP500 || []
-    if (kospi.length === 0 && sp500.length === 0) return []
+    const kosdaq = benchmark.KOSDAQ || []
+    const nasdaq = benchmark.NASDAQ || []
+    if (kospi.length === 0 && sp500.length === 0 && kosdaq.length === 0 && nasdaq.length === 0) return []
 
-    const baseData = kospi.length > 0 ? kospi : sp500
+    const baseData = kospi.length > 0 ? kospi : sp500.length > 0 ? sp500 : kosdaq.length > 0 ? kosdaq : nasdaq
     const baseKospi = kospi[0]?.close || 1
     const baseSP500 = sp500[0]?.close || 1
+    const baseKosdaq = kosdaq[0]?.close || 1
+    const baseNasdaq = nasdaq[0]?.close || 1
 
-    const sp500Map = {}
-    sp500.forEach(d => { sp500Map[d.date] = d.close })
-
-    const portfolioReturn = totalReturn
+    const sp500Map = {}; sp500.forEach(d => { sp500Map[d.date] = d.close })
+    const kosdaqMap = {}; kosdaq.forEach(d => { kosdaqMap[d.date] = d.close })
+    const nasdaqMap = {}; nasdaq.forEach(d => { nasdaqMap[d.date] = d.close })
 
     return baseData.map((item, i) => {
       const kospiVal = kospi[i]?.close
-      const sp500Val = sp500Map[item.date] ?? null
       return {
         date: item.date,
-        '내 포트폴리오': portfolioReturn,
+        '내 포트폴리오': totalReturn,
         KOSPI: kospiVal != null ? ((kospiVal - baseKospi) / baseKospi) * 100 : null,
-        'S&P500': sp500Val != null ? ((sp500Val - baseSP500) / baseSP500) * 100 : null,
+        'S&P500': sp500Map[item.date] != null ? ((sp500Map[item.date] - baseSP500) / baseSP500) * 100 : null,
+        KOSDAQ: kosdaqMap[item.date] != null ? ((kosdaqMap[item.date] - baseKosdaq) / baseKosdaq) * 100 : null,
+        NASDAQ: nasdaqMap[item.date] != null ? ((nasdaqMap[item.date] - baseNasdaq) / baseNasdaq) * 100 : null,
       }
     })
   }, [benchmark, totalReturn])
@@ -255,6 +299,40 @@ export default function Reports() {
     }
   }
 
+  const handleGenerateMonthlyReport = async () => {
+    const ok = await ensureKey()
+    if (!ok) return
+
+    const userId = currentUser?.id
+    if (!userId) { toast.error('로그인이 필요합니다.'); return }
+
+    setMonthlyStatus('loading')
+    const result = await sendToAgent(
+      '이번 달 투자 성과 월간 리포트를 생성해줘.',
+      { holdings, period: 'monthly', journalEntries: filteredEntries, totalReturn, totalPnL, winRate,
+        benchmarkDiff: benchmarkDiff ? parseFloat(benchmarkDiff) : null },
+      'report'
+    )
+
+    const isError = !result.text || result.text.startsWith('오류') || result.text.startsWith('네트워크') || result.text.startsWith('응답')
+    if (isError) {
+      setMonthlyStatus('error')
+      toast.error('월간 리포트 생성 실패', { description: result.text })
+      return
+    }
+
+    try {
+      await saveScheduledReport('monthly', result.text, userId)
+      setMonthlyStatus('saved')
+      setMonthlyBannerVisible(false)
+      sessionStorage.setItem('monthlyBannerDismissed', '1')
+      toast.success('월간 리포트가 저장되었습니다.')
+    } catch {
+      setMonthlyStatus('error')
+      toast.error('IndexedDB 저장 실패')
+    }
+  }
+
   const handleExportPNG = async () => {
     if (!reportRef.current) return
     try {
@@ -267,7 +345,7 @@ export default function Reports() {
   const handleExportPDF = async () => {
     if (!reportRef.current) return
     try {
-      await exportAsPDF(reportRef.current, 'portfolio-report')
+      await exportAsPDF(reportRef.current, 'portfolio-report', { totalReturn })
     } catch (e) {
       console.error('[Export PDF]', e)
       toast.error(`PDF 저장 실패: ${e.message}`)
@@ -287,6 +365,32 @@ export default function Reports() {
 
   return (
     <div className="p-6 space-y-6" ref={reportRef}>
+      {/* 월간 리포트 자동 트리거 배너 */}
+      {monthlyBannerVisible && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700">
+          <div className="flex items-center gap-2">
+            <CalendarCheck className="w-4 h-4 text-blue-500 shrink-0" />
+            <span className="text-sm text-blue-700 dark:text-blue-300">새 달이 시작됐습니다. 지난 달 월간 리포트를 생성할까요?</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleGenerateMonthlyReport}
+              disabled={monthlyStatus === 'loading'}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
+            >
+              {monthlyStatus === 'loading' && <Loader2 className="w-3 h-3 animate-spin" />}
+              생성
+            </button>
+            <button
+              onClick={() => { setMonthlyBannerVisible(false); sessionStorage.setItem('monthlyBannerDismissed', '1') }}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              건너뜀
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 페이지 헤더 */}
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between">
@@ -303,7 +407,7 @@ export default function Reports() {
             showAllOption={true}
             onAddClick={() => setAccountModalOpen(true)}
           />
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1 items-center">
             {DATE_RANGES.map(r => (
               <button
                 key={r.key}
@@ -317,6 +421,23 @@ export default function Reports() {
                 {r.label}
               </button>
             ))}
+            {dateRange === 'custom' && (
+              <div className="flex items-center gap-1 ml-1">
+                <input
+                  type="date"
+                  value={customRange.from}
+                  onChange={e => setCustomRange(prev => ({ ...prev, from: e.target.value }))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                />
+                <span className="text-xs text-gray-400">~</span>
+                <input
+                  type="date"
+                  value={customRange.to}
+                  onChange={e => setCustomRange(prev => ({ ...prev, to: e.target.value }))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -358,6 +479,71 @@ export default function Reports() {
         />
       </div>
 
+      {/* 리스크 KPI */}
+      <RiskKpiCards snapshots={snapshots} dateRange={dateRange} customRange={customRange} />
+
+      {/* 연간 목표 달성률 게이지 */}
+      {(() => {
+        const target = annualTargetReturn || 10
+        const progress = target > 0 ? Math.min(100, Math.max(0, (totalReturn / target) * 100)) : 0
+        const start = new Date(now.getFullYear(), 0, 1)
+        const daysElapsed = Math.max(1, Math.round((now - start) / 86400000) + 1)
+        const projected = Math.round((totalReturn / daysElapsed) * 365 * 100) / 100
+        const isAhead = projected >= target
+        return (
+          <Card className="border border-gray-200 dark:border-gray-700">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <CalendarCheck className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">연간 목표 달성률</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {targetEditing ? (
+                    <>
+                      <input
+                        type="number"
+                        value={targetDraft}
+                        onChange={e => setTargetDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleTargetSave(); if (e.key === 'Escape') setTargetEditing(false) }}
+                        className="w-16 text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-right"
+                        autoFocus
+                      />
+                      <span className="text-xs text-gray-400">%</span>
+                      <button onClick={handleTargetSave} className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+                      <button onClick={() => setTargetEditing(false)} className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600">취소</button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => { setTargetDraft(String(target)); setTargetEditing(true) }}
+                      className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline underline-offset-2"
+                    >
+                      목표 {target}%
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <span>현재 {totalReturn >= 0 ? '+' : ''}{totalReturn.toFixed(2)}%</span>
+                  <span>{Math.round(progress)}% 달성</span>
+                </div>
+                <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-3 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${progress >= 100 ? 'bg-emerald-500' : totalReturn >= 0 ? 'bg-red-500' : 'bg-blue-500'}`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>연말 예상 <span className={isAhead ? 'text-emerald-500 font-medium' : 'text-gray-500'}>{projected >= 0 ? '+' : ''}{projected}%</span></span>
+                  <span>목표 {target}%</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       {/* 탭 */}
       <Tabs defaultValue="performance" className="!flex !flex-col">
         <TabsList className="mb-4 !flex !flex-row !h-auto gap-1 bg-gray-800/50 rounded-lg p-1 w-fit flex-wrap">
@@ -367,18 +553,48 @@ export default function Reports() {
           <TabsTrigger value="trades" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">거래 내역</TabsTrigger>
           <TabsTrigger value="insights" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">AI 인사이트</TabsTrigger>
           <TabsTrigger value="dividend" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">배당</TabsTrigger>
+          <TabsTrigger value="psychology" className="!h-auto px-4 py-2 rounded-md text-sm font-medium text-gray-400 data-[active]:bg-blue-600 data-[active]:text-white hover:text-gray-200 transition-colors">심리 분석</TabsTrigger>
         </TabsList>
 
         {/* 성과 추이 탭 */}
         <TabsContent value="performance">
           <Card className="border border-gray-200 dark:border-gray-700">
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">
-                벤치마크 비교 (수익률 %)
-                <span className="ml-2 text-sm font-normal text-gray-400">
-                  {DATE_RANGES.find(r => r.key === dateRange)?.label} 기준
-                </span>
-              </CardTitle>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <CardTitle className="text-lg">
+                  벤치마크 비교 (수익률 %)
+                  <span className="ml-2 text-sm font-normal text-gray-400">
+                    {DATE_RANGES.find(r => r.key === dateRange)?.label} 기준
+                  </span>
+                </CardTitle>
+                {/* 벤치마크 토글 */}
+                <div className="flex flex-wrap gap-1">
+                  {[
+                    { key: 'KOSPI', label: 'KOSPI', color: '#10B981' },
+                    { key: 'KOSDAQ', label: 'KOSDAQ', color: '#8B5CF6' },
+                    { key: 'S&P500', label: 'S&P500', color: '#F59E0B' },
+                    { key: 'NASDAQ', label: 'NASDAQ', color: '#EC4899' },
+                  ].map(({ key, label, color }) => {
+                    const active = activeBenchmarks.includes(key)
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setActiveBenchmarks(prev =>
+                          prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+                        )}
+                        className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                          active
+                            ? 'text-white border-transparent'
+                            : 'text-gray-400 border-gray-300 dark:border-gray-600 bg-transparent'
+                        }`}
+                        style={active ? { backgroundColor: color, borderColor: color } : {}}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {benchLoading ? (
@@ -406,8 +622,18 @@ export default function Reports() {
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
                     <Line type="monotone" dataKey="내 포트폴리오" stroke="#3B82F6" strokeWidth={2.5} dot={false} />
-                    <Line type="monotone" dataKey="KOSPI" stroke="#10B981" strokeWidth={1.5} dot={false} strokeDasharray="4 4" connectNulls />
-                    <Line type="monotone" dataKey="S&P500" stroke="#F59E0B" strokeWidth={1.5} dot={false} strokeDasharray="4 4" connectNulls />
+                    {activeBenchmarks.includes('KOSPI') && (
+                      <Line type="monotone" dataKey="KOSPI" stroke="#10B981" strokeWidth={1.5} dot={false} strokeDasharray="4 4" connectNulls />
+                    )}
+                    {activeBenchmarks.includes('KOSDAQ') && (
+                      <Line type="monotone" dataKey="KOSDAQ" stroke="#8B5CF6" strokeWidth={1.5} dot={false} strokeDasharray="4 4" connectNulls />
+                    )}
+                    {activeBenchmarks.includes('S&P500') && (
+                      <Line type="monotone" dataKey="S&P500" stroke="#F59E0B" strokeWidth={1.5} dot={false} strokeDasharray="4 4" connectNulls />
+                    )}
+                    {activeBenchmarks.includes('NASDAQ') && (
+                      <Line type="monotone" dataKey="NASDAQ" stroke="#EC4899" strokeWidth={1.5} dot={false} strokeDasharray="4 4" connectNulls />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -481,6 +707,12 @@ export default function Reports() {
                     {weeklyStatus === 'saved' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                     {weeklyStatus === 'exists' && <CheckCircle2 className="w-4 h-4 text-blue-500" />}
                     {weeklyStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                    <button
+                      onClick={() => setHistoryOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    >
+                      <History className="w-3.5 h-3.5" /> 히스토리
+                    </button>
                     <button
                       onClick={handleSaveWeeklyReport}
                       disabled={weeklyStatus === 'loading'}
@@ -589,9 +821,44 @@ export default function Reports() {
             </Card>
           </div>
         </TabsContent>
+
+        {/* 심리 분석 탭 */}
+        <TabsContent value="psychology">
+          <div className="space-y-4">
+          <Card className="border border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">수익/손실 캘린더</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PnlHeatmapCalendar
+                entries={filteredEntries}
+                year={calYear}
+                month={calMonth}
+                onMonthChange={(y, m) => { setCalYear(y); setCalMonth(m) }}
+              />
+            </CardContent>
+          </Card>
+          <Card className="border border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">
+                심리 패턴 분석
+                <span className="ml-2 text-sm font-normal text-gray-400">
+                  {dateRange === 'custom' && customRange.from && customRange.to
+                    ? `${customRange.from} ~ ${customRange.to}`
+                    : DATE_RANGES.find(r => r.key === dateRange)?.label} 기준
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PsychologyAnalysis entries={filteredEntries} />
+            </CardContent>
+          </Card>
+          </div>
+        </TabsContent>
       </Tabs>
       <ApiKeyRequiredDialog {...guardProps} />
       <AccountSetupModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
+      <ReportHistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} userId={currentUser?.id} />
     </div>
   )
 }
