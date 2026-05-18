@@ -234,8 +234,47 @@ export const fetchBenchmarkHistory = async (range = '1mo') => {
     } catch { return [] }
   })()
 
-  const [kospi, sp500] = await Promise.all([kospiPromise, sp500Promise])
-  return { KOSPI: kospi, SP500: sp500 }
+  // KOSDAQ: 네이버 지수 API
+  const kosdaqPromise = (async () => {
+    try {
+      const pages = await Promise.all(
+        Array.from({ length: totalPages }, (_, i) =>
+          naverApi.get(`/api/index/KOSDAQ/price`, {
+            params: { pageSize, page: i + 1 },
+          }).then(r => r.data).catch(() => [])
+        )
+      )
+      return pages.flat()
+        .slice(0, days)
+        .map(d => ({
+          date: d.localTradedAt?.slice(0, 10) || '',
+          close: parseFloat(String(d.closePrice).replace(/,/g, '')),
+        }))
+        .filter(d => d.date && !isNaN(d.close))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    } catch { return [] }
+  })()
+
+  // NASDAQ: Yahoo Finance (^IXIC)
+  const nasdaqPromise = (async () => {
+    try {
+      const yahooRange = range === '1w' ? '5d' : range
+      const { data } = await yahooApi.get('/v8/finance/chart/%5EIXIC', {
+        params: { interval: '1d', range: yahooRange },
+      })
+      const result = data.chart.result?.[0]
+      if (!result) return []
+      const ts = result.timestamp || []
+      const q = result.indicators.quote?.[0] || {}
+      return ts.map((t, i) => ({
+        date: new Date(t * 1000).toISOString().split('T')[0],
+        close: q.close?.[i],
+      })).filter(d => d.close != null)
+    } catch { return [] }
+  })()
+
+  const [kospi, sp500, kosdaq, nasdaq] = await Promise.all([kospiPromise, sp500Promise, kosdaqPromise, nasdaqPromise])
+  return { KOSPI: kospi, SP500: sp500, KOSDAQ: kosdaq, NASDAQ: nasdaq }
 }
 
 // 4. 종목 검색 — 마스터 DB(IDB) 우선, 부족 시 로컬 번들 + Yahoo 보완
