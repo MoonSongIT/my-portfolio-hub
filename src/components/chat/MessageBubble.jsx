@@ -140,6 +140,14 @@ export default function MessageBubble({ message, loading = false }) {
           </div>
         )}
 
+        {/* 잘린 응답 안내 — stop_reason: max_tokens 시 표시 */}
+        {!isUser && message.incomplete && (
+          <div className="mt-2 flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+            <span>⚠️</span>
+            <span>응답이 길어 중간에 잘렸습니다. &quot;이어서 설명해줘&quot;라고 입력하면 계속 받을 수 있습니다.</span>
+          </div>
+        )}
+
         {/* 타임스탬프 */}
         <div
           className={`mt-1 text-[10px] ${
