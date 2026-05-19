@@ -100,10 +100,11 @@ function App() {
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 로그인 후 주간 리포트 알림 (지난주 리포트가 있으면 확인 토스트)
+  // 로그인 후 주간 리포트 알림 (지난주 리포트가 있으면 확인 토스트 — 세션당 1회)
   useEffect(() => {
     const userId = currentUser?.id
     if (!userId) return
+    if (sessionStorage.getItem('weeklyReportToastShown')) return
 
     const checkWeeklyReport = async () => {
       try {
@@ -112,13 +113,14 @@ function App() {
         const latest = weeklyReports[0] || null
 
         if (latest && !shouldGenerateWeeklyReport(latest.generatedAt)) {
-          // 이번 주에 이미 리포트가 있으면 알림 — Reports 페이지로 유도
+          // 이번 주에 이미 리포트가 있으면 알림 — Reports 페이지로 유도 (세션당 1회)
+          sessionStorage.setItem('weeklyReportToastShown', '1')
           setTimeout(() => {
             toast.info('📊 지난 주간 리포트가 있습니다.', {
               description: latest.title,
               action: {
                 label: '확인하기',
-                onClick: () => window.location.href = '/reports',
+                onClick: () => { window.history.pushState({}, '', '/reports'); window.dispatchEvent(new PopStateEvent('popstate')) },
               },
               duration: 8000,
             })
