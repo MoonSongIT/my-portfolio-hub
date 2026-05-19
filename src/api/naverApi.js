@@ -381,6 +381,36 @@ export const fetchNaverProfile = async (ticker) => {
   }
 }
 
+// ─── 1-c. 지수 실시간 시세 (KOSPI / KOSDAQ) ────────────────────────────────
+// Yahoo Finance ^KS11/^KQ11 은 시간대 어긋남으로 등락률 오차 발생
+// Naver Finance /api/index/{code}/basic 으로 정확한 값 제공
+// code: 'KOSPI' | 'KOSDAQ'
+export const fetchNaverIndexQuote = async (code) => {
+  const { data } = await naverApi.get(`/api/index/${code}/basic`)
+
+  const currentPrice = parseNum(data.closePrice)
+  const change       = parseNum(data.compareToPreviousClosePrice)
+  const prevClose    = (change != null && currentPrice != null) ? currentPrice - change : null
+
+  return {
+    ticker:        code === 'KOSPI' ? '^KS11' : '^KQ11',
+    yahooTicker:   code === 'KOSPI' ? '^KS11' : '^KQ11',
+    name:          code === 'KOSPI' ? 'KOSPI' : 'KOSDAQ',
+    currentPrice,
+    previousClose: prevClose,
+    change,
+    changePercent: parseNum(data.fluctuationsRatio),
+    volume:        parseNum(data.accumulatedTradingVolume),
+    currency:      'KRW',
+    exchangeName:  'KRX',
+    marketState:   data.marketStatus === 'OPEN' ? 'REGULAR' : 'CLOSED',
+    timestamp:     Date.now(),
+    fiftyTwoWeekHigh: null,
+    fiftyTwoWeekLow:  null,
+    marketCap:        null,
+  }
+}
+
 // ─── 3. 가격 히스토리 ──────────────────────────────────────────────────────
 
 // Naver price API는 pageSize (최대 60) + page 파라미터 사용

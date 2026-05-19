@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { isKorean, searchKoreanStocks } from '../utils/koreanStocks'
-import { fetchNaverQuote, fetchNaverProfile, fetchNaverHistory } from './naverApi'
+import { fetchNaverQuote, fetchNaverProfile, fetchNaverHistory, fetchNaverIndexQuote } from './naverApi'
 import { searchUsStocks } from '../data/usStocks'
 import { searchByQuery } from '../utils/stockMasterDb'
 
@@ -88,6 +88,10 @@ export const toYahooTicker = (ticker, market) => {
 
 // 1. 실시간 시세 (단일 종목)
 export const fetchQuote = async (ticker, market = 'NASDAQ') => {
+  // 한국 지수 티커 → Naver 지수 API (Yahoo ^KS11/^KQ11 데이터 부정확)
+  if (ticker === '^KS11') return fetchNaverIndexQuote('KOSPI')
+  if (ticker === '^KQ11') return fetchNaverIndexQuote('KOSDAQ')
+
   // 한국 주식은 네이버 파이낸스 사용 (KRX + KOSDAQ)
   if (market === 'KRX' || market === 'KOSDAQ') {
     const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
@@ -107,14 +111,19 @@ export const fetchQuote = async (ticker, market = 'NASDAQ') => {
 
   const meta = result.meta
   const prevClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice
+  // Yahoo 공식 등락률 우선 사용 (소수점 형태 → %, 예: -0.0325 → -3.25)
+  // 수동 계산은 한국 지수처럼 시간대 차이로 chartPreviousClose가 어긋날 때 오차 발생
+  const officialChangePct = meta.regularMarketChangePercent != null
+    ? meta.regularMarketChangePercent * 100
+    : null
   return {
     ticker,
     yahooTicker,
     name: meta.shortName || meta.longName || ticker,
     currentPrice: meta.regularMarketPrice,
     previousClose: prevClose,
-    change: meta.regularMarketPrice - prevClose,
-    changePercent: prevClose ? ((meta.regularMarketPrice - prevClose) / prevClose) * 100 : 0,
+    change: meta.regularMarketChange ?? (meta.regularMarketPrice - prevClose),
+    changePercent: officialChangePct ?? (prevClose ? ((meta.regularMarketPrice - prevClose) / prevClose) * 100 : 0),
     volume: meta.regularMarketVolume,
     currency: meta.currency,
     exchangeName: meta.exchangeName,

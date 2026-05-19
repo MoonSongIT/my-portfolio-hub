@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm'
 import claudeApi from '../api/claudeApi'
 import useAiCredentialStore from '../store/aiCredentialStore'
 import { SCREENER_PROMPT, parseTickersFromText } from '../agents/researchAgent'
+import MarketBriefCard from '../components/research/MarketBriefCard'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -338,6 +339,9 @@ function DiscoveryPanel({ onSelectTicker }) {
           ))}
         </div>
       </section>
+
+      {/* AI 시장 브리핑 */}
+      <MarketBriefCard />
 
       {/* 섹터 브라우징 */}
       <section>
