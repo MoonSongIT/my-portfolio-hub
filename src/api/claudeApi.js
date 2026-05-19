@@ -133,9 +133,25 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           contextText = buildMovementContext({ ticker, name, changePercent, market, news, disclosures })
           systemPrompt = ANALYSIS_PROMPT
         } else if (context.holdings?.length > 0) {
-          // 경로 2: 보유 종목이 있으면 포트폴리오 + 뉴스 분석
-          const news = await fetchNews('^GSPC', 'NYSE').catch(() => [])
-          contextText = buildPortfolioMovementContext({ holdings: context.holdings, news })
+          // 경로 2: 보유 종목 quote 병렬 조회로 changePercent 보강 → 포트폴리오 + 뉴스 분석
+          const [enrichedHoldings, news] = await Promise.all([
+            Promise.all(
+              context.holdings.map(async (h) => {
+                try {
+                  const q = await fetchQuote(h.ticker, h.market)
+                  return {
+                    ...h,
+                    changePercent: q?.changePercent ?? null,
+                    currentPrice: q?.currentPrice ?? h.currentPrice,
+                  }
+                } catch {
+                  return { ...h, changePercent: null }
+                }
+              })
+            ),
+            fetchNews('^GSPC', 'NYSE').catch(() => []),
+          ])
+          contextText = buildPortfolioMovementContext({ holdings: enrichedHoldings, news })
           systemPrompt = PORTFOLIO_ANALYSIS_PROMPT
         } else {
           // 경로 3: 종목도 포트폴리오도 없으면 전체 시장 브리핑
