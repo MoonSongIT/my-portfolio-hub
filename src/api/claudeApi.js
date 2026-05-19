@@ -7,7 +7,7 @@ import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgen
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
 import { REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
 import { buildJournalCoachPrompt, buildJournalContext, buildCompressedJournalContext } from '../agents/journalCoachAgent.js'
-import { ANALYSIS_PROMPT, MARKET_BRIEF_PROMPT, buildMovementContext, buildMarketBriefContext } from '../agents/analysisAgent.js'
+import { ANALYSIS_PROMPT, MARKET_BRIEF_PROMPT, PORTFOLIO_ANALYSIS_PROMPT, buildMovementContext, buildMarketBriefContext, buildPortfolioMovementContext } from '../agents/analysisAgent.js'
 import { fetchNews } from './newsApi.js'
 import { fetchDisclosures } from './disclosureApi.js'
 import { fetchQuote } from './stockApi.js'
@@ -60,7 +60,7 @@ const AGENT_PROMPTS = {
  * - portfolio / alert: 짧은 요약 → 2048
  */
 const AGENT_MAX_TOKENS = {
-  analysis: 1500,
+  analysis: 2048,
   journal: 4096,
   report: 4096,
   research: 3072,
@@ -125,15 +125,20 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
         const changePercent = sd?.changePercent ?? 0
 
         if (ticker) {
-          // 종목이 있으면 급등락 원인 분석
+          // 경로 1: 종목이 있으면 급등락 원인 분석
           const [news, disclosures] = await Promise.all([
             fetchNews(ticker, market).catch(() => []),
             fetchDisclosures(ticker, market).catch(() => []),
           ])
           contextText = buildMovementContext({ ticker, name, changePercent, market, news, disclosures })
           systemPrompt = ANALYSIS_PROMPT
+        } else if (context.holdings?.length > 0) {
+          // 경로 2: 보유 종목이 있으면 포트폴리오 + 뉴스 분석
+          const news = await fetchNews('^GSPC', 'NYSE').catch(() => [])
+          contextText = buildPortfolioMovementContext({ holdings: context.holdings, news })
+          systemPrompt = PORTFOLIO_ANALYSIS_PROMPT
         } else {
-          // 종목 없으면 전체 시장 브리핑
+          // 경로 3: 종목도 포트폴리오도 없으면 전체 시장 브리핑
           const BRIEF_INDICES = [
             { label: 'KOSPI',  ticker: '^KS11', market: 'NYSE' },
             { label: 'KOSDAQ', ticker: '^KQ11', market: 'NYSE' },

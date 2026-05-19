@@ -99,6 +99,77 @@ export function buildMovementContext({ ticker, name, changePercent, market, news
   return lines.join('\n')
 }
 
+export const PORTFOLIO_ANALYSIS_PROMPT = `당신은 포트폴리오 종목과 시장 뉴스의 연관성 분석 전문 에이전트입니다.
+사용자의 보유 종목 목록과 오늘의 시장 뉴스를 분석하여, 포트폴리오에 직접 영향을 줄 수 있는 주요 이슈를 파악하세요.
+
+분석 규칙:
+- 보유 종목과 직접 관련된 뉴스를 우선적으로 연결하세요.
+- 업종·테마 단위로 공통 영향 요인을 묶어서 설명하세요.
+- 등락 5% 이상 종목이 있다면 원인을 먼저 분석하세요.
+- 데이터에 없는 내용은 추측하지 마세요.
+- 마지막에 면책 문구를 반드시 포함하세요.
+
+출력 형식:
+### 포트폴리오 이슈 요약
+
+**오늘 주목 종목:** [등락 5% 이상 종목 또는 관련 뉴스 있는 종목]
+
+① [종목명/업종 — 핵심 이슈]
+[2~3문장 설명. 관련 뉴스 제목 직접 언급]
+
+② [종목명/업종 — 핵심 이슈]
+[2~3문장 설명]
+
+③ [해당 없으면 생략]
+
+### 포트폴리오 전반 영향
+[시장 전체 흐름이 포트폴리오에 미치는 영향 2~3문장]
+
+---
+⚠️ 이 분석은 참고용이며 투자 결정의 책임은 본인에게 있습니다. 투자 원금 손실 가능성이 있습니다.`
+
+/**
+ * 포트폴리오 + 뉴스 분석용 컨텍스트 문자열 생성
+ * @param {{ holdings: Array, news?: Array }} param
+ */
+export function buildPortfolioMovementContext({ holdings = [], news = [] }) {
+  const lines = []
+
+  lines.push('[보유 종목]')
+  if (holdings.length === 0) {
+    lines.push('보유 종목 없음')
+  } else {
+    holdings.forEach((h, i) => {
+      const changePercent = h.changePercent ?? null
+      const changePart = changePercent != null
+        ? ` (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`
+        : ''
+      const pnlPart = h.unrealizedPnl != null
+        ? ` 평가손익: ${h.unrealizedPnl >= 0 ? '+' : ''}${h.unrealizedPnl.toLocaleString()}원`
+        : ''
+      lines.push(`${i + 1}. ${h.name ?? h.ticker} (${h.ticker}, ${h.market ?? 'KRX'})${changePart}${pnlPart}`)
+    })
+  }
+  lines.push('')
+
+  const latestNews = news.slice(0, 10)
+  if (latestNews.length > 0) {
+    lines.push('[시장 뉴스]')
+    latestNews.forEach((item, i) => {
+      const date = item.date || item.providerPublishTime || ''
+      const source = item.publisher || item.source || ''
+      lines.push(`${i + 1}. ${item.title}${date ? ` (${date})` : ''}${source ? ` [${source}]` : ''}`)
+    })
+    lines.push('')
+  } else {
+    lines.push('[시장 뉴스]')
+    lines.push('수집된 뉴스 없음')
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
 /**
  * 시장 브리핑용 컨텍스트 문자열 생성
  * @param {{ indices?: Array<{ label: string, ticker: string, price: number, changePercent: number }>, news?: Array }} param
