@@ -271,7 +271,7 @@ export async function sendResearchWithToolUse(userMessage, ticker, market) {
     : userMessage
 
   try {
-    const response = await claudeApi.post('/claude/agentic', {
+    const response = await claudeApi.post('/claude', {
       systemPrompt: RESEARCH_TOOL_USE_PROMPT,
       messages:     [{ role: 'user', content: messageWithHint }],
       maxTokens,
