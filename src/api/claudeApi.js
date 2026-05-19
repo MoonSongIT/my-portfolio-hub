@@ -7,6 +7,10 @@ import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgen
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
 import { REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
 import { buildJournalCoachPrompt, buildJournalContext, buildCompressedJournalContext } from '../agents/journalCoachAgent.js'
+import { ANALYSIS_PROMPT, MARKET_BRIEF_PROMPT, buildMovementContext, buildMarketBriefContext } from '../agents/analysisAgent.js'
+import { fetchNews } from './newsApi.js'
+import { fetchDisclosures } from './disclosureApi.js'
+import { fetchQuote } from './stockApi.js'
 
 /**
  * axios 인스턴스 — 프록시 서버 경유
@@ -41,6 +45,7 @@ claudeApi.interceptors.response.use(
  * 에이전트별 시스템 프롬프트 맵
  */
 const AGENT_PROMPTS = {
+  analysis: ANALYSIS_PROMPT, // 종목 있으면 원인분석, 없으면 market brief로 switch에서 교체
   journal: null, // buildJournalCoachPrompt()로 동적 생성
   research: RESEARCH_PROMPT,
   portfolio: PORTFOLIO_PROMPT,
@@ -55,6 +60,7 @@ const AGENT_PROMPTS = {
  * - portfolio / alert: 짧은 요약 → 2048
  */
 const AGENT_MAX_TOKENS = {
+  analysis: 1500,
   journal: 4096,
   report: 4096,
   research: 3072,
@@ -110,6 +116,45 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
 
   try {
     switch (agentType) {
+      case 'analysis': {
+        // context에서 종목 정보 추출 (researchBundle 우선, stockData 폴백)
+        const sd = context.researchBundle?.stockData ?? context.stockData ?? null
+        const ticker = sd?.symbol ?? sd?.ticker ?? null
+        const name = sd?.name ?? ticker ?? ''
+        const market = sd?.market ?? 'NASDAQ'
+        const changePercent = sd?.changePercent ?? 0
+
+        if (ticker) {
+          // 종목이 있으면 급등락 원인 분석
+          const [news, disclosures] = await Promise.all([
+            fetchNews(ticker, market).catch(() => []),
+            fetchDisclosures(ticker, market).catch(() => []),
+          ])
+          contextText = buildMovementContext({ ticker, name, changePercent, market, news, disclosures })
+          systemPrompt = ANALYSIS_PROMPT
+        } else {
+          // 종목 없으면 전체 시장 브리핑
+          const BRIEF_INDICES = [
+            { label: 'KOSPI',  ticker: '^KS11', market: 'NYSE' },
+            { label: 'KOSDAQ', ticker: '^KQ11', market: 'NYSE' },
+            { label: 'NASDAQ', ticker: '^IXIC', market: 'NASDAQ' },
+            { label: 'S&P500', ticker: '^GSPC', market: 'NYSE' },
+          ]
+          const [quotes, news] = await Promise.all([
+            Promise.all(BRIEF_INDICES.map(idx => fetchQuote(idx.ticker, idx.market).catch(() => null))),
+            fetchNews('^GSPC', 'NYSE').catch(() => []),
+          ])
+          const indices = BRIEF_INDICES.map((idx, i) => ({
+            label: idx.label,
+            ticker: idx.ticker,
+            price: quotes[i]?.currentPrice ?? 0,
+            changePercent: quotes[i]?.changePercent ?? 0,
+          }))
+          contextText = buildMarketBriefContext({ indices, news })
+          systemPrompt = MARKET_BRIEF_PROMPT
+        }
+        break
+      }
       case 'journal': {
         const entries = context.journalEntries || []
         // 200건 초과 시 압축 컨텍스트 사용
