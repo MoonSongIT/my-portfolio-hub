@@ -107,14 +107,19 @@ export const fetchQuote = async (ticker, market = 'NASDAQ') => {
 
   const meta = result.meta
   const prevClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice
+  // Yahoo 공식 등락률 우선 사용 (소수점 형태 → %, 예: -0.0325 → -3.25)
+  // 수동 계산은 한국 지수처럼 시간대 차이로 chartPreviousClose가 어긋날 때 오차 발생
+  const officialChangePct = meta.regularMarketChangePercent != null
+    ? meta.regularMarketChangePercent * 100
+    : null
   return {
     ticker,
     yahooTicker,
     name: meta.shortName || meta.longName || ticker,
     currentPrice: meta.regularMarketPrice,
     previousClose: prevClose,
-    change: meta.regularMarketPrice - prevClose,
-    changePercent: prevClose ? ((meta.regularMarketPrice - prevClose) / prevClose) * 100 : 0,
+    change: meta.regularMarketChange ?? (meta.regularMarketPrice - prevClose),
+    changePercent: officialChangePct ?? (prevClose ? ((meta.regularMarketPrice - prevClose) / prevClose) * 100 : 0),
     volume: meta.regularMarketVolume,
     currency: meta.currency,
     exchangeName: meta.exchangeName,
