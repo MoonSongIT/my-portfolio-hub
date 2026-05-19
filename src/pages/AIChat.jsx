@@ -125,7 +125,21 @@ export default function AIChat() {
         messagesToSend = await summarizeAndCompressHistory(messagesToSend, systemPrompt)
       }
 
-      const result = await sendToAgent(msg, context)
+      // AIChat 페이지 전용 라우팅 보강: holdings가 있고 뉴스/등락 관련 키워드 포함 시 analysis 강제
+      // (오타·표현 다양성에 대비 — orchestrator routeToAgent의 compound 조건 보강)
+      const lowered = msg.toLowerCase()
+      const mentionsPortfolio =
+        lowered.includes('포트폴리오') || lowered.includes('포트포리오') ||
+        lowered.includes('내 종목') || lowered.includes('보유') ||
+        lowered.includes('내 주식') || lowered.includes('내 자산')
+      const mentionsMarketEvent =
+        lowered.includes('뉴스') || lowered.includes('시장') ||
+        lowered.includes('등락') || lowered.includes('급등') || lowered.includes('급락') ||
+        lowered.includes('하락') || lowered.includes('상승')
+      const forceAgent = (mentionsPortfolio && mentionsMarketEvent && context.holdings?.length > 0)
+        ? 'analysis'
+        : null
+      const result = await sendToAgent(msg, context, forceAgent)
       addAIMessage(result.text, result.agentType, result.agentInfo)
 
       // IndexedDB에 세션 저장
