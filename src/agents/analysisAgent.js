@@ -1,0 +1,134 @@
+// 주가 급등락 원인 분석 & 시장 브리핑 전용 에이전트
+
+export const ANALYSIS_PROMPT = `당신은 주가 급등락 원인 분석 전문 에이전트입니다.
+주어진 데이터(종목명, 등락률, 최근 뉴스, 공시)를 기반으로 오늘 이 종목의 주가가 움직이는 주요 이유를 분석하세요.
+
+분석 규칙:
+- 수집된 데이터(뉴스·공시)에 근거한 분석만 수행하세요. 데이터가 부족하면 "데이터 부족으로 원인을 특정하기 어렵습니다"라고 명시하세요.
+- 추측성 표현("아마", "~일 수 있습니다") 최소화 — 뉴스/공시가 있으면 해당 내용을 직접 인용하세요.
+- 3가지 이내 핵심 요인으로 압축하세요.
+- 마지막에 면책 문구를 반드시 포함하세요.
+
+출력 형식:
+### 오늘의 주요 원인
+
+① [핵심 요인 1 — 뉴스/공시/업종 이슈 구분]
+[2~3문장 설명. 해당 뉴스·공시 제목 직접 언급]
+
+② [핵심 요인 2]
+[2~3문장 설명]
+
+③ [핵심 요인 3 — 해당 없으면 생략]
+[2~3문장 설명]
+
+### 투자자 유의점
+[단기·중기 관점에서 주의할 사항 2~3가지]
+
+---
+⚠️ 이 분석은 참고용이며 투자 결정의 책임은 본인에게 있습니다. 투자 원금 손실 가능성이 있습니다.`
+
+export const MARKET_BRIEF_PROMPT = `당신은 주식 시장 브리핑 전문 에이전트입니다.
+오늘 주요 지수(KOSPI, KOSDAQ, NASDAQ, S&P500)의 등락 현황과 관련 뉴스를 바탕으로 시장 전반의 흐름을 간결하게 설명하세요.
+
+분석 규칙:
+- 수집된 지수 데이터와 뉴스에 근거한 분석만 수행하세요.
+- 강세/약세/혼조를 명확히 판단하세요.
+- 국내(KOSPI·KOSDAQ)와 해외(NASDAQ·S&P500)를 구분하여 설명하세요.
+- 마지막에 면책 문구를 반드시 포함하세요.
+
+출력 형식:
+### 오늘의 시장 브리핑
+
+**시장 요약:** [강세 / 약세 / 혼조] — [한 줄 핵심 요약]
+
+🇰🇷 **국내 시장**
+- KOSPI: [등락률] — [핵심 원인 1문장]
+- KOSDAQ: [등락률] — [핵심 원인 1문장]
+
+🇺🇸 **해외 시장**
+- NASDAQ: [등락률] — [핵심 원인 1문장]
+- S&P500: [등락률] — [핵심 원인 1문장]
+
+### 주요 원인
+[시장 전체 움직임에 영향을 준 요인 2~3가지. 관련 뉴스 제목 직접 언급]
+
+---
+⚠️ 이 분석은 참고용이며 투자 결정의 책임은 본인에게 있습니다. 투자 원금 손실 가능성이 있습니다.`
+
+/**
+ * 종목 급등락 원인 분석용 컨텍스트 문자열 생성
+ * @param {{ ticker: string, name: string, changePercent: number, market: string, news?: Array, disclosures?: Array }} param
+ */
+export function buildMovementContext({ ticker, name, changePercent, market, news = [], disclosures = [] }) {
+  const sign = changePercent >= 0 ? '+' : ''
+  const lines = []
+
+  lines.push('[종목 정보]')
+  lines.push(`종목명: ${name}`)
+  lines.push(`티커: ${ticker}`)
+  lines.push(`시장: ${market}`)
+  lines.push(`오늘 등락률: ${sign}${changePercent.toFixed(2)}%`)
+  lines.push('')
+
+  const latestNews = news.slice(0, 8)
+  if (latestNews.length > 0) {
+    lines.push('[최근 뉴스]')
+    latestNews.forEach((item, i) => {
+      const date = item.date || item.providerPublishTime || ''
+      const source = item.publisher || item.source || ''
+      lines.push(`${i + 1}. ${item.title}${date ? ` (${date})` : ''}${source ? ` [${source}]` : ''}`)
+    })
+    lines.push('')
+  } else {
+    lines.push('[최근 뉴스]')
+    lines.push('수집된 뉴스 없음')
+    lines.push('')
+  }
+
+  const latestDisclosures = disclosures.slice(0, 5)
+  if (latestDisclosures.length > 0) {
+    lines.push('[최근 공시]')
+    latestDisclosures.forEach((item, i) => {
+      const date = item.rcept_dt || item.date || ''
+      const type = item.report_nm || item.type || ''
+      lines.push(`${i + 1}. ${type}${date ? ` (${date})` : ''}`)
+    })
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * 시장 브리핑용 컨텍스트 문자열 생성
+ * @param {{ indices?: Array<{ label: string, ticker: string, price: number, changePercent: number }>, news?: Array }} param
+ */
+export function buildMarketBriefContext({ indices = [], news = [] }) {
+  const lines = []
+
+  if (indices.length > 0) {
+    lines.push('[지수 현황]')
+    indices.forEach((idx) => {
+      const sign = idx.changePercent >= 0 ? '+' : ''
+      lines.push(`${idx.label}: ${idx.price?.toLocaleString() ?? '-'} (${sign}${idx.changePercent?.toFixed(2) ?? '0.00'}%)`)
+    })
+    lines.push('')
+  }
+
+  const latestNews = news.slice(0, 8)
+  if (latestNews.length > 0) {
+    lines.push('[시장 관련 뉴스]')
+    latestNews.forEach((item, i) => {
+      const date = item.date || item.providerPublishTime || ''
+      const source = item.publisher || item.source || ''
+      lines.push(`${i + 1}. ${item.title}${date ? ` (${date})` : ''}${source ? ` [${source}]` : ''}`)
+    })
+    lines.push('')
+  } else {
+    lines.push('[시장 관련 뉴스]')
+    lines.push('수집된 뉴스 없음')
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}

@@ -6,6 +6,10 @@
  */
 export const ROUTING_RULES = [
   {
+    agent: 'analysis',
+    keywords: ['왜', '이유', '원인', '어떻게 된', '무슨 일', '급락', '급등', '폭락', '폭등', '하락 이유', '상승 이유', '오늘 시장', '시장 왜', '코스피 왜', '나스닥 왜'],
+  },
+  {
     agent: 'journal',
     keywords: ['내 패턴', '매매 패턴', '실수', '심리', '일지', '매매 스타일', '반복', '잘한', '아쉬운', '코치', '내 거래', '내 매매', '추격매매', '공포에'],
   },
@@ -53,6 +57,11 @@ export function routeToAgent(userMessage) {
  * 에이전트 라벨 정보 (UI 배지 표시용)
  */
 export const AGENT_LABELS = {
+  analysis: {
+    label: '원인 분석',
+    icon: '🔎',
+    color: 'indigo',
+  },
   journal: {
     label: '매매 코치',
     icon: '📔',
