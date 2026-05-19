@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { isKorean, searchKoreanStocks } from '../utils/koreanStocks'
-import { fetchNaverQuote, fetchNaverProfile, fetchNaverHistory } from './naverApi'
+import { fetchNaverQuote, fetchNaverProfile, fetchNaverHistory, fetchNaverIndexQuote } from './naverApi'
 import { searchUsStocks } from '../data/usStocks'
 import { searchByQuery } from '../utils/stockMasterDb'
 
@@ -88,6 +88,10 @@ export const toYahooTicker = (ticker, market) => {
 
 // 1. 실시간 시세 (단일 종목)
 export const fetchQuote = async (ticker, market = 'NASDAQ') => {
+  // 한국 지수 티커 → Naver 지수 API (Yahoo ^KS11/^KQ11 데이터 부정확)
+  if (ticker === '^KS11') return fetchNaverIndexQuote('KOSPI')
+  if (ticker === '^KQ11') return fetchNaverIndexQuote('KOSDAQ')
+
   // 한국 주식은 네이버 파이낸스 사용 (KRX + KOSDAQ)
   if (market === 'KRX' || market === 'KOSDAQ') {
     const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
