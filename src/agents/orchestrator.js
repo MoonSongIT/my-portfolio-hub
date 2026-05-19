@@ -6,16 +6,21 @@
  */
 export const ROUTING_RULES = [
   {
+    agent: 'analysis',
+    keywords: ['왜', '이유', '원인', '어떻게 된', '무슨 일', '급락', '급등', '폭락', '폭등', '하락 이유', '상승 이유', '오늘 시장', '시장 왜', '코스피 왜', '나스닥 왜'],
+  },
+  {
     agent: 'journal',
     keywords: ['내 패턴', '매매 패턴', '실수', '심리', '일지', '매매 스타일', '반복', '잘한', '아쉬운', '코치', '내 거래', '내 매매', '추격매매', '공포에'],
   },
   {
-    agent: 'research',
-    keywords: ['분석', '어때', '살까', '팔까', '전망', '목표가', '적정가', '재무', 'PER', 'PBR', 'ROE', '실적', '매출', '영업이익', '차트', '기술적', '이평선', 'RSI', 'MACD'],
-  },
-  {
+    // portfolio를 research보다 먼저 배치 — "포트폴리오 분석해줘" 등이 research로 잘못 라우팅되는 것 방지
     agent: 'portfolio',
     keywords: ['포트폴리오', '내 종목', '수익률', '현황', '보유', '평가', '비중', '리밸런싱', '자산', '총액'],
+  },
+  {
+    agent: 'research',
+    keywords: ['분석', '어때', '살까', '팔까', '전망', '목표가', '적정가', '재무', 'PER', 'PBR', 'ROE', '실적', '매출', '영업이익', '차트', '기술적', '이평선', 'RSI', 'MACD'],
   },
   {
     agent: 'alert',
@@ -37,6 +42,11 @@ export function routeToAgent(userMessage) {
 
   const msg = userMessage.toLowerCase()
 
+  // compound 조건 (최우선): 포트폴리오·보유 종목 + 뉴스·시장·등락 → analysis
+  const hasPortfolio = msg.includes('포트폴리오') || msg.includes('내 종목') || msg.includes('보유')
+  const hasMarketEvent = msg.includes('뉴스') || msg.includes('시장') || msg.includes('등락') || msg.includes('급등') || msg.includes('급락')
+  if (hasPortfolio && hasMarketEvent) return 'analysis'
+
   for (const rule of ROUTING_RULES) {
     for (const keyword of rule.keywords) {
       if (msg.includes(keyword.toLowerCase())) {
@@ -53,6 +63,11 @@ export function routeToAgent(userMessage) {
  * 에이전트 라벨 정보 (UI 배지 표시용)
  */
 export const AGENT_LABELS = {
+  analysis: {
+    label: '원인 분석',
+    icon: '🔎',
+    color: 'indigo',
+  },
   journal: {
     label: '매매 코치',
     icon: '📔',

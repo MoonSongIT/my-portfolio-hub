@@ -15,7 +15,13 @@ import { useDailyPnlStore } from '../store/dailyPnlStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 
 export default function Settings() {
-  const { theme, toggleTheme, benchmarkIndex, setBenchmark } = useSettingsStore()
+  const { theme, toggleTheme, benchmarkIndex, setBenchmark, watchlistDefaults, setWatchlistDefaults } = useSettingsStore()
+
+  const [wlDraft, setWlDraft] = useState({
+    targetPct: watchlistDefaults.targetPct,
+    stopLossPct: watchlistDefaults.stopLossPct,
+    trailingDropPct: watchlistDefaults.trailingDropPct,
+  })
   const deleteAllEntries = useJournalStore((s) => s.deleteAllEntries)
   const entryCount = useJournalStore((s) => s.entries.length)
   const recomputeFromJournal = usePortfolioStore((s) => s.recomputeFromJournal)
@@ -137,6 +143,78 @@ export default function Settings() {
             <option value="KOSPI">KOSPI</option>
             <option value="SP500">S&P 500</option>
           </select>
+        </div>
+      </section>
+
+      {/* ─── 관심종목 기본값 ─── */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">관심종목 기본값</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            관심종목 추가 시 현재가를 기준으로 자동 계산되는 기본값입니다. 개별 종목에서 재정의할 수 있습니다.
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">목표가 (%)</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={wlDraft.targetPct}
+                  onChange={(e) => setWlDraft(d => ({ ...d, targetPct: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-500">%</span>
+              </div>
+              <p className="text-xs text-gray-400">현재가 +{wlDraft.targetPct}%</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">손절가 (%)</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={wlDraft.stopLossPct}
+                  onChange={(e) => setWlDraft(d => ({ ...d, stopLossPct: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-500">%</span>
+              </div>
+              <p className="text-xs text-gray-400">현재가 -{wlDraft.stopLossPct}%</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">낙폭 알림 (%)</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={wlDraft.trailingDropPct}
+                  onChange={(e) => setWlDraft(d => ({ ...d, trailingDropPct: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-500">%</span>
+              </div>
+              <p className="text-xs text-gray-400">고점 대비 -{wlDraft.trailingDropPct}%</p>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                const t = Math.max(1, Math.min(100, wlDraft.targetPct || 20))
+                const s = Math.max(1, Math.min(100, wlDraft.stopLossPct || 10))
+                const d = Math.max(1, Math.min(50, wlDraft.trailingDropPct || 10))
+                setWatchlistDefaults({ targetPct: t, stopLossPct: s, trailingDropPct: d })
+                setWlDraft({ targetPct: t, stopLossPct: s, trailingDropPct: d })
+                toast.success('관심종목 기본값이 저장되었습니다.')
+              }}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition"
+            >
+              저장
+            </button>
+          </div>
         </div>
       </section>
 

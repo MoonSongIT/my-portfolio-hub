@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import ChatPanel from '../components/chat/ChatPanel'
+import MovementExplainerCard from '../components/research/MovementExplainerCard'
 
 // 차트 에러 격리용 ErrorBoundary
 class ChartErrorBoundary extends Component {
@@ -452,6 +453,14 @@ export default function StockDetail() {
           </Card>
         </div>
       )}
+
+      {/* 급등락 원인 분석 */}
+      <MovementExplainerCard
+        ticker={ticker}
+        name={quote?.name || ticker}
+        changePercent={quote?.changePercent ?? 0}
+        market={market}
+      />
 
       {/* 가격 차트 */}
       <Card className="border border-gray-200 dark:border-gray-700">

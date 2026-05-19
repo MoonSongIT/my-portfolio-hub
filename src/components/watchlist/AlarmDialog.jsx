@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Bell, BellOff, Trash2 } from 'lucide-react'
+import { Bell, BellOff, Trash2, Pause, Play } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../ui/dialog'
@@ -9,7 +9,7 @@ import { useWatchlistStore } from '../../store/watchlistStore'
 import { formatCurrency } from '../../utils/formatters'
 
 export default function AlarmDialog({ open, onOpenChange, stock }) {
-  const { alerts, addAlert, removeAlert } = useWatchlistStore()
+  const { alerts, addAlert, removeAlert, toggleAlertPaused } = useWatchlistStore()
   const [condition, setCondition] = useState('above')
   const [targetPrice, setTargetPrice] = useState('')
   const [error, setError] = useState('')
@@ -118,24 +118,45 @@ export default function AlarmDialog({ open, onOpenChange, stock }) {
               {stockAlerts.map((alert) => (
                 <div
                   key={alert.id}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm"
+                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                    alert.paused
+                      ? 'bg-gray-100 dark:bg-gray-700/50 opacity-60'
+                      : 'bg-gray-50 dark:bg-gray-800'
+                  }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${alert.condition === 'above' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    <span className={`w-2 h-2 rounded-full ${alert.paused ? 'bg-gray-400' : alert.condition === 'above' ? 'bg-emerald-500' : 'bg-red-500'}`} />
                     <span className="text-gray-700 dark:text-gray-300">
                       {alert.condition === 'above' ? '이상' : '이하'}
                     </span>
                     <span className="font-semibold text-gray-900 dark:text-gray-100">
                       {formatCurrency(alert.targetPrice, alert.currency)}
                     </span>
+                    {alert.paused && (
+                      <span className="text-[10px] text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
+                        일시정지
+                      </span>
+                    )}
                   </div>
-                  <button
-                    onClick={() => removeAlert(alert.id)}
-                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-colors"
-                    title="알림 삭제"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => toggleAlertPaused(alert.id)}
+                      className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-amber-500 transition-colors"
+                      title={alert.paused ? '알림 재개' : '알림 일시정지'}
+                    >
+                      {alert.paused
+                        ? <Play className="w-3.5 h-3.5" />
+                        : <Pause className="w-3.5 h-3.5" />
+                      }
+                    </button>
+                    <button
+                      onClick={() => removeAlert(alert.id)}
+                      className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-colors"
+                      title="알림 삭제"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

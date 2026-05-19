@@ -349,5 +349,33 @@ KIS_ACCOUNT_NO=여기에_계좌번호_입력
 
 ---
 
-*마지막 업데이트: 2026-04-02*
+## 코드 설명 방식 (AI 응답 규칙)
+
+사용자가 코드 설명을 요청할 때 반드시 아래 포맷을 따를 것.
+
+1. **단계 번호** — ①②③ 순서로 흐름을 끊지 않고 따라가기
+2. **실제 코드 + 라인 번호** — `// L265~274` 형식으로 파일 어디를 보면 되는지 명확하게 표시
+3. **`// ← 화살표 주석`** — 해당 줄이 왜 필요한지 코드 바로 옆에서 설명
+4. **마지막에 흐름 요약** — 전체 그림을 텍스트 다이어그램으로 정리
+
+### 예시 포맷
+
+```js
+// L291~294
+function savePopular(next) {
+  setPopularTickers(next)                              // ← React 리렌더 트리거
+  localStorage.setItem('popularTickers', JSON.stringify(next))  // ← 영구 저장
+}
+```
+
+```
+전체 흐름 요약
+  └─ onDragStart  → dragRef에 정보 기록
+       └─ onDragOver  → 파란 테두리 ON
+            └─ onDrop  → 배열 업데이트 + localStorage 저장
+```
+
+---
+
+*마지막 업데이트: 2026-05-15*
 *프로젝트 오너: dohay*

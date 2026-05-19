@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { isKorean, searchKoreanStocks } from '../utils/koreanStocks'
-import { fetchNaverQuote, fetchNaverProfile, fetchNaverHistory } from './naverApi'
+import { fetchNaverQuote, fetchNaverProfile, fetchNaverHistory, fetchNaverIndexQuote } from './naverApi'
 import { searchUsStocks } from '../data/usStocks'
 import { searchByQuery } from '../utils/stockMasterDb'
 
@@ -88,6 +88,10 @@ export const toYahooTicker = (ticker, market) => {
 
 // 1. 실시간 시세 (단일 종목)
 export const fetchQuote = async (ticker, market = 'NASDAQ') => {
+  // 한국 지수 티커 → Naver 지수 API (Yahoo ^KS11/^KQ11 데이터 부정확)
+  if (ticker === '^KS11') return fetchNaverIndexQuote('KOSPI')
+  if (ticker === '^KQ11') return fetchNaverIndexQuote('KOSDAQ')
+
   // 한국 주식은 네이버 파이낸스 사용 (KRX + KOSDAQ)
   if (market === 'KRX' || market === 'KOSDAQ') {
     const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
@@ -107,14 +111,19 @@ export const fetchQuote = async (ticker, market = 'NASDAQ') => {
 
   const meta = result.meta
   const prevClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice
+  // Yahoo 공식 등락률 우선 사용 (소수점 형태 → %, 예: -0.0325 → -3.25)
+  // 수동 계산은 한국 지수처럼 시간대 차이로 chartPreviousClose가 어긋날 때 오차 발생
+  const officialChangePct = meta.regularMarketChangePercent != null
+    ? meta.regularMarketChangePercent * 100
+    : null
   return {
     ticker,
     yahooTicker,
     name: meta.shortName || meta.longName || ticker,
     currentPrice: meta.regularMarketPrice,
     previousClose: prevClose,
-    change: meta.regularMarketPrice - prevClose,
-    changePercent: prevClose ? ((meta.regularMarketPrice - prevClose) / prevClose) * 100 : 0,
+    change: meta.regularMarketChange ?? (meta.regularMarketPrice - prevClose),
+    changePercent: officialChangePct ?? (prevClose ? ((meta.regularMarketPrice - prevClose) / prevClose) * 100 : 0),
     volume: meta.regularMarketVolume,
     currency: meta.currency,
     exchangeName: meta.exchangeName,
@@ -234,8 +243,47 @@ export const fetchBenchmarkHistory = async (range = '1mo') => {
     } catch { return [] }
   })()
 
-  const [kospi, sp500] = await Promise.all([kospiPromise, sp500Promise])
-  return { KOSPI: kospi, SP500: sp500 }
+  // KOSDAQ: 네이버 지수 API
+  const kosdaqPromise = (async () => {
+    try {
+      const pages = await Promise.all(
+        Array.from({ length: totalPages }, (_, i) =>
+          naverApi.get(`/api/index/KOSDAQ/price`, {
+            params: { pageSize, page: i + 1 },
+          }).then(r => r.data).catch(() => [])
+        )
+      )
+      return pages.flat()
+        .slice(0, days)
+        .map(d => ({
+          date: d.localTradedAt?.slice(0, 10) || '',
+          close: parseFloat(String(d.closePrice).replace(/,/g, '')),
+        }))
+        .filter(d => d.date && !isNaN(d.close))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    } catch { return [] }
+  })()
+
+  // NASDAQ: Yahoo Finance (^IXIC)
+  const nasdaqPromise = (async () => {
+    try {
+      const yahooRange = range === '1w' ? '5d' : range
+      const { data } = await yahooApi.get('/v8/finance/chart/%5EIXIC', {
+        params: { interval: '1d', range: yahooRange },
+      })
+      const result = data.chart.result?.[0]
+      if (!result) return []
+      const ts = result.timestamp || []
+      const q = result.indicators.quote?.[0] || {}
+      return ts.map((t, i) => ({
+        date: new Date(t * 1000).toISOString().split('T')[0],
+        close: q.close?.[i],
+      })).filter(d => d.close != null)
+    } catch { return [] }
+  })()
+
+  const [kospi, sp500, kosdaq, nasdaq] = await Promise.all([kospiPromise, sp500Promise, kosdaqPromise, nasdaqPromise])
+  return { KOSPI: kospi, SP500: sp500, KOSDAQ: kosdaq, NASDAQ: nasdaq }
 }
 
 // 4. 종목 검색 — 마스터 DB(IDB) 우선, 부족 시 로컬 번들 + Yahoo 보완
