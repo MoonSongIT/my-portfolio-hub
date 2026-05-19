@@ -236,18 +236,34 @@ export default function Reports() {
     const kosdaqMap = {}; kosdaq.forEach(d => { kosdaqMap[d.date] = d.close })
     const nasdaqMap = {}; nasdaq.forEach(d => { nasdaqMap[d.date] = d.close })
 
+    // 날짜별 포트폴리오 평가금액 집계 (closePrice × quantity)
+    const portfolioEvalByDate = {}
+    Object.values(snapshots).forEach(s => {
+      if (!s.date || s.closePrice == null || s.quantity == null) return
+      portfolioEvalByDate[s.date] = (portfolioEvalByDate[s.date] || 0) + s.closePrice * s.quantity
+    })
+
+    // 차트 범위 첫 거래일을 기준값으로 삼아 상대 수익률 계산
+    const chartDates = baseData.map(d => d.date).sort()
+    const basePortfolioDate = chartDates.find(d => portfolioEvalByDate[d] != null)
+    const basePortfolioEval = basePortfolioDate ? portfolioEvalByDate[basePortfolioDate] : null
+
     return baseData.map((item, i) => {
       const kospiVal = kospi[i]?.close
+      const evalAmt = portfolioEvalByDate[item.date]
+      const portfolioReturn = basePortfolioEval != null && evalAmt != null
+        ? ((evalAmt - basePortfolioEval) / basePortfolioEval) * 100
+        : null
       return {
         date: item.date,
-        '내 포트폴리오': totalReturn,
+        '내 포트폴리오': portfolioReturn,
         KOSPI: kospiVal != null ? ((kospiVal - baseKospi) / baseKospi) * 100 : null,
         'S&P500': sp500Map[item.date] != null ? ((sp500Map[item.date] - baseSP500) / baseSP500) * 100 : null,
         KOSDAQ: kosdaqMap[item.date] != null ? ((kosdaqMap[item.date] - baseKosdaq) / baseKosdaq) * 100 : null,
         NASDAQ: nasdaqMap[item.date] != null ? ((nasdaqMap[item.date] - baseNasdaq) / baseNasdaq) * 100 : null,
       }
     })
-  }, [benchmark, totalReturn])
+  }, [benchmark, snapshots])
 
   const benchmarkDiff = useMemo(() => {
     if (!comparisonData.length) return null
@@ -621,7 +637,7 @@ export default function Reports() {
                     />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
-                    <Line type="monotone" dataKey="내 포트폴리오" stroke="#3B82F6" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="내 포트폴리오" stroke="#3B82F6" strokeWidth={2.5} dot={false} connectNulls />
                     {activeBenchmarks.includes('KOSPI') && (
                       <Line type="monotone" dataKey="KOSPI" stroke="#10B981" strokeWidth={1.5} dot={false} strokeDasharray="4 4" connectNulls />
                     )}
