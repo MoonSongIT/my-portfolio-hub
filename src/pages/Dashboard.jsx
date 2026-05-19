@@ -73,7 +73,7 @@ export default function Dashboard() {
   }, [holdings])
 
   // API 훅
-  const { data: batchData, isLoading: priceLoading, isError: priceError } = useBatchQuotes(uniqueHoldings)
+  const { data: batchData, isLoading: priceLoading, isFetching: priceRefreshing, isError: priceError } = useBatchQuotes(uniqueHoldings)
   const { data: rateData } = useExchangeRate()
 
   // API 응답 → Store 반영
@@ -353,6 +353,16 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 새로고침 오버레이 */}
+      {priceRefreshing && !priceLoading && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 px-10 py-8 rounded-2xl bg-gray-900/90 shadow-2xl border border-gray-700">
+            <RefreshCw className="w-10 h-10 text-blue-400 animate-spin" />
+            <p className="text-sm font-medium text-gray-200">시세 업데이트 중...</p>
+          </div>
+        </div>
+      )}
 
       {/* 페이지 헤더 */}
       <div className="flex flex-col gap-3">
