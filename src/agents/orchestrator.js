@@ -10,7 +10,7 @@ export const ROUTING_RULES = [
     agent: 'analysis',
     match: (msg) =>
       (msg.includes('포트폴리오') || msg.includes('내 종목') || msg.includes('보유')) &&
-      (msg.includes('뉴스') || msg.includes('시장') || msg.includes('등락') || msg.includes('급등') || msg.includes('급락') || msg.includes('분석')),
+      (msg.includes('뉴스') || msg.includes('시장') || msg.includes('등락') || msg.includes('급등') || msg.includes('급락')),
   },
   {
     agent: 'analysis',
