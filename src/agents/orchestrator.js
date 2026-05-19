@@ -6,13 +6,6 @@
  */
 export const ROUTING_RULES = [
   {
-    // 포트폴리오 + 뉴스·시장 조합 → analysis (compound 조건, portfolio 단독보다 우선)
-    agent: 'analysis',
-    match: (msg) =>
-      (msg.includes('포트폴리오') || msg.includes('내 종목') || msg.includes('보유')) &&
-      (msg.includes('뉴스') || msg.includes('시장') || msg.includes('등락') || msg.includes('급등') || msg.includes('급락')),
-  },
-  {
     agent: 'analysis',
     keywords: ['왜', '이유', '원인', '어떻게 된', '무슨 일', '급락', '급등', '폭락', '폭등', '하락 이유', '상승 이유', '오늘 시장', '시장 왜', '코스피 왜', '나스닥 왜'],
   },
@@ -49,12 +42,12 @@ export function routeToAgent(userMessage) {
 
   const msg = userMessage.toLowerCase()
 
+  // compound 조건 (최우선): 포트폴리오·보유 종목 + 뉴스·시장·등락 → analysis
+  const hasPortfolio = msg.includes('포트폴리오') || msg.includes('내 종목') || msg.includes('보유')
+  const hasMarketEvent = msg.includes('뉴스') || msg.includes('시장') || msg.includes('등락') || msg.includes('급등') || msg.includes('급락')
+  if (hasPortfolio && hasMarketEvent) return 'analysis'
+
   for (const rule of ROUTING_RULES) {
-    // match 함수가 있으면 우선 적용 (compound 조건)
-    if (rule.match) {
-      if (rule.match(msg)) return rule.agent
-      continue
-    }
     for (const keyword of rule.keywords) {
       if (msg.includes(keyword.toLowerCase())) {
         return rule.agent
