@@ -2,22 +2,24 @@
 import axios from 'axios'
 import useAiCredentialStore from '../store/aiCredentialStore.js'
 import { routeToAgent, AGENT_LABELS } from '../agents/orchestrator.js'
-import { RESEARCH_PROMPT, RESEARCH_TOOL_USE_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
+import { RESEARCH_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
-import { REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
+import { REPORT_PROMPT, WEEKLY_REPORT_PROMPT, MONTHLY_REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
 import { buildJournalCoachPrompt, buildJournalContext, buildCompressedJournalContext } from '../agents/journalCoachAgent.js'
 import { ANALYSIS_PROMPT, MARKET_BRIEF_PROMPT, PORTFOLIO_ANALYSIS_PROMPT, buildMovementContext, buildMarketBriefContext, buildPortfolioMovementContext } from '../agents/analysisAgent.js'
 import { fetchNews } from './newsApi.js'
 import { fetchDisclosures } from './disclosureApi.js'
 import { fetchQuote } from './stockApi.js'
+import { getCached, setCached } from './apiCache'
+import { searchByQuery } from '../utils/stockMasterDb.js'
 
 /**
  * axios 인스턴스 — 프록시 서버 경유
  */
 const claudeApi = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  timeout: 60_000,
+  timeout: 120_000,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -63,38 +65,138 @@ const AGENT_MAX_TOKENS = {
   analysis: 2048,
   journal: 4096,
   report: 4096,
-  research: 3072,
+  research: 4096,
   portfolio: 2048,
   alert: 2048,
 }
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+
 /**
- * 에러 메시지 생성 (HTTP 상태코드별)
- * @param {object} error - axios 에러 객체
- * @returns {string} 사용자 친화적 에러 메시지
+ * Claude API 호출 (fetch 기반, 180s timeout)
+ * axios ECONNABORTED 없이 긴 응답도 안정적으로 수신
+ * @param {object} payload
+ * @returns {Promise<{content: [{text: string}], stop_reason: string|null}>}
+ */
+async function fetchClaude(payload) {
+  const { apiKey } = useAiCredentialStore.getState()
+  const headers = { 'Content-Type': 'application/json' }
+  if (apiKey) headers['X-User-Api-Key'] = apiKey
+
+  const response = await fetch(`${API_BASE}/claude`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(180_000),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    const err = new Error(errText)
+    err.response = { status: response.status }
+    throw err
+  }
+
+  return response.json()
+}
+
+const BRIEF_INDICES = [
+  { label: 'KOSPI',  ticker: '^KS11', market: 'NYSE' },
+  { label: 'KOSDAQ', ticker: '^KQ11', market: 'NYSE' },
+  { label: 'NASDAQ', ticker: '^IXIC', market: 'NASDAQ' },
+  { label: 'S&P500', ticker: '^GSPC', market: 'NYSE' },
+]
+
+/** 시장 지수 4종 조회 (60초 캐시) */
+async function getMarketIndices() {
+  const cacheKey = 'indices:brief'
+  const cached = getCached(cacheKey)
+  if (cached) return cached
+
+  const quotes = await Promise.all(
+    BRIEF_INDICES.map(idx => fetchQuote(idx.ticker, idx.market).catch(() => null))
+  )
+  const indices = BRIEF_INDICES.map((idx, i) => ({
+    label: idx.label,
+    ticker: idx.ticker,
+    price: quotes[i]?.currentPrice ?? 0,
+    changePercent: quotes[i]?.changePercent ?? 0,
+  }))
+  setCached(cacheKey, indices, 60 * 1000)
+  return indices
+}
+
+/**
+ * 에러 메시지 생성 (HTTP 상태코드별 사용자 친화적 메시지)
+ * @param {object} error
+ * @returns {string}
  */
 function getErrorMessage(error) {
+  // fetch AbortSignal timeout
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+    return '응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+  }
+  // axios timeout (summarizeAndCompressHistory 경로)
   if (error.code === 'ECONNABORTED') {
     return '응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
   }
-
-  if (!error.response) {
-    return '네트워크 연결을 확인해주세요.'
+  // fetch 네트워크 오류 (TypeError) 또는 axios 응답 없음
+  if (error instanceof TypeError || !error.response) {
+    return '네트워크 연결이 끊겼습니다. 인터넷 연결을 확인하고 다시 시도해주세요.'
   }
 
   const status = error.response.status
   switch (status) {
     case 401:
-      return 'API 키 오류가 발생했습니다. 관리자에게 문의해주세요.'
+      return 'API 키가 유효하지 않습니다. 설정에서 API 키를 확인해주세요.'
     case 429:
       return 'AI 요청 한도에 도달했습니다. 잠시 후 다시 시도해주세요.'
     case 500:
       return '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+    case 503:
+      return 'AI 서버를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.'
     case 529:
       return 'AI 서버가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.'
     default:
-      return `오류가 발생했습니다. (${status})`
+      return '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
   }
+}
+
+/**
+ * 재시도 가능한 오류인지 판별
+ * - 재시도 가능: 네트워크 단절, HTTP 500/503/529
+ * - 재시도 불필요: timeout, 429, 401
+ */
+function isRetryable(error) {
+  if (error.name === 'TimeoutError') return false
+  if (error instanceof TypeError) return true
+  const status = error.response?.status
+  if (status === 429 || status === 401) return false
+  if (status === 500 || status === 503 || status === 529) return true
+  if (!error.response) return true
+  return false
+}
+
+/**
+ * Claude API 공통 호출 함수 — SSE 스트리밍 + 일시적 오류 시 자동 재시도 (최대 3회)
+ * @param {object} payload
+ * @param {number} [maxAttempts=3]
+ * @returns {Promise<{data: {content: [{text: string}], stop_reason: string|null}}>}
+ */
+export async function callClaudeWithRetry(payload, maxAttempts = 3) {
+  let lastError = null
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const data = await fetchClaude(payload)
+      return { data }
+    } catch (error) {
+      lastError = error
+      if (!isRetryable(error) || attempt >= maxAttempts - 1) break
+      // 지수 백오프: 1.5s → 3s
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
+    }
+  }
+  throw lastError
 }
 
 /**
@@ -126,17 +228,20 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
 
         if (ticker) {
           // 경로 1: 종목이 있으면 급등락 원인 분석
+          const daysMatch = userMessage.match(/(\d+)일/)
+          const disclosureDays = daysMatch ? Math.min(parseInt(daysMatch[1], 10), 90) : 30
           const [news, disclosures] = await Promise.all([
             fetchNews(ticker, market).catch(() => []),
-            fetchDisclosures(ticker, market).catch(() => []),
+            fetchDisclosures(ticker, market, disclosureDays).catch(() => []),
           ])
           contextText = buildMovementContext({ ticker, name, changePercent, market, news, disclosures })
           systemPrompt = ANALYSIS_PROMPT
         } else if (context.holdings?.length > 0) {
-          // 경로 2: 보유 종목 quote 병렬 조회로 changePercent 보강 → 포트폴리오 + 뉴스 분석
+          // 경로 2: changePercent 없는 종목만 quote fetch (이미 있으면 중복 fetch 방지)
           const [enrichedHoldings, news] = await Promise.all([
             Promise.all(
               context.holdings.map(async (h) => {
+                if (h.changePercent !== undefined && h.changePercent !== null) return h
                 try {
                   const q = await fetchQuote(h.ticker, h.market)
                   return {
@@ -155,22 +260,10 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           systemPrompt = PORTFOLIO_ANALYSIS_PROMPT
         } else {
           // 경로 3: 종목도 포트폴리오도 없으면 전체 시장 브리핑
-          const BRIEF_INDICES = [
-            { label: 'KOSPI',  ticker: '^KS11', market: 'NYSE' },
-            { label: 'KOSDAQ', ticker: '^KQ11', market: 'NYSE' },
-            { label: 'NASDAQ', ticker: '^IXIC', market: 'NASDAQ' },
-            { label: 'S&P500', ticker: '^GSPC', market: 'NYSE' },
-          ]
-          const [quotes, news] = await Promise.all([
-            Promise.all(BRIEF_INDICES.map(idx => fetchQuote(idx.ticker, idx.market).catch(() => null))),
+          const [indices, news] = await Promise.all([
+            getMarketIndices().catch(() => []),
             fetchNews('^GSPC', 'NYSE').catch(() => []),
           ])
-          const indices = BRIEF_INDICES.map((idx, i) => ({
-            label: idx.label,
-            ticker: idx.ticker,
-            price: quotes[i]?.currentPrice ?? 0,
-            changePercent: quotes[i]?.changePercent ?? 0,
-          }))
           contextText = buildMarketBriefContext({ indices, news })
           systemPrompt = MARKET_BRIEF_PROMPT
         }
@@ -189,23 +282,85 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
         // researchBundle(오케스트레이터 결과) 우선, 없으면 stockData 단독으로 하위호환
         const bundle = context.researchBundle
           ?? (context.stockData ? { stockData: context.stockData } : null)
-        contextText = buildResearchContext(bundle)
 
-        // 번들 없이 채팅에서 직접 질문한 경우 → Tool Use 경로로 자동 전환
-        if (!bundle) {
-          return sendResearchWithToolUse(userMessage)
+        if (bundle) {
+          contextText = buildResearchContext(bundle)
+        } else {
+          // 채팅에서 직접 질문한 경우 → 종목 검색 후 실시간 데이터 프리패치
+          // 전체 문장 → 단어 분리 순으로 시도 (searchByQuery는 짧은 쿼리에 최적화됨)
+          let hits = await searchByQuery(userMessage).catch(() => [])
+          if (hits.length === 0) {
+            const tokens = userMessage.split(/\s+/).filter(t => t.length >= 2)
+            for (const token of tokens) {
+              hits = await searchByQuery(token).catch(() => [])
+              if (hits.length > 0) break
+            }
+          }
+          if (hits.length > 0) {
+            const hit = hits[0]
+            const EXCHANGE_TO_MARKET = {
+              KOSPI: 'KRX', KOSDAQ: 'KOSDAQ', KRX_ETF: 'KRX', NXT: 'KRX',
+              NYSE: 'NYSE', NASDAQ: 'NASDAQ', AMEX: 'NYSE', US_ETF: 'NASDAQ',
+            }
+            const market = EXCHANGE_TO_MARKET[hit.exchange] ?? hit.exchange
+            const [stockData, news, disclosures] = await Promise.all([
+              fetchQuote(hit.ticker, market).catch(() => null),
+              fetchNews(hit.ticker, market).catch(() => []),
+              fetchDisclosures(hit.ticker, market).catch(() => []),
+            ])
+            contextText = buildResearchContext({ stockData, news, disclosures })
+          } else {
+            return {
+              text: '분석할 종목을 특정할 수 없습니다. 종목명이나 티커를 포함해 다시 질문해 주세요.',
+              agentType,
+              agentInfo,
+            }
+          }
         }
         break
       }
       case 'portfolio':
         contextText = buildPortfolioContext(context.holdings || [], context.exchangeRate || null)
         break
-      case 'alert':
-        contextText = buildAlertContext(context.watchlist || [], context.quotesMap || null)
+      case 'alert': {
+        // 2-1: alert 요청 시에만 watchlist 종목 실시간 시세 병렬 fetch → quotesMap 구성
+        const watchlist = context.watchlist || []
+        let quotesMap = context.quotesMap || null
+        const [quotesEntries, alertIndices] = await Promise.all([
+          quotesMap || watchlist.length === 0
+            ? Promise.resolve(null)
+            : Promise.all(
+                watchlist.map(async (w) => {
+                  try {
+                    const q = await fetchQuote(w.ticker, w.market)
+                    return [w.ticker, q]
+                  } catch {
+                    return [w.ticker, null]
+                  }
+                })
+              ),
+          getMarketIndices().catch(() => []),
+        ])
+        if (!quotesMap && quotesEntries) {
+          quotesMap = Object.fromEntries(quotesEntries.filter(([, q]) => q !== null))
+        }
+        const indicesSummary = alertIndices.length > 0
+          ? '\n[시장 지수]\n' + alertIndices.map(idx => {
+              const sign = idx.changePercent >= 0 ? '+' : ''
+              return `${idx.label}: ${idx.price.toLocaleString()} (${sign}${idx.changePercent.toFixed(2)}%)`
+            }).join('\n')
+          : ''
+        contextText = buildAlertContext(watchlist, quotesMap) + indicesSummary
         break
-      case 'report':
-        contextText = buildReportContext(context.holdings || [], context.period || 'monthly', context.exchangeRate || null)
+      }
+      case 'report': {
+        // 2-5: period별 시스템 프롬프트 분기
+        const period = context.period || 'monthly'
+        contextText = buildReportContext(context.holdings || [], period, context.exchangeRate || null)
+        if (period === 'weekly') systemPrompt = WEEKLY_REPORT_PROMPT
+        else if (period === 'monthly') systemPrompt = MONTHLY_REPORT_PROMPT
         break
+      }
     }
   } catch {
     contextText = ''
@@ -216,40 +371,19 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
     ? `${contextText}\n\n사용자 질문: ${userMessage}`
     : userMessage
 
-  // API 호출 (최대 2회 retry — 500 에러 시)
-  let lastError = null
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response = await claudeApi.post('/claude', {
-        systemPrompt,
-        messages: [{ role: 'user', content: combinedMessage }],
-        maxTokens,
-      })
+  try {
+    const response = await callClaudeWithRetry({
+      systemPrompt,
+      messages: [{ role: 'user', content: combinedMessage }],
+      maxTokens,
+    })
 
-      const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
-      return { text, agentType, agentInfo }
-    } catch (error) {
-      lastError = error
-      const status = error.response?.status
-
-      // 429, 401은 재시도 불필요 (한도 초과 / 인증 오류)
-      if (status === 429 || status === 401) break
-
-      // 500, 529(과부하) 에러 재시도
-      if ((status === 500 || status === 529) && attempt < 2) {
-        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
-        continue
-      }
-
-      break
-    }
-  }
-
-  // 에러 반환
-  return {
-    text: getErrorMessage(lastError),
-    agentType,
-    agentInfo,
+    const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
+    // max_tokens로 잘린 응답 감지
+    const incomplete = response.data?.stop_reason === 'max_tokens'
+    return { text, agentType, agentInfo, incomplete }
+  } catch (error) {
+    return { text: getErrorMessage(error), agentType, agentInfo }
   }
 }
 
@@ -262,15 +396,13 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
  */
 export async function sendWithHistory(messages, systemPrompt, agentType = 'journal') {
   const maxTokens = AGENT_MAX_TOKENS[agentType] || 4096
+  // system 역할 메시지는 별도 system 파라미터로 전달되므로 messages에서 제거 (중복 방지)
+  const filteredMessages = messages.filter(m => m.role !== 'system')
   try {
-    const response = await claudeApi.post('/claude', {
-      systemPrompt,
-      messages,
-      maxTokens,
-    })
-
+    const response = await callClaudeWithRetry({ systemPrompt, messages: filteredMessages, maxTokens })
     const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
-    return { text }
+    const incomplete = response.data?.stop_reason === 'max_tokens'
+    return { text, incomplete }
   } catch (error) {
     return { text: getErrorMessage(error) }
   }
@@ -299,7 +431,7 @@ ${toSummarize.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}
 위 대화의 핵심 요약:`
 
   try {
-    const response = await claudeApi.post('/claude', {
+    const response = await callClaudeWithRetry({
       systemPrompt,
       messages: [{ role: 'user', content: summaryPrompt }],
       maxTokens: 512,
@@ -318,36 +450,5 @@ ${toSummarize.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}
   }
 }
 
-/**
- * Tool Use 방식 종목 분석 (Phase C)
- * Claude가 필요한 데이터를 도구로 직접 조회 — 프리패치 없이 선택적 fetch
- *
- * @param {string} userMessage - 사용자 질문
- * @param {string} [ticker]    - 티커 힌트 (옵션 — 프롬프트에 포함)
- * @param {string} [market]    - 시장 힌트 (옵션)
- * @returns {Promise<{text: string, agentType: string, agentInfo: object}>}
- */
-export async function sendResearchWithToolUse(userMessage, ticker, market) {
-  const agentInfo = AGENT_LABELS.research || AGENT_LABELS.portfolio
-  const maxTokens = AGENT_MAX_TOKENS.research
-
-  // 티커/시장 정보를 메시지 앞에 힌트로 제공
-  const messageWithHint = ticker && market
-    ? `분석 대상: ${ticker} (시장: ${market})\n\n${userMessage}`
-    : userMessage
-
-  try {
-    const response = await claudeApi.post('/claude', {
-      systemPrompt: RESEARCH_TOOL_USE_PROMPT,
-      messages:     [{ role: 'user', content: messageWithHint }],
-      maxTokens,
-    })
-
-    const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
-    return { text, agentType: 'research', agentInfo }
-  } catch (error) {
-    return { text: getErrorMessage(error), agentType: 'research', agentInfo }
-  }
-}
 
 export default claudeApi

@@ -19,6 +19,16 @@ import QuickPromptButtons from '../components/chat/QuickPromptButtons'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
 
+/** 사용자 메시지에서 리포트 기간 감지 */
+function detectPeriod(text) {
+  const lower = text
+  if (lower.includes('주간') || lower.includes('이번 주') || lower.includes('이번주') || lower.includes('weekly')) return 'weekly'
+  if (lower.includes('월간') || lower.includes('이번 달') || lower.includes('이번달') || lower.includes('monthly')) return 'monthly'
+  if (lower.includes('일간') || lower.includes('오늘') || lower.includes('daily')) return 'daily'
+  if (lower.includes('연간') || lower.includes('올해') || lower.includes('연말') || lower.includes('yearly')) return 'yearly'
+  return null
+}
+
 /** 날짜 표시 헬퍼 */
 function formatSessionDate(isoStr) {
   if (!isoStr) return ''
@@ -139,8 +149,11 @@ export default function AIChat() {
       const forceAgent = (mentionsPortfolio && mentionsMarketEvent && context.holdings?.length > 0)
         ? 'analysis'
         : null
-      const result = await sendToAgent(msg, context, forceAgent)
-      addAIMessage(result.text, result.agentType, result.agentInfo)
+      // 2-4: 사용자 메시지에서 리포트 기간 감지 후 context에 주입
+      const period = detectPeriod(msg)
+      const enrichedContext = period ? { ...context, period } : context
+      const result = await sendToAgent(msg, enrichedContext, forceAgent)
+      addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
 
       // IndexedDB에 세션 저장
       if (currentUser?.id) {

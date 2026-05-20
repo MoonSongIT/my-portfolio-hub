@@ -162,7 +162,7 @@ export const useChatStore = create(
        * @param {string} agentType
        * @param {object} agentInfo
        */
-      addAIMessage: (text, agentType, agentInfo) => {
+      addAIMessage: (text, agentType, agentInfo, incomplete = false) => {
         set((state) => {
           const { sessions, currentSessionId } = state
           const msg = {
@@ -171,6 +171,7 @@ export const useChatStore = create(
             content: text,
             agentType,
             agentInfo,
+            incomplete: !!incomplete,
             timestamp: new Date().toISOString(),
           }
 

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getCached, setCached } from './apiCache'
 import { isKorean, searchKoreanStocks } from '../utils/koreanStocks'
 import { fetchNaverQuote, fetchNaverProfile, fetchNaverHistory, fetchNaverIndexQuote } from './naverApi'
 import { searchUsStocks } from '../data/usStocks'
@@ -69,7 +70,7 @@ export const getNextRange = (currentRange) => {
 
 const yahooApi = axios.create({
   baseURL: '/api/yahoo',
-  timeout: 10000,
+  timeout: 5000,
 })
 
 const yahooV10Api = axios.create({
@@ -88,14 +89,28 @@ export const toYahooTicker = (ticker, market) => {
 
 // 1. 실시간 시세 (단일 종목)
 export const fetchQuote = async (ticker, market = 'NASDAQ') => {
+  const cacheKey = `quote:${ticker}`
+  const cached = getCached(cacheKey)
+  if (cached) return cached
+
   // 한국 지수 티커 → Naver 지수 API (Yahoo ^KS11/^KQ11 데이터 부정확)
-  if (ticker === '^KS11') return fetchNaverIndexQuote('KOSPI')
-  if (ticker === '^KQ11') return fetchNaverIndexQuote('KOSDAQ')
+  if (ticker === '^KS11') {
+    const r = await fetchNaverIndexQuote('KOSPI')
+    if (r) setCached(cacheKey, r, 60 * 1000)
+    return r
+  }
+  if (ticker === '^KQ11') {
+    const r = await fetchNaverIndexQuote('KOSDAQ')
+    if (r) setCached(cacheKey, r, 60 * 1000)
+    return r
+  }
 
   // 한국 주식은 네이버 파이낸스 사용 (KRX + KOSDAQ)
   if (market === 'KRX' || market === 'KOSDAQ') {
     const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
-    return fetchNaverQuote(pureTicker)
+    const r = await fetchNaverQuote(pureTicker)
+    if (r) setCached(cacheKey, r, 60 * 1000)
+    return r
   }
 
   // 워런트·권리증 등 비표준 접미사 티커 (.W, .WS, .RT, .U 등)는 Yahoo 차트 미지원
@@ -116,7 +131,7 @@ export const fetchQuote = async (ticker, market = 'NASDAQ') => {
   const officialChangePct = meta.regularMarketChangePercent != null
     ? meta.regularMarketChangePercent * 100
     : null
-  return {
+  const quoteResult = {
     ticker,
     yahooTicker,
     name: meta.shortName || meta.longName || ticker,
@@ -134,6 +149,8 @@ export const fetchQuote = async (ticker, market = 'NASDAQ') => {
     fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
     marketCap: meta.marketCap,
   }
+  setCached(cacheKey, quoteResult, 60 * 1000)
+  return quoteResult
 }
 
 // 2. 일괄 시세 조회 (포트폴리오용)

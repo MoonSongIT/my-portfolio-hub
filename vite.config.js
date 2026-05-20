@@ -183,7 +183,7 @@ export default defineConfig(({ mode }) => {
                 }
               }
 
-              // /api/claude — 일반 AI 호출
+              // /api/claude — 일반 AI 호출 (JSON 응답, 180s timeout)
               const { systemPrompt, messages, maxTokens = 4096 } = parsed
 
               if (!systemPrompt || !messages?.length) {
@@ -215,6 +215,7 @@ export default defineConfig(({ mode }) => {
                   system: systemPrompt,
                   messages,
                 }),
+                signal: AbortSignal.timeout(180_000),
               })
 
               const data = await upstream.json()
