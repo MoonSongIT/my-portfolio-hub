@@ -2,6 +2,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import AgentBadge from './AgentBadge'
+import { extractStructuredData, stripJsonBlock } from '../../utils/responseParser'
 
 /**
  * 3점 점멸 로딩 애니메이션
@@ -96,6 +97,12 @@ function formatTime(iso) {
  * 메시지 버블 컴포넌트
  * @param {{ message: object, loading?: boolean }} props
  */
+const ATTRACTIVENESS_STYLE = {
+  '상': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  '중': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+  '하': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+}
+
 export default function MessageBubble({ message, loading = false }) {
   const isUser = message.role === 'user'
 
@@ -129,16 +136,44 @@ export default function MessageBubble({ message, loading = false }) {
         {/* 메시지 본문 */}
         {isUser ? (
           <p className="text-sm leading-relaxed">{message.content}</p>
-        ) : (
-          <div className="prose prose-sm max-w-none dark:prose-invert">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-            >
-              {message.content}
-            </ReactMarkdown>
-          </div>
-        )}
+        ) : (() => {
+          const structured = extractStructuredData(message.content)
+          const displayText = stripJsonBlock(message.content)
+          return (
+            <>
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {displayText}
+                </ReactMarkdown>
+              </div>
+              {/* research: 투자 매력도 배지 */}
+              {message.agentType === 'research' && structured?.attractiveness && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ATTRACTIVENESS_STYLE[structured.attractiveness] ?? ''}`}>
+                    투자 매력도 {structured.attractiveness}
+                  </span>
+                  {structured.reason && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{structured.reason}</span>
+                  )}
+                </div>
+              )}
+              {/* alert: 긴급/주의/참고 카운트 칩 */}
+              {message.agentType === 'alert' && structured && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900 dark:text-red-200">
+                    🔴 긴급 {structured.urgent ?? 0}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200">
+                    🟡 주의 {structured.caution ?? 0}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-200">
+                    🟢 참고 {structured.info ?? 0}
+                  </span>
+                </div>
+              )}
+            </>
+          )
+        })()}
 
         {/* 잘린 응답 안내 — stop_reason: max_tokens 시 표시 */}
         {!isUser && message.incomplete && (

@@ -20,7 +20,12 @@ export const RESEARCH_PROMPT = `당신은 주식·ETF 종목 리서치 전문 �
 - 인용 출처: 뉴스·공시를 분석에 활용한 경우, 응답 하단 [참고 출처] 섹션에 번호와 URL을 함께 표기하세요. (예: [1] https://...)
 
 지원 시장: KRX (한국), NYSE/NASDAQ (미국)
-응답은 반드시 한국어로 작성하세요.`
+응답은 반드시 한국어로 작성하세요.
+
+응답 맨 끝에 다음 JSON 블록을 반드시 추가하세요 (다른 텍스트 없이 마지막 줄):
+\`\`\`json
+{"attractiveness":"상|중|하 중 하나","reason":"한 줄 이유"}
+\`\`\``
 
 /**
  * ResearchAgent 시스템 프롬프트 (Phase C — Tool Use 방식)
