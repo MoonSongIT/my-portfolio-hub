@@ -17,7 +17,7 @@ import { fetchQuote } from './stockApi.js'
  */
 const claudeApi = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  timeout: 60_000,
+  timeout: 120_000,
   headers: { 'Content-Type': 'application/json' },
 })
 
