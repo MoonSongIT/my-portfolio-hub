@@ -111,6 +111,21 @@ export default function ChatPanel({
   }, [])
 
   /**
+   * "이어서", "계속", "더 설명" 등의 연속 발화 여부 판별
+   * → 이전 에이전트 타입을 그대로 유지해 라우팅 오류 방지
+   */
+  const CONTINUATION_RE = /이어서|계속|더\s*설명|계속해|이어서\s*설명|이어서\s*알려|더\s*알려|다음\s*내용|계속해서/
+
+  function resolveAgent(msg) {
+    if (forceAgent) return forceAgent
+    if (CONTINUATION_RE.test(msg)) {
+      const lastAI = [...messages].reverse().find(m => m.role === 'assistant')
+      if (lastAI?.agentType) return lastAI.agentType
+    }
+    return null // sendToAgent 내부 routeToAgent에 위임
+  }
+
+  /**
    * 메시지 전송 처리
    * @param {string} text - 전송할 메시지
    */
@@ -127,7 +142,8 @@ export default function ChatPanel({
     setError(null)
 
     try {
-      const result = await sendToAgent(msg, context, forceAgent)
+      const effectiveAgent = resolveAgent(msg)
+      const result = await sendToAgent(msg, context, effectiveAgent)
       addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
     } catch (err) {
       setError(err.message || '알 수 없는 오류가 발생했습니다.')

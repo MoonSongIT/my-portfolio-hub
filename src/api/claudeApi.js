@@ -65,7 +65,7 @@ const AGENT_MAX_TOKENS = {
   analysis: 2048,
   journal: 4096,
   report: 4096,
-  research: 3072,
+  research: 4096,
   portfolio: 2048,
   alert: 2048,
 }
