@@ -75,4 +75,5 @@ app.post('/api/claude', async (req, res) => {
   }
 })
 
-app.listen(3001, () => console.log('🤖 Claude 프록시 서버: http://localhost:3001'))
+const server = app.listen(3001, () => console.log('🤖 Claude 프록시 서버: http://localhost:3001'))
+server.timeout = 180_000
