@@ -71,12 +71,12 @@ const AGENT_MAX_TOKENS = {
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
 /**
- * Claude API SSE 스트리밍 호출
- * 서버가 Anthropic SSE를 파이프하므로 응답 도착 즉시 텍스트 누적 시작
+ * Claude API 호출 (fetch 기반, 180s timeout)
+ * axios ECONNABORTED 없이 긴 응답도 안정적으로 수신
  * @param {object} payload
  * @returns {Promise<{content: [{text: string}], stop_reason: string|null}>}
  */
-async function streamClaude(payload) {
+async function fetchClaude(payload) {
   const { apiKey } = useAiCredentialStore.getState()
   const headers = { 'Content-Type': 'application/json' }
   if (apiKey) headers['X-User-Api-Key'] = apiKey
@@ -95,34 +95,7 @@ async function streamClaude(payload) {
     throw err
   }
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let text = ''
-  let stopReason = null
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const raw = line.slice(6).trim()
-      if (!raw || raw === '[DONE]') continue
-      try {
-        const ev = JSON.parse(raw)
-        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-          text += ev.delta.text
-        } else if (ev.type === 'message_delta') {
-          stopReason = ev.delta?.stop_reason ?? null
-        }
-      } catch { /* malformed SSE 무시 */ }
-    }
-  }
-
-  return { content: [{ text }], stop_reason: stopReason }
+  return response.json()
 }
 
 /**
@@ -182,11 +155,11 @@ function isRetryable(error) {
  * @param {number} [maxAttempts=3]
  * @returns {Promise<{data: {content: [{text: string}], stop_reason: string|null}}>}
  */
-async function callClaudeWithRetry(payload, maxAttempts = 3) {
+export async function callClaudeWithRetry(payload, maxAttempts = 3) {
   let lastError = null
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const data = await streamClaude(payload)
+      const data = await fetchClaude(payload)
       return { data }
     } catch (error) {
       lastError = error
@@ -375,7 +348,7 @@ ${toSummarize.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}
 위 대화의 핵심 요약:`
 
   try {
-    const response = await claudeApi.post('/claude', {
+    const response = await callClaudeWithRetry({
       systemPrompt,
       messages: [{ role: 'user', content: summaryPrompt }],
       maxTokens: 512,
@@ -413,7 +386,7 @@ export async function sendResearchWithToolUse(userMessage, ticker, market) {
     : userMessage
 
   try {
-    const response = await claudeApi.post('/claude', {
+    const response = await callClaudeWithRetry({
       systemPrompt: RESEARCH_TOOL_USE_PROMPT,
       messages:     [{ role: 'user', content: messageWithHint }],
       maxTokens,

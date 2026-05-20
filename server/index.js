@@ -39,7 +39,7 @@ app.get('/api/health', (req, res) => {
   })
 })
 
-// Claude API 프록시 엔드포인트 — SSE 스트리밍
+// Claude API 프록시 엔드포인트 (JSON 응답, 180s timeout)
 app.post('/api/claude', async (req, res) => {
   const { systemPrompt, messages, maxTokens = 4096 } = req.body
   const apiKey = req.headers['x-user-api-key'] || ANTHROPIC_API_KEY
@@ -61,8 +61,8 @@ app.post('/api/claude', async (req, res) => {
         max_tokens: maxTokens,
         system: systemPrompt,
         messages,
-        stream: true,
       }),
+      signal: AbortSignal.timeout(180_000),
     })
 
     if (!response.ok) {
@@ -70,25 +70,10 @@ app.post('/api/claude', async (req, res) => {
       return res.status(response.status).json({ error: errText })
     }
 
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('Connection', 'keep-alive')
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        res.write(decoder.decode(value, { stream: true }))
-      }
-    } finally {
-      res.end()
-    }
+    const data = await response.json()
+    res.json(data)
   } catch (err) {
-    if (!res.headersSent) {
-      res.status(500).json({ error: err.message })
-    }
+    res.status(500).json({ error: err.message })
   }
 })
 

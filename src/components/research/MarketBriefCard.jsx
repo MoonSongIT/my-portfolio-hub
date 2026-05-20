@@ -6,7 +6,7 @@ import { RefreshCw, TrendingUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import useAiCredentialStore from '@/store/aiCredentialStore'
-import claudeApi from '@/api/claudeApi'
+import { callClaudeWithRetry } from '@/api/claudeApi'
 import { fetchQuote } from '@/api/stockApi'
 import { fetchNews } from '@/api/newsApi'
 import { MARKET_BRIEF_PROMPT, buildMarketBriefContext } from '@/agents/analysisAgent'
@@ -54,7 +54,7 @@ export default function MarketBriefCard() {
       ])
 
       const context = buildMarketBriefContext({ indices: quoteResults, news })
-      const response = await claudeApi.post('/claude', {
+      const response = await callClaudeWithRetry({
         systemPrompt: MARKET_BRIEF_PROMPT,
         messages: [{ role: 'user', content: context }],
         maxTokens: 1024,
