@@ -5,7 +5,7 @@ import { routeToAgent, AGENT_LABELS } from '../agents/orchestrator.js'
 import { RESEARCH_PROMPT, RESEARCH_TOOL_USE_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
-import { REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
+import { REPORT_PROMPT, WEEKLY_REPORT_PROMPT, MONTHLY_REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
 import { buildJournalCoachPrompt, buildJournalContext, buildCompressedJournalContext } from '../agents/journalCoachAgent.js'
 import { ANALYSIS_PROMPT, MARKET_BRIEF_PROMPT, PORTFOLIO_ANALYSIS_PROMPT, buildMovementContext, buildMarketBriefContext, buildPortfolioMovementContext } from '../agents/analysisAgent.js'
 import { fetchNews } from './newsApi.js'
@@ -207,10 +207,11 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           contextText = buildMovementContext({ ticker, name, changePercent, market, news, disclosures })
           systemPrompt = ANALYSIS_PROMPT
         } else if (context.holdings?.length > 0) {
-          // 경로 2: 보유 종목 quote 병렬 조회로 changePercent 보강 → 포트폴리오 + 뉴스 분석
+          // 경로 2: changePercent 없는 종목만 quote fetch (이미 있으면 중복 fetch 방지)
           const [enrichedHoldings, news] = await Promise.all([
             Promise.all(
               context.holdings.map(async (h) => {
+                if (h.changePercent !== undefined && h.changePercent !== null) return h
                 try {
                   const q = await fetchQuote(h.ticker, h.market)
                   return {
@@ -274,12 +275,34 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
       case 'portfolio':
         contextText = buildPortfolioContext(context.holdings || [], context.exchangeRate || null)
         break
-      case 'alert':
-        contextText = buildAlertContext(context.watchlist || [], context.quotesMap || null)
+      case 'alert': {
+        // 2-1: alert 요청 시에만 watchlist 종목 실시간 시세 병렬 fetch → quotesMap 구성
+        const watchlist = context.watchlist || []
+        let quotesMap = context.quotesMap || null
+        if (!quotesMap && watchlist.length > 0) {
+          const entries = await Promise.all(
+            watchlist.map(async (w) => {
+              try {
+                const q = await fetchQuote(w.ticker, w.market)
+                return [w.ticker, q]
+              } catch {
+                return [w.ticker, null]
+              }
+            })
+          )
+          quotesMap = Object.fromEntries(entries.filter(([, q]) => q !== null))
+        }
+        contextText = buildAlertContext(watchlist, quotesMap)
         break
-      case 'report':
-        contextText = buildReportContext(context.holdings || [], context.period || 'monthly', context.exchangeRate || null)
+      }
+      case 'report': {
+        // 2-5: period별 시스템 프롬프트 분기
+        const period = context.period || 'monthly'
+        contextText = buildReportContext(context.holdings || [], period, context.exchangeRate || null)
+        if (period === 'weekly') systemPrompt = WEEKLY_REPORT_PROMPT
+        else if (period === 'monthly') systemPrompt = MONTHLY_REPORT_PROMPT
         break
+      }
     }
   } catch {
     contextText = ''
@@ -315,8 +338,10 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
  */
 export async function sendWithHistory(messages, systemPrompt, agentType = 'journal') {
   const maxTokens = AGENT_MAX_TOKENS[agentType] || 4096
+  // system 역할 메시지는 별도 system 파라미터로 전달되므로 messages에서 제거 (중복 방지)
+  const filteredMessages = messages.filter(m => m.role !== 'system')
   try {
-    const response = await callClaudeWithRetry({ systemPrompt, messages, maxTokens })
+    const response = await callClaudeWithRetry({ systemPrompt, messages: filteredMessages, maxTokens })
     const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
     const incomplete = response.data?.stop_reason === 'max_tokens'
     return { text, incomplete }
