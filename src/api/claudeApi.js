@@ -68,18 +68,79 @@ const AGENT_MAX_TOKENS = {
   alert: 2048,
 }
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+
+/**
+ * Claude API SSE 스트리밍 호출
+ * 서버가 Anthropic SSE를 파이프하므로 응답 도착 즉시 텍스트 누적 시작
+ * @param {object} payload
+ * @returns {Promise<{content: [{text: string}], stop_reason: string|null}>}
+ */
+async function streamClaude(payload) {
+  const { apiKey } = useAiCredentialStore.getState()
+  const headers = { 'Content-Type': 'application/json' }
+  if (apiKey) headers['X-User-Api-Key'] = apiKey
+
+  const response = await fetch(`${API_BASE}/claude`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(180_000),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    const err = new Error(errText)
+    err.response = { status: response.status }
+    throw err
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  let stopReason = null
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const raw = line.slice(6).trim()
+      if (!raw || raw === '[DONE]') continue
+      try {
+        const ev = JSON.parse(raw)
+        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+          text += ev.delta.text
+        } else if (ev.type === 'message_delta') {
+          stopReason = ev.delta?.stop_reason ?? null
+        }
+      } catch { /* malformed SSE 무시 */ }
+    }
+  }
+
+  return { content: [{ text }], stop_reason: stopReason }
+}
+
 /**
  * 에러 메시지 생성 (HTTP 상태코드별 사용자 친화적 메시지)
- * @param {object} error - axios 에러 객체
+ * @param {object} error
  * @returns {string}
  */
 function getErrorMessage(error) {
+  // fetch AbortSignal timeout
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+    return '응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+  }
+  // axios timeout (summarizeAndCompressHistory 경로)
   if (error.code === 'ECONNABORTED') {
     return '응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
   }
-
-  if (!error.response) {
-    // 네트워크 단절 (ECONNRESET, ERR_NETWORK 등)
+  // fetch 네트워크 오류 (TypeError) 또는 axios 응답 없음
+  if (error instanceof TypeError || !error.response) {
     return '네트워크 연결이 끊겼습니다. 인터넷 연결을 확인하고 다시 시도해주세요.'
   }
 
@@ -103,9 +164,11 @@ function getErrorMessage(error) {
 /**
  * 재시도 가능한 오류인지 판별
  * - 재시도 가능: 네트워크 단절, HTTP 500/503/529
- * - 재시도 불필요: 429(한도 초과), 401(인증 오류)
+ * - 재시도 불필요: timeout, 429, 401
  */
 function isRetryable(error) {
+  if (error.name === 'TimeoutError') return false
+  if (error instanceof TypeError) return true
   const status = error.response?.status
   if (status === 429 || status === 401) return false
   if (status === 500 || status === 503 || status === 529) return true
@@ -114,17 +177,17 @@ function isRetryable(error) {
 }
 
 /**
- * Claude API 공통 호출 함수 — 일시적 오류 시 자동 재시도 (최대 3회)
- * 재시도 대상: 네트워크 단절, HTTP 500/503/529
- * @param {object} payload - /claude 엔드포인트 요청 본문
+ * Claude API 공통 호출 함수 — SSE 스트리밍 + 일시적 오류 시 자동 재시도 (최대 3회)
+ * @param {object} payload
  * @param {number} [maxAttempts=3]
- * @returns {Promise<import('axios').AxiosResponse>}
+ * @returns {Promise<{data: {content: [{text: string}], stop_reason: string|null}}>}
  */
 async function callClaudeWithRetry(payload, maxAttempts = 3) {
   let lastError = null
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      return await claudeApi.post('/claude', payload)
+      const data = await streamClaude(payload)
+      return { data }
     } catch (error) {
       lastError = error
       if (!isRetryable(error) || attempt >= maxAttempts - 1) break
