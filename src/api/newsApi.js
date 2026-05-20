@@ -1,5 +1,6 @@
 // 뉴스 수집 API — Yahoo Finance + Naver 금융 통합
 import axios from 'axios'
+import { getCached, setCached } from './apiCache'
 
 const yahooApi = axios.create({ baseURL: '/api/yahoo', timeout: 8000 })
 const naverApi = axios.create({ baseURL: '/api/naver', timeout: 8000 })
@@ -70,6 +71,24 @@ async function fetchNewsNaver(ticker) {
   }
 }
 
+function dedupeByTitle(items) {
+  const seen = new Set()
+  return items.filter(n => {
+    const key = n.title.slice(0, 20)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function sortByDate(items) {
+  return [...items].sort((a, b) => {
+    if (!a.date) return 1
+    if (!b.date) return -1
+    return b.date.localeCompare(a.date)
+  })
+}
+
 /**
  * 종목 뉴스 통합 조회
  * - KRX/KOSDAQ: Naver 우선 + Yahoo 보강 (최대 5건)
@@ -80,20 +99,24 @@ async function fetchNewsNaver(ticker) {
  * @returns {Promise<Array<{ title, publisher, link, date }>>}
  */
 export async function fetchNews(ticker, market) {
+  const cacheKey = `news:${ticker}:${market}`
+  const cached = getCached(cacheKey)
+  if (cached) return cached
+
   const isKorean = market === 'KRX' || market === 'KOSDAQ'
   const pureTicker = ticker.replace(/\.(KS|KQ)$/, '')
+  let result
 
   if (isKorean) {
     const [naverNews, yahooNews] = await Promise.all([
       fetchNewsNaver(pureTicker),
       fetchNewsYahoo(`${pureTicker}.KS`),
     ])
-    // Naver 우선, 부족하면 Yahoo로 보충
-    const merged = [...naverNews]
-    const needed = 5 - merged.length
-    if (needed > 0) merged.push(...yahooNews.slice(0, needed))
-    return merged.slice(0, 5)
+    result = sortByDate(dedupeByTitle([...naverNews, ...yahooNews])).slice(0, 5)
+  } else {
+    result = (await fetchNewsYahoo(ticker)).slice(0, 5)
   }
 
-  return (await fetchNewsYahoo(ticker)).slice(0, 5)
+  setCached(cacheKey, result, 3 * 60 * 1000)
+  return result
 }

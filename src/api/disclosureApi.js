@@ -1,6 +1,7 @@
 // 공시 API 클라이언트 — DART(한국) / SEC EDGAR(미국)
 import axios from 'axios'
 import useAiCredentialStore from '../store/aiCredentialStore.js'
+import { getCached, setCached } from './apiCache'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -28,7 +29,9 @@ function trackDartCall() {
     dartCallDate  = today
   }
   dartCallCount++
-  if (dartCallCount >= 35_000) {
+  if (dartCallCount >= 38_000) {
+    throw 'DART_DAILY_LIMIT_REACHED'
+  } else if (dartCallCount >= 35_000) {
     console.warn(`[DisclosureAPI] DART 일일 호출 ${dartCallCount}건 — 40,000건 한도 근접`)
   } else {
     console.debug(`[DisclosureAPI] DART 호출 #${dartCallCount} (일일 40,000건 한도)`)
@@ -38,19 +41,28 @@ function trackDartCall() {
 export async function fetchDisclosures(ticker, market, days = 30) {
   const isKorean  = market === 'KRX' || market === 'KOSDAQ'
   const cleanTicker = ticker.replace(/\.(KS|KQ)$/i, '')
+  const cacheKey = `disclosures:${cleanTicker}:${market}:${days}`
+  const cached = getCached(cacheKey)
+  if (cached) return cached
 
   try {
+    let items
     if (isKorean) {
       trackDartCall()
       const dartKey = useAiCredentialStore.getState().dartApiKey
       const headers = dartKey ? { 'X-Dart-Api-Key': dartKey } : {}
       const res = await api.get('/dart/list', { params: { ticker: cleanTicker, days }, headers })
-      return res.data?.items ?? []
+      items = res.data?.items ?? []
     } else {
       const res = await api.get('/edgar/filings', { params: { ticker, days } })
-      return res.data?.items ?? []
+      items = res.data?.items ?? []
     }
-  } catch {
+    setCached(cacheKey, items, 15 * 60 * 1000)
+    return items
+  } catch (err) {
+    if (err === 'DART_DAILY_LIMIT_REACHED') {
+      return [{ title: '[공시 조회 일시 중단] DART API 일일 한도 근접 — 자정 이후 재개됩니다.', date: '', url: '', kind: '' }]
+    }
     return []
   }
 }

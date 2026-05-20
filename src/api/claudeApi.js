@@ -11,6 +11,7 @@ import { ANALYSIS_PROMPT, MARKET_BRIEF_PROMPT, PORTFOLIO_ANALYSIS_PROMPT, buildM
 import { fetchNews } from './newsApi.js'
 import { fetchDisclosures } from './disclosureApi.js'
 import { fetchQuote } from './stockApi.js'
+import { getCached, setCached } from './apiCache'
 
 /**
  * axios 인스턴스 — 프록시 서버 경유
@@ -96,6 +97,32 @@ async function fetchClaude(payload) {
   }
 
   return response.json()
+}
+
+const BRIEF_INDICES = [
+  { label: 'KOSPI',  ticker: '^KS11', market: 'NYSE' },
+  { label: 'KOSDAQ', ticker: '^KQ11', market: 'NYSE' },
+  { label: 'NASDAQ', ticker: '^IXIC', market: 'NASDAQ' },
+  { label: 'S&P500', ticker: '^GSPC', market: 'NYSE' },
+]
+
+/** 시장 지수 4종 조회 (60초 캐시) */
+async function getMarketIndices() {
+  const cacheKey = 'indices:brief'
+  const cached = getCached(cacheKey)
+  if (cached) return cached
+
+  const quotes = await Promise.all(
+    BRIEF_INDICES.map(idx => fetchQuote(idx.ticker, idx.market).catch(() => null))
+  )
+  const indices = BRIEF_INDICES.map((idx, i) => ({
+    label: idx.label,
+    ticker: idx.ticker,
+    price: quotes[i]?.currentPrice ?? 0,
+    changePercent: quotes[i]?.changePercent ?? 0,
+  }))
+  setCached(cacheKey, indices, 60 * 1000)
+  return indices
 }
 
 /**
@@ -200,9 +227,11 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
 
         if (ticker) {
           // 경로 1: 종목이 있으면 급등락 원인 분석
+          const daysMatch = userMessage.match(/(\d+)일/)
+          const disclosureDays = daysMatch ? Math.min(parseInt(daysMatch[1], 10), 90) : 30
           const [news, disclosures] = await Promise.all([
             fetchNews(ticker, market).catch(() => []),
-            fetchDisclosures(ticker, market).catch(() => []),
+            fetchDisclosures(ticker, market, disclosureDays).catch(() => []),
           ])
           contextText = buildMovementContext({ ticker, name, changePercent, market, news, disclosures })
           systemPrompt = ANALYSIS_PROMPT
@@ -230,22 +259,10 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           systemPrompt = PORTFOLIO_ANALYSIS_PROMPT
         } else {
           // 경로 3: 종목도 포트폴리오도 없으면 전체 시장 브리핑
-          const BRIEF_INDICES = [
-            { label: 'KOSPI',  ticker: '^KS11', market: 'NYSE' },
-            { label: 'KOSDAQ', ticker: '^KQ11', market: 'NYSE' },
-            { label: 'NASDAQ', ticker: '^IXIC', market: 'NASDAQ' },
-            { label: 'S&P500', ticker: '^GSPC', market: 'NYSE' },
-          ]
-          const [quotes, news] = await Promise.all([
-            Promise.all(BRIEF_INDICES.map(idx => fetchQuote(idx.ticker, idx.market).catch(() => null))),
+          const [indices, news] = await Promise.all([
+            getMarketIndices().catch(() => []),
             fetchNews('^GSPC', 'NYSE').catch(() => []),
           ])
-          const indices = BRIEF_INDICES.map((idx, i) => ({
-            label: idx.label,
-            ticker: idx.ticker,
-            price: quotes[i]?.currentPrice ?? 0,
-            changePercent: quotes[i]?.changePercent ?? 0,
-          }))
           contextText = buildMarketBriefContext({ indices, news })
           systemPrompt = MARKET_BRIEF_PROMPT
         }
@@ -279,20 +296,31 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
         // 2-1: alert 요청 시에만 watchlist 종목 실시간 시세 병렬 fetch → quotesMap 구성
         const watchlist = context.watchlist || []
         let quotesMap = context.quotesMap || null
-        if (!quotesMap && watchlist.length > 0) {
-          const entries = await Promise.all(
-            watchlist.map(async (w) => {
-              try {
-                const q = await fetchQuote(w.ticker, w.market)
-                return [w.ticker, q]
-              } catch {
-                return [w.ticker, null]
-              }
-            })
-          )
-          quotesMap = Object.fromEntries(entries.filter(([, q]) => q !== null))
+        const [quotesEntries, alertIndices] = await Promise.all([
+          quotesMap || watchlist.length === 0
+            ? Promise.resolve(null)
+            : Promise.all(
+                watchlist.map(async (w) => {
+                  try {
+                    const q = await fetchQuote(w.ticker, w.market)
+                    return [w.ticker, q]
+                  } catch {
+                    return [w.ticker, null]
+                  }
+                })
+              ),
+          getMarketIndices().catch(() => []),
+        ])
+        if (!quotesMap && quotesEntries) {
+          quotesMap = Object.fromEntries(quotesEntries.filter(([, q]) => q !== null))
         }
-        contextText = buildAlertContext(watchlist, quotesMap)
+        const indicesSummary = alertIndices.length > 0
+          ? '\n[시장 지수]\n' + alertIndices.map(idx => {
+              const sign = idx.changePercent >= 0 ? '+' : ''
+              return `${idx.label}: ${idx.price.toLocaleString()} (${sign}${idx.changePercent.toFixed(2)}%)`
+            }).join('\n')
+          : ''
+        contextText = buildAlertContext(watchlist, quotesMap) + indicesSummary
         break
       }
       case 'report': {
