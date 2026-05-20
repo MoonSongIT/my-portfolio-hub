@@ -39,11 +39,12 @@ app.get('/api/health', (req, res) => {
   })
 })
 
-// Claude API 프록시 엔드포인트
+// Claude API 프록시 엔드포인트 (JSON 응답, 180s timeout)
 app.post('/api/claude', async (req, res) => {
   const { systemPrompt, messages, maxTokens = 4096 } = req.body
+  const apiKey = req.headers['x-user-api-key'] || ANTHROPIC_API_KEY
 
-  if (!ANTHROPIC_API_KEY) {
+  if (!apiKey) {
     return res.status(500).json({ error: 'API 키 미설정' })
   }
 
@@ -52,7 +53,7 @@ app.post('/api/claude', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -61,6 +62,7 @@ app.post('/api/claude', async (req, res) => {
         system: systemPrompt,
         messages,
       }),
+      signal: AbortSignal.timeout(180_000),
     })
 
     if (!response.ok) {
@@ -75,4 +77,5 @@ app.post('/api/claude', async (req, res) => {
   }
 })
 
-app.listen(3001, () => console.log('🤖 Claude 프록시 서버: http://localhost:3001'))
+const server = app.listen(3001, () => console.log('🤖 Claude 프록시 서버: http://localhost:3001'))
+server.timeout = 180_000

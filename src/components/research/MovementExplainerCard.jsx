@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import ApiKeyRequiredDialog from '@/components/common/ApiKeyRequiredDialog'
 import useAiCredentialStore from '@/store/aiCredentialStore'
-import claudeApi from '@/api/claudeApi'
+import { callClaudeWithRetry } from '@/api/claudeApi'
 import { fetchNews } from '@/api/newsApi'
 import { fetchDisclosures } from '@/api/disclosureApi'
 import { ANALYSIS_PROMPT, buildMovementContext } from '@/agents/analysisAgent'
@@ -49,7 +49,7 @@ export default function MovementExplainerCard({ ticker, name, changePercent, mar
       ])
 
       const context = buildMovementContext({ ticker, name, changePercent, market, news, disclosures })
-      const response = await claudeApi.post('/claude', {
+      const response = await callClaudeWithRetry({
         systemPrompt: ANALYSIS_PROMPT,
         messages: [{ role: 'user', content: context }],
         maxTokens: 1024,

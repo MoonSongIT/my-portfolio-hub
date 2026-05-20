@@ -140,7 +140,7 @@ export default function AIChat() {
         ? 'analysis'
         : null
       const result = await sendToAgent(msg, context, forceAgent)
-      addAIMessage(result.text, result.agentType, result.agentInfo)
+      addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
 
       // IndexedDB에 세션 저장
       if (currentUser?.id) {

@@ -128,7 +128,7 @@ export default function ChatPanel({
 
     try {
       const result = await sendToAgent(msg, context, forceAgent)
-      addAIMessage(result.text, result.agentType, result.agentInfo)
+      addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
     } catch (err) {
       setError(err.message || '알 수 없는 오류가 발생했습니다.')
     } finally {

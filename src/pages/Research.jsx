@@ -10,7 +10,7 @@ import { Input } from '../components/ui/input'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import claudeApi from '../api/claudeApi'
+import { callClaudeWithRetry } from '../api/claudeApi'
 import useAiCredentialStore from '../store/aiCredentialStore'
 import { SCREENER_PROMPT, parseTickersFromText } from '../agents/researchAgent'
 import MarketBriefCard from '../components/research/MarketBriefCard'
@@ -159,12 +159,12 @@ function AIScreenerSection({ onSelectTicker, pendingQuery = null, onPendingConsu
     setResponse(null)
     setTickers([])
     try {
-      const res = await claudeApi.post('/claude', {
+      const res = await callClaudeWithRetry({
         systemPrompt: SCREENER_PROMPT,
         messages: [{ role: 'user', content: q }],
         maxTokens: 2048,
       })
-      const text = res.data?.content?.[0]?.text ?? res.data?.text ?? ''
+      const text = res.data?.content?.[0]?.text ?? ''
       const parsed = parseTickersFromText(text)
       setResponse(text)
       setTickers(parsed)
