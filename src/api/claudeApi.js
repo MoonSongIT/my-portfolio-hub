@@ -287,7 +287,15 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           contextText = buildResearchContext(bundle)
         } else {
           // 채팅에서 직접 질문한 경우 → 종목 검색 후 실시간 데이터 프리패치
-          const hits = await searchByQuery(userMessage).catch(() => [])
+          // 전체 문장 → 단어 분리 순으로 시도 (searchByQuery는 짧은 쿼리에 최적화됨)
+          let hits = await searchByQuery(userMessage).catch(() => [])
+          if (hits.length === 0) {
+            const tokens = userMessage.split(/\s+/).filter(t => t.length >= 2)
+            for (const token of tokens) {
+              hits = await searchByQuery(token).catch(() => [])
+              if (hits.length > 0) break
+            }
+          }
           if (hits.length > 0) {
             const hit = hits[0]
             const EXCHANGE_TO_MARKET = {
