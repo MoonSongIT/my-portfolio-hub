@@ -2,7 +2,7 @@
 import axios from 'axios'
 import useAiCredentialStore from '../store/aiCredentialStore.js'
 import { routeToAgent, AGENT_LABELS } from '../agents/orchestrator.js'
-import { RESEARCH_PROMPT, RESEARCH_TOOL_USE_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
+import { RESEARCH_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
 import { REPORT_PROMPT, WEEKLY_REPORT_PROMPT, MONTHLY_REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
@@ -12,6 +12,7 @@ import { fetchNews } from './newsApi.js'
 import { fetchDisclosures } from './disclosureApi.js'
 import { fetchQuote } from './stockApi.js'
 import { getCached, setCached } from './apiCache'
+import { searchByQuery } from '../utils/stockMasterDb.js'
 
 /**
  * axios 인스턴스 — 프록시 서버 경유
@@ -281,11 +282,32 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
         // researchBundle(오케스트레이터 결과) 우선, 없으면 stockData 단독으로 하위호환
         const bundle = context.researchBundle
           ?? (context.stockData ? { stockData: context.stockData } : null)
-        contextText = buildResearchContext(bundle)
 
-        // 번들 없이 채팅에서 직접 질문한 경우 → Tool Use 경로로 자동 전환
-        if (!bundle) {
-          return sendResearchWithToolUse(userMessage)
+        if (bundle) {
+          contextText = buildResearchContext(bundle)
+        } else {
+          // 채팅에서 직접 질문한 경우 → 종목 검색 후 실시간 데이터 프리패치
+          const hits = await searchByQuery(userMessage).catch(() => [])
+          if (hits.length > 0) {
+            const hit = hits[0]
+            const EXCHANGE_TO_MARKET = {
+              KOSPI: 'KRX', KOSDAQ: 'KOSDAQ', KRX_ETF: 'KRX', NXT: 'KRX',
+              NYSE: 'NYSE', NASDAQ: 'NASDAQ', AMEX: 'NYSE', US_ETF: 'NASDAQ',
+            }
+            const market = EXCHANGE_TO_MARKET[hit.exchange] ?? hit.exchange
+            const [stockData, news, disclosures] = await Promise.all([
+              fetchQuote(hit.ticker, market).catch(() => null),
+              fetchNews(hit.ticker, market).catch(() => []),
+              fetchDisclosures(hit.ticker, market).catch(() => []),
+            ])
+            contextText = buildResearchContext({ stockData, news, disclosures })
+          } else {
+            return {
+              text: '분석할 종목을 특정할 수 없습니다. 종목명이나 티커를 포함해 다시 질문해 주세요.',
+              agentType,
+              agentInfo,
+            }
+          }
         }
         break
       }
@@ -420,36 +442,5 @@ ${toSummarize.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}
   }
 }
 
-/**
- * Tool Use 방식 종목 분석 (Phase C)
- * Claude가 필요한 데이터를 도구로 직접 조회 — 프리패치 없이 선택적 fetch
- *
- * @param {string} userMessage - 사용자 질문
- * @param {string} [ticker]    - 티커 힌트 (옵션 — 프롬프트에 포함)
- * @param {string} [market]    - 시장 힌트 (옵션)
- * @returns {Promise<{text: string, agentType: string, agentInfo: object}>}
- */
-export async function sendResearchWithToolUse(userMessage, ticker, market) {
-  const agentInfo = AGENT_LABELS.research || AGENT_LABELS.portfolio
-  const maxTokens = AGENT_MAX_TOKENS.research
-
-  // 티커/시장 정보를 메시지 앞에 힌트로 제공
-  const messageWithHint = ticker && market
-    ? `분석 대상: ${ticker} (시장: ${market})\n\n${userMessage}`
-    : userMessage
-
-  try {
-    const response = await callClaudeWithRetry({
-      systemPrompt: RESEARCH_TOOL_USE_PROMPT,
-      messages:     [{ role: 'user', content: messageWithHint }],
-      maxTokens,
-    })
-
-    const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
-    return { text, agentType: 'research', agentInfo }
-  } catch (error) {
-    return { text: getErrorMessage(error), agentType: 'research', agentInfo }
-  }
-}
 
 export default claudeApi
