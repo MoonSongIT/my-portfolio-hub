@@ -10,7 +10,7 @@ import { useWatchlistStore } from '../store/watchlistStore'
 import { useJournalStore } from '../store/journalStore'
 import { useAuthStore } from '../store/authStore'
 import { useChatStore } from '../store/chatStore'
-import { sendToAgent, summarizeAndCompressHistory } from '../api/claudeApi'
+import { sendToAgent, summarizeAndCompressHistory, continuePreviousResponse } from '../api/claudeApi'
 import { useApiKeyGuard } from '../hooks/useApiKeyGuard'
 import ApiKeyRequiredDialog from '../components/common/ApiKeyRequiredDialog'
 import { buildJournalCoachPrompt, buildJournalContext } from '../agents/journalCoachAgent'
@@ -18,6 +18,8 @@ import MessageBubble from '../components/chat/MessageBubble'
 import QuickPromptButtons from '../components/chat/QuickPromptButtons'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
+
+const CONTINUATION_RE = /이어서|계속|더\s*설명|계속해|이어서\s*설명|이어서\s*알려|더\s*알려|다음\s*내용|계속해서/
 
 /** 사용자 메시지에서 리포트 기간 감지 */
 function detectPeriod(text) {
@@ -135,24 +137,24 @@ export default function AIChat() {
         messagesToSend = await summarizeAndCompressHistory(messagesToSend, systemPrompt)
       }
 
-      // AIChat 페이지 전용 라우팅 보강: holdings가 있고 뉴스/등락 관련 키워드 포함 시 analysis 강제
-      // (오타·표현 다양성에 대비 — orchestrator routeToAgent의 compound 조건 보강)
-      const lowered = msg.toLowerCase()
-      const mentionsPortfolio =
-        lowered.includes('포트폴리오') || lowered.includes('포트포리오') ||
-        lowered.includes('내 종목') || lowered.includes('보유') ||
-        lowered.includes('내 주식') || lowered.includes('내 자산')
-      const mentionsMarketEvent =
-        lowered.includes('뉴스') || lowered.includes('시장') ||
-        lowered.includes('등락') || lowered.includes('급등') || lowered.includes('급락') ||
-        lowered.includes('하락') || lowered.includes('상승')
-      const forceAgent = (mentionsPortfolio && mentionsMarketEvent && context.holdings?.length > 0)
-        ? 'analysis'
-        : null
-      // 2-4: 사용자 메시지에서 리포트 기간 감지 후 context에 주입
-      const period = detectPeriod(msg)
-      const enrichedContext = period ? { ...context, period } : context
-      const result = await sendToAgent(msg, enrichedContext, forceAgent)
+      // 연속 발화 감지: "이어서", "계속" 등 → 직전 응답 이어서 생성
+      const lastAI = [...messages].reverse().find(m => m.role === 'assistant')
+      const isContinuation = CONTINUATION_RE.test(msg) && !!lastAI?.agentType
+
+      let result
+      if (isContinuation) {
+        const lastUser = [...messages].reverse().find(m => m.role === 'user')
+        result = await continuePreviousResponse(
+          lastUser?.content || msg,
+          lastAI.content,
+          lastAI.agentType,
+        )
+      } else {
+        // 2-4: 사용자 메시지에서 리포트 기간 감지 후 context에 주입
+        const period = detectPeriod(msg)
+        const enrichedContext = period ? { ...context, period } : context
+        result = await sendToAgent(msg, enrichedContext)
+      }
       addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
 
       // IndexedDB에 세션 저장

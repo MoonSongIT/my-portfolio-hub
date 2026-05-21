@@ -208,7 +208,7 @@ export async function callClaudeWithRetry(payload, maxAttempts = 3) {
  */
 export async function sendToAgent(userMessage, context = {}, forceAgent = null) {
   // 에이전트 라우팅
-  const agentType = forceAgent || routeToAgent(userMessage)
+  const agentType = forceAgent || await routeToAgent(userMessage, context)
   const agentInfo = AGENT_LABELS[agentType] || AGENT_LABELS.portfolio
   const maxTokens = AGENT_MAX_TOKENS[agentType] || 2048
 
@@ -405,6 +405,32 @@ export async function sendWithHistory(messages, systemPrompt, agentType = 'journ
     return { text, incomplete }
   } catch (error) {
     return { text: getErrorMessage(error) }
+  }
+}
+
+/**
+ * 직전 응답이 max_tokens로 잘렸을 때 이어서 생성
+ * @param {string} lastUserMsg - 직전 사용자 메시지
+ * @param {string} lastAIMsg - 직전 AI 응답 (잘린 내용)
+ * @param {string} agentType - 에이전트 타입
+ * @returns {Promise<{text: string, agentType: string, agentInfo: object, incomplete: boolean}>}
+ */
+export async function continuePreviousResponse(lastUserMsg, lastAIMsg, agentType) {
+  const systemPrompt = AGENT_PROMPTS[agentType] || AGENT_PROMPTS.portfolio
+  const maxTokens = AGENT_MAX_TOKENS[agentType] || 2048
+  const agentInfo = AGENT_LABELS[agentType] || AGENT_LABELS.portfolio
+  const continueMessages = [
+    { role: 'user', content: lastUserMsg },
+    { role: 'assistant', content: lastAIMsg },
+    { role: 'user', content: '직전 답변이 길이 제한으로 잘렸습니다. 멈춘 지점부터 자연스럽게 이어서 계속 작성해 주세요. 중복 없이.' },
+  ]
+  try {
+    const response = await callClaudeWithRetry({ systemPrompt, messages: continueMessages, maxTokens })
+    const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
+    const incomplete = response.data?.stop_reason === 'max_tokens'
+    return { text, agentType, agentInfo, incomplete }
+  } catch (error) {
+    return { text: getErrorMessage(error), agentType, agentInfo }
   }
 }
 
