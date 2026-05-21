@@ -62,12 +62,12 @@ const AGENT_PROMPTS = {
  * - portfolio / alert: 짧은 요약 → 2048
  */
 const AGENT_MAX_TOKENS = {
-  analysis: 2048,
-  journal: 4096,
-  report: 4096,
-  research: 4096,
-  portfolio: 2048,
-  alert: 2048,
+  analysis: 1024,
+  journal: 2048,
+  report: 2048,
+  research: 2048,
+  portfolio: 1024,
+  alert: 1024,
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -395,7 +395,7 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
  * @returns {Promise<{text: string}>}
  */
 export async function sendWithHistory(messages, systemPrompt, agentType = 'journal') {
-  const maxTokens = AGENT_MAX_TOKENS[agentType] || 4096
+  const maxTokens = AGENT_MAX_TOKENS[agentType] || 2048
   // system 역할 메시지는 별도 system 파라미터로 전달되므로 messages에서 제거 (중복 방지)
   const filteredMessages = messages.filter(m => m.role !== 'system')
   try {
