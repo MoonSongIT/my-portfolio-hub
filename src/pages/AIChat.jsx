@@ -143,7 +143,9 @@ export default function AIChat() {
 
       let result
       if (isContinuation) {
-        const lastUser = [...messages].reverse().find(m => m.role === 'user')
+        const lastUser = [...messages].reverse().find(
+          m => m.role === 'user' && !CONTINUATION_RE.test(m.content)
+        )
         result = await continuePreviousResponse(
           lastUser?.content || msg,
           lastAI.content,
