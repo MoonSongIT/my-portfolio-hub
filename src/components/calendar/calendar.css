@@ -50,6 +50,30 @@
   color: #1d4ed8;
 }
 
+/* 일요일 — 빨강 */
+.fc-col-header-cell.fc-day-sun .fc-col-header-cell-cushion,
+.fc-daygrid-day.fc-day-sun .fc-daygrid-day-number {
+  color: #dc2626;
+}
+
+/* 토요일 — 파랑 */
+.fc-col-header-cell.fc-day-sat .fc-col-header-cell-cushion,
+.fc-daygrid-day.fc-day-sat .fc-daygrid-day-number {
+  color: #2563eb;
+}
+
+/* 다크 모드 — 일요일 빨강 */
+.dark .fc-col-header-cell.fc-day-sun .fc-col-header-cell-cushion,
+.dark .fc-daygrid-day.fc-day-sun .fc-daygrid-day-number {
+  color: #f87171;
+}
+
+/* 다크 모드 — 토요일 파랑 */
+.dark .fc-col-header-cell.fc-day-sat .fc-col-header-cell-cushion,
+.dark .fc-daygrid-day.fc-day-sat .fc-daygrid-day-number {
+  color: #60a5fa;
+}
+
 /* 이벤트 텍스트 줄임 */
 .fc-event-title {
   white-space: nowrap;
