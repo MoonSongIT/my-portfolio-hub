@@ -81,6 +81,9 @@ const markdownComponents = {
   strong: ({ children }) => (
     <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
   ),
+  hr: () => (
+    <hr className="my-4 border-t-2 border-gray-300 dark:border-gray-600" />
+  ),
 }
 
 /**
@@ -129,7 +132,7 @@ export default function MessageBubble({ message, loading = false }) {
         {/* AI 메시지: 에이전트 배지 표시 */}
         {!isUser && message.agentType && (
           <div className="mb-2">
-            <AgentBadge agentType={message.agentType} />
+            <AgentBadge agentType={message.agentType} agentInfo={message.agentInfo} />
           </div>
         )}
 
