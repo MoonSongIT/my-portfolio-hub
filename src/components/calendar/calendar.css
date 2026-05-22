@@ -26,7 +26,7 @@
 }
 
 .dark .fc-day-today .fc-daygrid-day-number {
-  color: #60a5fa;
+  color: #fbbf24;
   font-weight: 700;
 }
 
@@ -36,7 +36,7 @@
 }
 
 .dark .fc-daygrid-day.fc-day-today {
-  background-color: rgba(59, 130, 246, 0.08);
+  background-color: rgba(251, 191, 36, 0.12);
 }
 
 /* 밝은 모드 — 날짜 숫자 색상 */
@@ -48,6 +48,16 @@
 
 .fc-daygrid-day-number:hover {
   color: #1d4ed8;
+}
+
+/* 오늘 날짜 — 노란색 배경 + 진한 텍스트 */
+.fc-daygrid-day.fc-day-today {
+  background-color: rgba(253, 224, 71, 0.25) !important;
+}
+
+.fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  color: #92400e;
+  font-weight: 700;
 }
 
 /* 일요일 — 빨강 */
