@@ -422,7 +422,7 @@ export async function runAgentPipeline(agentTypes, message, context, onStep) {
   for (let i = 0; i < agentTypes.length; i++) {
     if (onStep) onStep(i + 1, agentTypes.length)
     const result = await sendToAgent(message, cumulativeContext, agentTypes[i])
-    results.push({ agentType: agentTypes[i], text: result.text })
+    results.push({ agentType: agentTypes[i], text: result.text, incomplete: result.incomplete })
     // 앞 에이전트 결과를 다음 에이전트 컨텍스트에 주입 (1,000자 이내)
     cumulativeContext = {
       ...cumulativeContext,
@@ -435,6 +435,7 @@ export async function runAgentPipeline(agentTypes, message, context, onStep) {
     text: synthesizeResults(results),
     agentType: agentTypes.join('+'),
     agentInfo: { label: '복합 분석', icon: '🔗', color: 'violet' },
+    incomplete: results.some(r => r.incomplete),
   }
 }
 
