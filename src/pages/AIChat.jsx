@@ -11,6 +11,7 @@ import { useJournalStore } from '../store/journalStore'
 import { useAuthStore } from '../store/authStore'
 import { useChatStore } from '../store/chatStore'
 import { sendToAgent, summarizeAndCompressHistory, continuePreviousResponse, runAgentPipeline } from '../api/claudeApi'
+import { recordImplicitFeedback, generateQualityReport } from '../utils/feedbackDetector'
 import { useApiKeyGuard } from '../hooks/useApiKeyGuard'
 import ApiKeyRequiredDialog from '../components/common/ApiKeyRequiredDialog'
 import { buildJournalCoachPrompt, buildJournalContext } from '../agents/journalCoachAgent'
@@ -60,6 +61,7 @@ export default function AIChat() {
     createSession, switchSession, deleteCurrentSession,
     addUserMessage, addAIMessage, setLoading, setError, clearHistory,
     saveCurrentSession, loadSessionsFromDB,
+    updateMessageFeedback, updateMessageSignals,
     error,
   } = useChatStore()
 
@@ -123,6 +125,14 @@ export default function AIChat() {
     if (!msg || isLoading || !isOnline) return
     const ok = await ensureKey()
     if (!ok) return
+
+    // 7-3: 이전 AI 응답에 암묵적 신호 기록
+    const prevAI = [...messages].reverse().find(m => m.role === 'assistant')
+    if (prevAI?.id && prevAI?.timestamp) {
+      const timeDelta = Date.now() - new Date(prevAI.timestamp).getTime()
+      const signals = recordImplicitFeedback(msg, timeDelta)
+      updateMessageSignals(prevAI.id, signals)
+    }
 
     addUserMessage(msg)
     setInput('')
@@ -190,7 +200,14 @@ export default function AIChat() {
     }
   }
 
+  // 7-3: 피드백 버튼 클릭 핸들러
+  function handleFeedback(messageId, value) {
+    updateMessageFeedback(messageId, value)
+  }
+
   function handleNewSession() {
+    // 7-6: 세션 전환 시 품질 리포트 출력 (개발 모드)
+    generateQualityReport(messages)
     createSession('journal')
   }
 
@@ -333,7 +350,7 @@ export default function AIChat() {
           ) : (
             <div className="mx-auto max-w-3xl space-y-4">
               {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
+                <MessageBubble key={msg.id} message={msg} onFeedback={handleFeedback} />
               ))}
               {isLoading && (
                 <MessageBubble message={{ role: 'assistant', content: '' }} loading />
