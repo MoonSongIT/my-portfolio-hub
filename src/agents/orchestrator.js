@@ -60,6 +60,39 @@ export function routeToAgent(userMessage) {
 }
 
 /**
+ * 복합 의도 패턴 — 두 그룹이 모두 매칭될 때 에이전트 파이프라인 실행
+ */
+export const COMPOUND_PATTERNS = [
+  {
+    agents: ['research', 'portfolio'],
+    keywords: [['분석', '종목', '살만', '어때', '전망'], ['포트폴리오', '비중', '담아야', '영향']],
+  },
+  {
+    agents: ['alert', 'journal'],
+    keywords: [['급등', '급락', '관심종목'], ['패턴', '실수', '일지', '내 매매']],
+  },
+  {
+    agents: ['report', 'journal'],
+    keywords: [['리포트', '결산', '성과'], ['일지', '비교', '되돌아']],
+  },
+]
+
+/**
+ * 복합 의도 감지 — 두 에이전트 영역이 모두 포함된 메시지인지 판별
+ * @param {string} message
+ * @returns {string[]|null} 에이전트 타입 배열 또는 null (단순 의도)
+ */
+export function detectCompoundIntent(message) {
+  if (!message) return null
+  const msg = message.toLowerCase()
+  for (const { agents, keywords } of COMPOUND_PATTERNS) {
+    const matched = keywords.every(group => group.some(kw => msg.includes(kw)))
+    if (matched) return agents
+  }
+  return null
+}
+
+/**
  * 에이전트 라벨 정보 (UI 배지 표시용)
  */
 export const AGENT_LABELS = {
