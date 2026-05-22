@@ -8,14 +8,15 @@ const COLOR_MAP = {
   orange: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
   yellow: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
   purple: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+  violet: 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200',
 }
 
 /**
  * 에이전트 타입에 따른 색상 배지
- * @param {{ agentType: string }} props
+ * @param {{ agentType: string, agentInfo?: object }} props
  */
-export default function AgentBadge({ agentType }) {
-  const info = AGENT_LABELS[agentType]
+export default function AgentBadge({ agentType, agentInfo }) {
+  const info = AGENT_LABELS[agentType] ?? agentInfo
   if (!info) return null
 
   const colorClass = COLOR_MAP[info.color] || COLOR_MAP.blue

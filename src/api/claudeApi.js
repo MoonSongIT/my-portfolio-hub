@@ -276,6 +276,10 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           ? buildCompressedJournalContext(entries, context.accounts || [])
           : buildJournalContext(entries, context.accounts || [])
         systemPrompt = buildJournalCoachPrompt(journalContext)
+        // 파이프라인 2단계: 선행 분석 결과 주입
+        if (context.previousAnalysis) {
+          contextText = `[선행 분석 결과]\n${context.previousAnalysis.slice(0, 1000)}\n위 분석을 참조하여 매매 패턴 관점에서 추가 의견을 제시하세요.`
+        }
         break
       }
       case 'research': {
@@ -317,10 +321,18 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
             }
           }
         }
+        // 파이프라인 2단계: 선행 분석 결과 주입
+        if (context.previousAnalysis && contextText) {
+          contextText += `\n\n[선행 분석 결과]\n${context.previousAnalysis.slice(0, 1000)}\n위 분석을 참조하여 종목 리서치 관점에서 추가 의견을 제시하세요.`
+        }
         break
       }
       case 'portfolio':
-        contextText = buildPortfolioContext(context.holdings || [], context.exchangeRate || null)
+        contextText = buildPortfolioContext(
+          context.holdings || [],
+          context.exchangeRate || null,
+          context.previousAnalysis || null,
+        )
         break
       case 'alert': {
         // 2-1: alert 요청 시에만 watchlist 종목 실시간 시세 병렬 fetch → quotesMap 구성
@@ -384,6 +396,46 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
     return { text, agentType, agentInfo, incomplete }
   } catch (error) {
     return { text: getErrorMessage(error), agentType, agentInfo }
+  }
+}
+
+/**
+ * 에이전트 파이프라인 결과 합성 — 단계별 응답을 하나의 텍스트로 결합
+ */
+function synthesizeResults(results) {
+  if (results.length === 1) return results[0].text
+  return results.map((r, i) => `### ${i + 1}단계 분석\n${r.text}`).join('\n\n---\n\n')
+}
+
+/**
+ * 복합 의도용 순차 에이전트 파이프라인 실행
+ * @param {string[]} agentTypes - 순서대로 실행할 에이전트 타입 배열
+ * @param {string} message - 사용자 메시지
+ * @param {object} context - 컨텍스트 데이터
+ * @param {function} [onStep] - 단계 진행 콜백 (current, total) => void
+ * @returns {Promise<{text: string, agentType: string, agentInfo: object}>}
+ */
+export async function runAgentPipeline(agentTypes, message, context, onStep) {
+  let cumulativeContext = { ...context }
+  const results = []
+
+  for (let i = 0; i < agentTypes.length; i++) {
+    if (onStep) onStep(i + 1, agentTypes.length)
+    const result = await sendToAgent(message, cumulativeContext, agentTypes[i])
+    results.push({ agentType: agentTypes[i], text: result.text, incomplete: result.incomplete })
+    // 앞 에이전트 결과를 다음 에이전트 컨텍스트에 주입 (1,000자 이내)
+    cumulativeContext = {
+      ...cumulativeContext,
+      previousAnalysis: result.text.slice(0, 1000),
+      previousAgent: agentTypes[i],
+    }
+  }
+
+  return {
+    text: synthesizeResults(results),
+    agentType: agentTypes.join('+'),
+    agentInfo: { label: '복합 분석', icon: '🔗', color: 'violet' },
+    incomplete: results.some(r => r.incomplete),
   }
 }
 

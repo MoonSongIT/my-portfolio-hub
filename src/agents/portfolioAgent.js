@@ -28,9 +28,10 @@ export const PORTFOLIO_PROMPT = `당신은 개인 투자 포트폴리오 관리 
  * 보유 종목 데이터를 기반으로 PortfolioAgent 컨텍스트 빌드
  * @param {Array} holdings - 보유 종목 배열
  * @param {number|null} exchangeRate - USD/KRW 환율
+ * @param {string|null} previousAnalysis - 선행 에이전트 분석 결과 (파이프라인 2단계용)
  * @returns {string} 컨텍스트 문자열
  */
-export function buildPortfolioContext(holdings, exchangeRate) {
+export function buildPortfolioContext(holdings, exchangeRate, previousAnalysis = null) {
   if (!holdings || holdings.length === 0) {
     return '\n[보유 종목 없음]\n'
   }
@@ -70,5 +71,9 @@ export function buildPortfolioContext(holdings, exchangeRate) {
     '',
   ]
 
-  return summary.filter(Boolean).join('\n')
+  let ctx = summary.filter(Boolean).join('\n')
+  if (previousAnalysis) {
+    ctx += `\n\n[선행 분석 결과]\n${previousAnalysis.slice(0, 1000)}\n위 분석을 참조하여 포트폴리오 관점에서 추가 의견을 제시하세요.`
+  }
+  return ctx
 }

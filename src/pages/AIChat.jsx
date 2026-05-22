@@ -10,10 +10,11 @@ import { useWatchlistStore } from '../store/watchlistStore'
 import { useJournalStore } from '../store/journalStore'
 import { useAuthStore } from '../store/authStore'
 import { useChatStore } from '../store/chatStore'
-import { sendToAgent, summarizeAndCompressHistory, continuePreviousResponse } from '../api/claudeApi'
+import { sendToAgent, summarizeAndCompressHistory, continuePreviousResponse, runAgentPipeline } from '../api/claudeApi'
 import { useApiKeyGuard } from '../hooks/useApiKeyGuard'
 import ApiKeyRequiredDialog from '../components/common/ApiKeyRequiredDialog'
 import { buildJournalCoachPrompt, buildJournalContext } from '../agents/journalCoachAgent'
+import { detectCompoundIntent } from '../agents/orchestrator'
 import MessageBubble from '../components/chat/MessageBubble'
 import QuickPromptButtons from '../components/chat/QuickPromptButtons'
 import { Button } from '../components/ui/button'
@@ -46,6 +47,7 @@ export default function AIChat() {
   const [input, setInput] = useState('')
   const [localLoading, setLocalLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [pipelineStep, setPipelineStep] = useState(null)
   const { isOnline } = useOnlineStatus()
   const { ensureKey, guardProps } = useApiKeyGuard()
   const messagesEndRef = useRef(null)
@@ -155,7 +157,17 @@ export default function AIChat() {
         // 2-4: 사용자 메시지에서 리포트 기간 감지 후 context에 주입
         const period = detectPeriod(msg)
         const enrichedContext = period ? { ...context, period } : context
-        result = await sendToAgent(msg, enrichedContext)
+        const compoundAgents = detectCompoundIntent(msg)
+        if (compoundAgents) {
+          result = await runAgentPipeline(
+            compoundAgents,
+            msg,
+            enrichedContext,
+            (current, total) => setPipelineStep({ current, total }),
+          )
+        } else {
+          result = await sendToAgent(msg, enrichedContext)
+        }
       }
       addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
 
@@ -167,6 +179,7 @@ export default function AIChat() {
       setError(err.message || '알 수 없는 오류가 발생했습니다.')
     } finally {
       setLocalLoading(false)
+      setPipelineStep(null)
     }
   }
 
@@ -242,7 +255,9 @@ export default function AIChat() {
         {/* 로딩 배너 */}
         {isLoading && (
           <div className="bg-blue-600 text-white text-center py-3 text-sm font-bold animate-pulse shrink-0">
-            🔄 AI가 분석 중입니다... 잠시만 기다려 주세요
+            {pipelineStep
+              ? `🔗 ${pipelineStep.current}/${pipelineStep.total}단계 분석 중...`
+              : '🔄 AI가 분석 중입니다... 잠시만 기다려 주세요'}
           </div>
         )}
 
