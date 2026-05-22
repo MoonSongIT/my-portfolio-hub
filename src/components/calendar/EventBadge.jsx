@@ -5,6 +5,7 @@ export const CATEGORY_COLORS = {
   dividend: { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', fc: '#10b981', label: '배당' },
   ipo:      { bg: 'bg-yellow-100 dark:bg-yellow-900/40', text: 'text-yellow-700 dark:text-yellow-300', fc: '#f59e0b', label: 'IPO' },
   economic: { bg: 'bg-purple-100 dark:bg-purple-900/40', text: 'text-purple-700 dark:text-purple-300', fc: '#8b5cf6', label: '경제' },
+  holiday:  { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', fc: '#ef4444', label: '국경일' },
   custom:   { bg: 'bg-gray-100 dark:bg-gray-700', text: 'text-gray-700 dark:text-gray-300', fc: '#6b7280', label: '기타' },
 }
 
