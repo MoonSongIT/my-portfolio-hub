@@ -101,6 +101,19 @@ db.version(9).stores({
   aiCredentials:  '&provider',
 })
 
+// v10: 증시 일정 이벤트 테이블 추가
+db.version(10).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, date, category, ticker, source',
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
