@@ -10,6 +10,7 @@ import {
   updateEvent as dbUpdateEvent,
   deleteEvent as dbDeleteEvent,
 } from '../utils/calendarDb'
+import { fetchDartDividend, fetchDartEarnings, fetchFinnhubEarnings, fetchFinnhubIpo } from '../api/calendarFetchApi.js'
 
 export const useCalendarStore = create(
   immer((set, get) => ({
@@ -18,6 +19,9 @@ export const useCalendarStore = create(
     currentDate: new Date(),
     filterCategory: 'all',
     filterScope: 'all',
+    filterImpact: 'all',
+    isFetching: false,
+    fetchResult: null,
 
     setView(view) {
       set(s => { s.view = view })
@@ -29,6 +33,10 @@ export const useCalendarStore = create(
 
     setFilter(key, value) {
       set(s => { s[key] = value })
+    },
+
+    setFilterImpact(value) {
+      set(s => { s.filterImpact = value })
     },
 
     async loadEvents(userId) {
@@ -73,10 +81,62 @@ export const useCalendarStore = create(
       await get().loadEvents(userId)
     },
 
+    // ── 자동 탐색 액션 ────────────────────────────────────────────────
+
+    async fetchFromDart(startDate, endDate) {
+      set(s => { s.isFetching = true })
+      try {
+        const [dividend, earnings] = await Promise.all([
+          fetchDartDividend(startDate, endDate),
+          fetchDartEarnings(startDate, endDate),
+        ])
+        set(s => {
+          s.fetchResult = [...dividend, ...earnings]
+          s.isFetching = false
+        })
+      } catch (err) {
+        console.error('[CalendarStore] DART 탐색 오류:', err.message)
+        set(s => { s.isFetching = false })
+      }
+    },
+
+    async fetchFromFinnhub(startDate, endDate) {
+      set(s => { s.isFetching = true })
+      try {
+        const [earnings, ipo] = await Promise.all([
+          fetchFinnhubEarnings(startDate, endDate),
+          fetchFinnhubIpo(startDate, endDate),
+        ])
+        set(s => {
+          s.fetchResult = [...earnings, ...ipo]
+          s.isFetching = false
+        })
+      } catch (err) {
+        console.error('[CalendarStore] Finnhub 탐색 오류:', err.message)
+        set(s => { s.isFetching = false })
+      }
+    },
+
+    // 선택한 이벤트를 DB에 일괄 저장 (ticker+date+category 기준 중복 제거)
+    // 반환값: 실제 저장된 건수
+    async bulkAddEvents(userId, selectedEvents) {
+      if (!selectedEvents.length) return 0
+      const dates = selectedEvents.map(e => e.date).sort()
+      const existing = await getEventsByRange(userId, dates[0], dates[dates.length - 1])
+      const keys = new Set(existing.map(e => `${e.ticker}|${e.date}|${e.category}`))
+      const toAdd = selectedEvents.filter(e => !keys.has(`${e.ticker}|${e.date}|${e.category}`))
+      for (const ev of toAdd) {
+        await dbAddEvent(userId, ev)
+      }
+      await get().loadEvents(userId)
+      return toAdd.length
+    },
+
     filteredEvents(watchlistTickers = [], portfolioTickers = []) {
-      const { events, filterCategory, filterScope } = get()
+      const { events, filterCategory, filterScope, filterImpact } = get()
       return events.filter(e => {
         if (filterCategory !== 'all' && e.category !== filterCategory) return false
+        if (filterImpact !== 'all' && e.impact !== filterImpact) return false
         if (filterScope === 'watchlist') return watchlistTickers.includes(e.ticker)
         if (filterScope === 'portfolio') return portfolioTickers.includes(e.ticker)
         return true
