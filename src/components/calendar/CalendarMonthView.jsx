@@ -48,7 +48,7 @@ export default function CalendarMonthView({ events, currentDate, onDateClick, on
             <div className="flex items-center justify-between w-full overflow-hidden px-0.5">
               <span className="truncate text-[11px] leading-tight">{arg.event.title}</span>
               {stars && (
-                <span className="shrink-0 ml-0.5 text-[9px] text-red-500 dark:text-red-400 opacity-90">{stars}</span>
+                <span className="shrink-0 ml-0.5 text-[9px] text-red-400 dark:text-red-300">{stars}</span>
               )}
             </div>
           )
