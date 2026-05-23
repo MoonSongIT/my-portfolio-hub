@@ -8,6 +8,7 @@ import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
 import AiKeyPanel from '../components/settings/AiKeyPanel'
 import DartKeyPanel from '../components/settings/DartKeyPanel'
+import FinnhubKeyPanel from '../components/settings/FinnhubKeyPanel'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -223,6 +224,7 @@ export default function Settings() {
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 설정</h2>
         <AiKeyPanel />
         <DartKeyPanel />
+        <FinnhubKeyPanel />
       </section>
 
       {/* ─── 종목 DB 관리 ─── */}
