@@ -12,6 +12,8 @@ import EventDetailModal from '../components/calendar/EventDetailModal'
 import { Button } from '../components/ui/button'
 
 const CalendarMonthView = lazy(() => import('../components/calendar/CalendarMonthView'))
+const CalendarWeekView  = lazy(() => import('../components/calendar/CalendarWeekView'))
+const CalendarYearView  = lazy(() => import('../components/calendar/CalendarYearView'))
 
 const VIEW_LABELS = { year: '연간', month: '월간', week: '주간' }
 
@@ -71,10 +73,14 @@ export default function MarketCalendar() {
     if (view === 'month') {
       return `${currentDate.getFullYear()}년 ${currentDate.getMonth() + 1}월`
     }
-    const start = new Date(currentDate)
-    const end = new Date(currentDate)
-    end.setDate(end.getDate() + 6)
-    return `${start.getMonth() + 1}월 ${start.getDate()}일 ~ ${end.getMonth() + 1}월 ${end.getDate()}일`
+    // 주간 뷰: 항상 월요일 기준으로 표시
+    const d = new Date(currentDate)
+    const dayOffset = (d.getDay() + 6) % 7  // Mon=0
+    const monday = new Date(d)
+    monday.setDate(d.getDate() - dayOffset)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    return `${monday.getMonth() + 1}월 ${monday.getDate()}일 ~ ${sunday.getMonth() + 1}월 ${sunday.getDate()}일`
   }
 
   const handleDateClick = (dateStr) => {
@@ -85,6 +91,11 @@ export default function MarketCalendar() {
   const handleAddModalClose = () => {
     setShowAddModal(false)
     setSelectedDate(null)
+  }
+
+  const handleYearCellClick = (date) => {
+    setView('month')
+    setCurrentDate(date)
   }
 
   return (
@@ -195,14 +206,31 @@ export default function MarketCalendar() {
           </Suspense>
         )}
         {view === 'year' && (
-          <div className="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500 text-sm">
-            연간 히트맵 뷰 — Step 5에서 구현 예정
-          </div>
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+              히트맵 로딩 중...
+            </div>
+          }>
+            <CalendarYearView
+              events={displayedEvents}
+              currentDate={currentDate}
+              onCellClick={handleYearCellClick}
+            />
+          </Suspense>
         )}
         {view === 'week' && (
-          <div className="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500 text-sm">
-            주간 뷰 — Step 4에서 구현 예정
-          </div>
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+              주간 뷰 로딩 중...
+            </div>
+          }>
+            <CalendarWeekView
+              events={displayedEvents}
+              currentDate={currentDate}
+              onEventClick={(event) => setSelectedEvent(event)}
+              onDateClick={handleDateClick}
+            />
+          </Suspense>
         )}
       </div>
 
