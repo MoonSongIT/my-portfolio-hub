@@ -3,8 +3,16 @@
 import { useMemo } from 'react'
 import EventBadge, { CATEGORY_COLORS } from './EventBadge'
 
-const DAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
-const IMPACT_ICONS = { high: '🔴', medium: '🟡', low: '🟢' }
+const DAY_LABELS   = ['월', '화', '수', '목', '금', '토', '일']
+const IMPACT_ICONS  = { high: '🔴', medium: '🟡', low: '🟢' }
+const IMPACT_LABELS = { high: '높음', medium: '중간', low: '낮음' }
+
+/** 'YYYY-MM-DD' → 'M/D' 단축 표기 */
+function formatShortDate(dateStr) {
+  if (!dateStr) return ''
+  const [, m, d] = dateStr.split('-')
+  return `${Number(m)}/${Number(d)}`
+}
 
 /** Date → 로컬 'YYYY-MM-DD' 문자열 (toISOString 시간대 오차 방지) */
 function toLocalDateStr(d) {
@@ -113,18 +121,47 @@ export default function CalendarWeekView({ events, currentDate, onEventClick, on
                     style={{ borderLeftColor: color, backgroundColor: color + '18' }}
                     className="rounded-sm border-l-2 p-1 cursor-pointer hover:opacity-80 transition-opacity"
                   >
+                    {/* 제목 행 — 모바일: ticker 우선, 데스크탑: title 우선(ticker는 하단 상세에 별도 표시) */}
                     <div className="flex items-center gap-0.5 min-w-0">
                       {event.impact && (
-                        <span className="text-[10px] shrink-0">
+                        <span className="text-[10px] shrink-0 md:hidden">
                           {IMPACT_ICONS[event.impact] ?? ''}
                         </span>
                       )}
                       <span className="text-[11px] font-medium text-gray-800 dark:text-gray-200 truncate">
-                        {event.ticker ? event.ticker : event.title}
+                        <span className="md:hidden">{event.ticker || event.title}</span>
+                        <span className="hidden md:inline">{event.title || event.ticker}</span>
                       </span>
                     </div>
+
+                    {/* 카테고리 뱃지 */}
                     <div className="mt-0.5">
                       <EventBadge category={event.category} />
+                    </div>
+
+                    {/* 데스크탑 전용 상세 필드 — 중요도·종료일·종목·메모 */}
+                    <div className="hidden md:block mt-1 space-y-0.5 text-[10px]">
+                      {event.impact && (
+                        <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                          <span>{IMPACT_ICONS[event.impact]}</span>
+                          <span>{IMPACT_LABELS[event.impact]}</span>
+                        </div>
+                      )}
+                      {event.endDate && event.endDate !== event.date && (
+                        <div className="text-gray-500 dark:text-gray-400">
+                          종료 {formatShortDate(event.endDate)}
+                        </div>
+                      )}
+                      {event.ticker && (
+                        <div className="font-medium text-gray-700 dark:text-gray-300">
+                          {event.ticker}
+                        </div>
+                      )}
+                      {event.memo && (
+                        <div className="text-gray-400 dark:text-gray-500 line-clamp-2 leading-tight">
+                          {event.memo}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
