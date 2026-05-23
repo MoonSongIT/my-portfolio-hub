@@ -8,6 +8,7 @@ import { handleEdgarFilings } from './server/edgarHandler.js'
 import { handleAgenticRequest } from './server/agenticHandler.js'
 import { handleStockUpdate } from './server/stockUpdateHandler.js'
 import { handleStockMaster } from './server/stockMaster/index.js'
+import { handleDartCalendarDividend, handleDartCalendarEarnings, handleFinnhubCalendarEarnings, handleFinnhubCalendarIpo } from './server/calendarHandler.js'
 
 export default defineConfig(({ mode }) => {
   // vitest 환경에서는 yahoo-finance2 임포트 스킵
@@ -76,6 +77,40 @@ export default defineConfig(({ mode }) => {
         server.middlewares.use(async (req, res, next) => {
           if (!req.url?.startsWith('/api/edgar/filings')) return next()
           await handleEdgarFilings(req, res)
+        })
+      },
+    },
+    // DART 캘린더 미들웨어 — 배당·실적 일정 조회
+    {
+      name: 'dart-calendar-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/dart/calendar')) return next()
+          const dartKey = req.headers['x-dart-api-key'] || env.DART_API_KEY || ''
+          if (req.url.startsWith('/api/dart/calendar/dividend')) {
+            await handleDartCalendarDividend(req, res, dartKey)
+          } else if (req.url.startsWith('/api/dart/calendar/earnings')) {
+            await handleDartCalendarEarnings(req, res, dartKey)
+          } else {
+            next()
+          }
+        })
+      },
+    },
+    // Finnhub 캘린더 미들웨어 — 미국 실적·IPO 일정 조회
+    {
+      name: 'finnhub-calendar-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/finnhub/calendar')) return next()
+          const finnhubKey = req.headers['x-finnhub-api-key'] || env.FINNHUB_API_KEY || ''
+          if (req.url.startsWith('/api/finnhub/calendar/earnings')) {
+            await handleFinnhubCalendarEarnings(req, res, finnhubKey)
+          } else if (req.url.startsWith('/api/finnhub/calendar/ipo')) {
+            await handleFinnhubCalendarIpo(req, res, finnhubKey)
+          } else {
+            next()
+          }
         })
       },
     },
