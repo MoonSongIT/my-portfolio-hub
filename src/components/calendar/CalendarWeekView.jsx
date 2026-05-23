@@ -55,7 +55,8 @@ export default function CalendarWeekView({ events, currentDate, onEventClick, on
   }, [events])
 
   return (
-    <div className="bg-white dark:bg-gray-900">
+    <div className="bg-white dark:bg-gray-900 overflow-x-auto">
+      <div className="min-w-[560px]">
       {/* 헤더 행 — 요일 + 날짜 숫자 */}
       <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700">
         {weekDays.map((day, i) => {
@@ -169,6 +170,7 @@ export default function CalendarWeekView({ events, currentDate, onEventClick, on
             </div>
           )
         })}
+      </div>
       </div>
     </div>
   )
