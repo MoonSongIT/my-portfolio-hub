@@ -117,6 +117,29 @@ export const useCalendarStore = create(
       }
     },
 
+    async fetchFromAll(startDate, endDate) {
+      set(s => { s.isFetching = true })
+      try {
+        const [dividend, dartEarnings, finnhubEarnings, ipo] = await Promise.all([
+          fetchDartDividend(startDate, endDate),
+          fetchDartEarnings(startDate, endDate),
+          fetchFinnhubEarnings(startDate, endDate),
+          fetchFinnhubIpo(startDate, endDate),
+        ])
+        set(s => {
+          s.fetchResult = [...dividend, ...dartEarnings, ...finnhubEarnings, ...ipo]
+          s.isFetching = false
+        })
+      } catch (err) {
+        console.error('[CalendarStore] 전체 탐색 오류:', err.message)
+        set(s => { s.isFetching = false })
+      }
+    },
+
+    clearFetchResult() {
+      set(s => { s.fetchResult = null })
+    },
+
     // 선택한 이벤트를 DB에 일괄 저장 (ticker+date+category 기준 중복 제거)
     // 반환값: 실제 저장된 건수
     async bulkAddEvents(userId, selectedEvents) {

@@ -1,14 +1,17 @@
 // 증시 일정 페이지 — 연간/월간/주간 캘린더 뷰 및 이벤트 CRUD 진입점
 
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
-import { ChevronLeft, ChevronRight, Plus, CalendarDays } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
+import { ChevronLeft, ChevronRight, Plus, CalendarDays, CloudDownload, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useCalendarStore } from '../store/calendarStore'
 import { useAuthStore } from '../store/authStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { usePortfolioStore } from '../store/portfolioStore'
+import useAiCredentialStore from '../store/aiCredentialStore'
 import { CATEGORY_COLORS } from '../components/calendar/EventBadge'
 import AddEventModal from '../components/calendar/AddEventModal'
 import EventDetailModal from '../components/calendar/EventDetailModal'
+import FetchPreviewModal from '../components/calendar/FetchPreviewModal'
 import { Button } from '../components/ui/button'
 
 const CalendarMonthView = lazy(() => import('../components/calendar/CalendarMonthView'))
@@ -16,6 +19,28 @@ const CalendarWeekView  = lazy(() => import('../components/calendar/CalendarWeek
 const CalendarYearView  = lazy(() => import('../components/calendar/CalendarYearView'))
 
 const VIEW_LABELS = { year: '연간', month: '월간', week: '주간' }
+
+const PERIOD_LABELS = { this: '이번 달', next: '다음 달', '3months': '향후 3개월' }
+
+function getDateRange(period) {
+  const now = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  if (period === 'this') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1)
+    const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    return [fmt(start), fmt(end)]
+  }
+  if (period === 'next') {
+    const start = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const end   = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+    return [fmt(start), fmt(end)]
+  }
+  // 3months
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const end   = new Date(now.getFullYear(), now.getMonth() + 3, 0)
+  return [fmt(start), fmt(end)]
+}
 
 const CATEGORY_FILTERS = [
   { value: 'all', label: '전체' },
@@ -31,15 +56,23 @@ export default function MarketCalendar() {
   const {
     events, view, currentDate, filterCategory, filterScope,
     setView, setCurrentDate, setFilter, loadEvents,
+    isFetching, fetchResult,
+    fetchFromDart, fetchFromFinnhub, fetchFromAll,
+    bulkAddEvents, clearFetchResult,
   } = useCalendarStore()
 
   const currentUser = useAuthStore(s => s.currentUser)
   const watchlist = useWatchlistStore(s => s.watchlist)
   const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
+  const dartApiKey    = useAiCredentialStore(s => s.dartApiKey)
+  const finnhubApiKey = useAiCredentialStore(s => s.finnhubApiKey)
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedEvent, setSelectedEvent] = useState(null)
+  const [showFetchDropdown, setShowFetchDropdown] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const fetchDropdownRef = useRef(null)
 
   const watchlistTickers = useMemo(() => watchlist.map(w => w.ticker), [watchlist])
   const portfolioTickers = useMemo(() => {
@@ -50,6 +83,57 @@ export default function MarketCalendar() {
     if (!currentUser?.id) return
     loadEvents(currentUser.id)
   }, [currentUser?.id, view, currentDate, loadEvents])
+
+  // 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    const handler = (e) => {
+      if (fetchDropdownRef.current && !fetchDropdownRef.current.contains(e.target)) {
+        setShowFetchDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // fetchResult가 세팅되면 미리보기 모달 열기
+  useEffect(() => {
+    if (fetchResult !== null) setPreviewOpen(true)
+  }, [fetchResult])
+
+  const handleFetch = async (source, period) => {
+    setShowFetchDropdown(false)
+    if (source === 'dart' && !dartApiKey) {
+      toast.error('DART API 키가 설정되지 않았습니다. 설정 > API 키 메뉴에서 입력해 주세요.')
+      return
+    }
+    if (source === 'finnhub' && !finnhubApiKey) {
+      toast.error('Finnhub API 키가 설정되지 않았습니다. 설정 > API 키 메뉴에서 입력해 주세요.')
+      return
+    }
+    if (source === 'all' && !dartApiKey && !finnhubApiKey) {
+      toast.error('DART 또는 Finnhub API 키가 필요합니다. 설정 > API 키 메뉴에서 입력해 주세요.')
+      return
+    }
+    const [startDate, endDate] = getDateRange(period)
+    if (source === 'dart')    await fetchFromDart(startDate, endDate)
+    else if (source === 'finnhub') await fetchFromFinnhub(startDate, endDate)
+    else await fetchFromAll(startDate, endDate)
+  }
+
+  const handlePreviewConfirm = async (selectedEvents) => {
+    setPreviewOpen(false)
+    clearFetchResult()
+    if (!selectedEvents.length) return
+    const userId = currentUser?.id
+    if (!userId) { toast.error('로그인이 필요합니다'); return }
+    const count = await bulkAddEvents(userId, selectedEvents)
+    toast.success(`${count}건이 일정에 추가되었습니다.`)
+  }
+
+  const handlePreviewClose = () => {
+    setPreviewOpen(false)
+    clearFetchResult()
+  }
 
   const displayedEvents = useMemo(() => {
     return events.filter(e => {
@@ -122,6 +206,41 @@ export default function MarketCalendar() {
                 {label}
               </button>
             ))}
+          </div>
+          {/* 자동 탐색 드롭다운 */}
+          <div className="relative" ref={fetchDropdownRef}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowFetchDropdown(prev => !prev)}
+              disabled={isFetching}
+            >
+              {isFetching
+                ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                : <CloudDownload className="h-4 w-4 mr-1" />
+              }
+              자동 탐색
+            </Button>
+            {showFetchDropdown && (
+              <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-20 overflow-hidden">
+                {['dart', 'finnhub', 'all'].map(source => (
+                  <div key={source}>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide bg-gray-50 dark:bg-gray-900/50">
+                      {source === 'dart' ? 'DART (한국)' : source === 'finnhub' ? 'Finnhub (미국)' : '전체'}
+                    </div>
+                    {Object.entries(PERIOD_LABELS).map(([period, label]) => (
+                      <button
+                        key={period}
+                        onClick={() => handleFetch(source, period)}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <Button size="sm" onClick={() => setShowAddModal(true)}>
             <Plus className="h-4 w-4 mr-1" />일정 추가
@@ -244,6 +363,12 @@ export default function MarketCalendar() {
         open={!!selectedEvent}
         onClose={() => setSelectedEvent(null)}
         event={selectedEvent}
+      />
+      <FetchPreviewModal
+        open={previewOpen}
+        onClose={handlePreviewClose}
+        onConfirm={handlePreviewConfirm}
+        results={fetchResult ?? []}
       />
     </div>
   )
