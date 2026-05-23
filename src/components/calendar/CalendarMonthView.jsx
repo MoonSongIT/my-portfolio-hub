@@ -7,6 +7,8 @@ import interactionPlugin from '@fullcalendar/interaction'
 import { CATEGORY_COLORS } from './EventBadge'
 import './calendar.css'
 
+const IMPACT_STARS = { high: '★★★', medium: '★★', low: '★' }
+
 export default function CalendarMonthView({ events, currentDate, onDateClick, onEventClick }) {
   const calendarRef = useRef(null)
 
@@ -40,6 +42,17 @@ export default function CalendarMonthView({ events, currentDate, onDateClick, on
         dayMaxEvents={3}
         dateClick={(info) => onDateClick?.(info.dateStr)}
         eventClick={(info) => onEventClick?.(info.event.extendedProps)}
+        eventContent={(arg) => {
+          const stars = IMPACT_STARS[arg.event.extendedProps.impact]
+          return (
+            <div className="flex items-center justify-between w-full overflow-hidden px-0.5">
+              <span className="truncate text-[11px] leading-tight">{arg.event.title}</span>
+              {stars && (
+                <span className="shrink-0 ml-0.5 text-[9px] opacity-75">{stars}</span>
+              )}
+            </div>
+          )
+        }}
       />
     </div>
   )

@@ -6,6 +6,7 @@ import EventBadge, { CATEGORY_COLORS } from './EventBadge'
 const DAY_LABELS   = ['월', '화', '수', '목', '금', '토', '일']
 const IMPACT_ICONS  = { high: '🔴', medium: '🟡', low: '🟢' }
 const IMPACT_LABELS = { high: '높음', medium: '중간', low: '낮음' }
+const IMPACT_BAR   = { high: 'border-red-500', medium: 'border-yellow-400', low: 'border-green-400' }
 
 /** 'YYYY-MM-DD' → 'M/D' 단축 표기 */
 function formatShortDate(dateStr) {
@@ -119,8 +120,15 @@ export default function CalendarWeekView({ events, currentDate, onEventClick, on
                   <div
                     key={event.id}
                     onClick={e => { e.stopPropagation(); onEventClick?.(event) }}
-                    style={{ borderLeftColor: color, backgroundColor: color + '18' }}
-                    className="rounded-sm border-l-2 p-1 cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{
+                      ...(event.impact ? {} : { borderLeftColor: color }),
+                      backgroundColor: color + '18',
+                    }}
+                    className={`rounded-sm p-1 cursor-pointer hover:opacity-80 transition-opacity ${
+                      event.impact
+                        ? `border-l-4 ${IMPACT_BAR[event.impact] ?? 'border-gray-400'}`
+                        : 'border-l-2'
+                    }`}
                   >
                     {/* 제목 행 — 모바일: ticker 우선, 데스크탑: title 우선(ticker는 하단 상세에 별도 표시) */}
                     <div className="flex items-center gap-0.5 min-w-0">

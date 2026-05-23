@@ -42,6 +42,13 @@ function getDateRange(period) {
   return [fmt(start), fmt(end)]
 }
 
+const IMPACT_FILTERS = [
+  { value: 'all',    label: '전체' },
+  { value: 'high',   label: '높음 ★★★' },
+  { value: 'medium', label: '중간 ★★' },
+  { value: 'low',    label: '낮음 ★' },
+]
+
 const CATEGORY_FILTERS = [
   { value: 'all', label: '전체' },
   ...Object.entries(CATEGORY_COLORS).map(([value, c]) => ({ value, label: c.label })),
@@ -54,8 +61,8 @@ const SCOPE_FILTERS = [
 
 export default function MarketCalendar() {
   const {
-    events, view, currentDate, filterCategory, filterScope,
-    setView, setCurrentDate, setFilter, loadEvents,
+    events, view, currentDate, filterCategory, filterScope, filterImpact,
+    setView, setCurrentDate, setFilter, setFilterImpact, loadEvents,
     isFetching, fetchResult,
     fetchFromDart, fetchFromFinnhub, fetchFromAll,
     bulkAddEvents, clearFetchResult,
@@ -138,11 +145,12 @@ export default function MarketCalendar() {
   const displayedEvents = useMemo(() => {
     return events.filter(e => {
       if (filterCategory !== 'all' && e.category !== filterCategory) return false
+      if (filterImpact !== 'all' && e.impact !== filterImpact) return false
       if (filterScope === 'watchlist') return watchlistTickers.includes(e.ticker)
       if (filterScope === 'portfolio') return portfolioTickers.includes(e.ticker)
       return true
     })
-  }, [events, filterCategory, filterScope, watchlistTickers, portfolioTickers])
+  }, [events, filterCategory, filterImpact, filterScope, watchlistTickers, portfolioTickers])
 
   const navigate = (dir) => {
     const d = new Date(currentDate)
@@ -306,6 +314,23 @@ export default function MarketCalendar() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 임팩트 필터 */}
+      <div className="flex flex-wrap items-center gap-1">
+        {IMPACT_FILTERS.map(f => (
+          <button
+            key={f.value}
+            onClick={() => setFilterImpact(f.value)}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              filterImpact === f.value
+                ? 'bg-orange-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* 캘린더 뷰 */}
