@@ -6,6 +6,8 @@ import { Pencil, Trash2, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCalendarStore } from '../../store/calendarStore'
 import { useAuthStore } from '../../store/authStore'
+import { useJournalStore } from '../../store/journalStore'
+import { getByTicker } from '../../utils/stockMasterDb'
 import EventBadge from './EventBadge'
 import AddEventModal from './AddEventModal'
 import {
@@ -18,6 +20,7 @@ const IMPACT_LABELS = { low: '낮음', medium: '중간', high: '높음' }
 export default function EventDetailModal({ open, onClose, event }) {
   const { deleteEvent } = useCalendarStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const journalEntries = useJournalStore(s => s.entries)
   const navigate = useNavigate()
   const [showEdit, setShowEdit] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -40,10 +43,32 @@ export default function EventDetailModal({ open, onClose, event }) {
     onClose()
   }
 
-  const handleOpenJournal = () => {
+  const handleOpenJournal = async () => {
+    const ticker = event.ticker
+    let name = ''
+    let market = event.market ?? ''
+
+    // 1차: 기존 일지에서 같은 ticker의 최근 항목으로 name·market 조회
+    const prev = [...journalEntries].reverse().find(e => e.ticker === ticker)
+    if (prev) {
+      name = prev.name ?? ''
+      if (!market) market = prev.market ?? ''
+    }
+
+    // 2차: stockMasterDb fallback (이름/시장 미확보 시)
+    if (!name || !market) {
+      try {
+        const stock = await getByTicker(ticker)
+        if (stock) {
+          if (!name) name = stock.name ?? ''
+          if (!market) market = stock.exchange ?? ''
+        }
+      } catch { /* DB 미구축 시 무시 */ }
+    }
+
     handleClose()
     navigate('/journal', {
-      state: { prefill: { ticker: event.ticker, date: event.date, memo: event.title } },
+      state: { prefill: { ticker, name, market, date: event.date, memo: event.title } },
     })
   }
 
