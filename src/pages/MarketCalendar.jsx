@@ -8,6 +8,8 @@ import { useAuthStore } from '../store/authStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import useAiCredentialStore from '../store/aiCredentialStore'
+import { useSettingsStore } from '../store/settingsStore'
+import { scheduleNotifications, cancelAll } from '../utils/calendarNotifier'
 import { CATEGORY_COLORS } from '../components/calendar/EventBadge'
 import AddEventModal from '../components/calendar/AddEventModal'
 import EventDetailModal from '../components/calendar/EventDetailModal'
@@ -84,6 +86,7 @@ export default function MarketCalendar() {
   const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
   const dartApiKey    = useAiCredentialStore(s => s.dartApiKey)
   const finnhubApiKey = useAiCredentialStore(s => s.finnhubApiKey)
+  const calendarNotification = useSettingsStore(s => s.calendarNotification)
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedDate, setSelectedDate] = useState(null)
@@ -119,6 +122,12 @@ export default function MarketCalendar() {
   useEffect(() => {
     if (fetchResult !== null) setPreviewOpen(true)
   }, [fetchResult])
+
+  // 증시 일정 알림 스케줄링 — events 또는 알림 설정 변경 시 재등록
+  useEffect(() => {
+    const ids = scheduleNotifications(events, calendarNotification)
+    return () => cancelAll(ids)
+  }, [events, calendarNotification])
 
   const handleFetch = async (source, period) => {
     setShowFetchDropdown(false)
