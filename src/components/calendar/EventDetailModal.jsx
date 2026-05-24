@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pencil, Trash2, BookOpen, BrainCircuit } from 'lucide-react'
+import { Pencil, Trash2, BookOpen, BrainCircuit, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCalendarStore } from '../../store/calendarStore'
 import { useAuthStore } from '../../store/authStore'
 import { useJournalStore } from '../../store/journalStore'
 import { getByTicker } from '../../utils/stockMasterDb'
+import { generateAnalysisQuestion } from '../../api/claudeApi'
 import EventBadge from './EventBadge'
 import AddEventModal from './AddEventModal'
 import {
@@ -24,6 +25,7 @@ export default function EventDetailModal({ open, onClose, event }) {
   const navigate = useNavigate()
   const [showEdit, setShowEdit] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
 
   if (!event) return null
 
@@ -43,10 +45,19 @@ export default function EventDetailModal({ open, onClose, event }) {
     onClose()
   }
 
-  const handleOpenAnalysis = () => {
-    const market = event.market ?? ''
-    handleClose()
-    navigate(`/research/${event.ticker}${market ? `?market=${market}` : ''}`)
+  const handleOpenAnalysis = async () => {
+    setIsGenerating(true)
+    try {
+      const question = await generateAnalysisQuestion(event)
+      handleClose()
+      navigate('/ai-chat', { state: { prefill: question || event.title } })
+    } catch {
+      // 생성 실패 시 이벤트 제목을 기본 질문으로 사용
+      handleClose()
+      navigate('/ai-chat', { state: { prefill: event.title } })
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const handleOpenJournal = async () => {
@@ -140,8 +151,12 @@ export default function EventDetailModal({ open, onClose, event }) {
                 </Button>
               )}
               {event.ticker && (
-                <Button variant="outline" size="sm" onClick={handleOpenAnalysis}>
-                  <BrainCircuit className="h-4 w-4 mr-1" />AI분석
+                <Button variant="outline" size="sm" onClick={handleOpenAnalysis} disabled={isGenerating}>
+                  {isGenerating
+                    ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    : <BrainCircuit className="h-4 w-4 mr-1" />
+                  }
+                  AI분석
                 </Button>
               )}
               <Button size="sm" onClick={() => setShowEdit(true)}>

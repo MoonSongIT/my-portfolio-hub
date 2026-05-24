@@ -1,5 +1,6 @@
 // AI 분석 채팅 전용 페이지 — 세션 관리 포함
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Send, Trash2, Bot, Loader2, WifiOff,
   Plus, MessageSquare, ChevronLeft, ChevronRight,
@@ -49,7 +50,19 @@ export default function AIChat() {
   const [localLoading, setLocalLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [pipelineStep, setPipelineStep] = useState(null)
+  const location = useLocation()
   const { isOnline } = useOnlineStatus()
+
+  // 증시 일정 AI분석으로 진입 시 생성된 질문을 input에 자동 세팅
+  useEffect(() => {
+    const prefill = location.state?.prefill
+    if (prefill) {
+      setInput(prefill)
+      // state 소비 후 히스토리 교체 (뒤로가기 시 재세팅 방지)
+      window.history.replaceState({}, '')
+      inputRef.current?.focus()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const { ensureKey, guardProps } = useApiKeyGuard()
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
