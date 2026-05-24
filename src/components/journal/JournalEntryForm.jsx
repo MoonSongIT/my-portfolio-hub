@@ -69,7 +69,7 @@ const INITIAL_FORM = {
   pnl: '',
 }
 
-export default function JournalEntryForm({ open, onClose, editEntry = null }) {
+export default function JournalEntryForm({ open, onClose, editEntry = null, initialValues = null }) {
   const { addEntry, updateEntry, entries } = useJournalStore()
   const accounts = useUserAccounts()
   const cashFlows = useCashFlowStore(s => s.cashFlows)
@@ -141,7 +141,8 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
       })
     } else {
       const defaultAccountId = accounts.length > 0 ? accounts[0].id : ''
-      setForm({ ...INITIAL_FORM, date: today(), accountId: defaultAccountId })
+      const base = { ...INITIAL_FORM, date: today(), accountId: defaultAccountId }
+      setForm(initialValues ? { ...base, ...initialValues } : base)
     }
     setErrors({})
     setSearchQuery('')

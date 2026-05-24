@@ -1,7 +1,8 @@
 // 증시 일정 상세 보기 모달 — 수정·삭제 진입점
 
 import { useState } from 'react'
-import { Pencil, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Pencil, Trash2, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCalendarStore } from '../../store/calendarStore'
 import { useAuthStore } from '../../store/authStore'
@@ -17,6 +18,7 @@ const IMPACT_LABELS = { low: '낮음', medium: '중간', high: '높음' }
 export default function EventDetailModal({ open, onClose, event }) {
   const { deleteEvent } = useCalendarStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const navigate = useNavigate()
   const [showEdit, setShowEdit] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -36,6 +38,13 @@ export default function EventDetailModal({ open, onClose, event }) {
     setConfirmDelete(false)
     setShowEdit(false)
     onClose()
+  }
+
+  const handleOpenJournal = () => {
+    handleClose()
+    navigate('/journal', {
+      state: { prefill: { ticker: event.ticker, date: event.date, memo: event.title } },
+    })
   }
 
   return (
@@ -89,6 +98,11 @@ export default function EventDetailModal({ open, onClose, event }) {
               <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)}>
                 <Trash2 className="h-4 w-4 mr-1" />삭제
               </Button>
+              {event.ticker && (
+                <Button variant="outline" size="sm" onClick={handleOpenJournal}>
+                  <BookOpen className="h-4 w-4 mr-1" />일지 작성
+                </Button>
+              )}
               <Button size="sm" onClick={() => setShowEdit(true)}>
                 <Pencil className="h-4 w-4 mr-1" />수정
               </Button>

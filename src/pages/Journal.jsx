@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useJournalStore } from '../store/journalStore'
 import { useUserAccounts } from '../store/accountStore'
 import { usePortfolioStore } from '../store/portfolioStore'
@@ -18,7 +19,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cart
 import { formatCurrencyShort } from '../utils/formatters'
 
 export default function Journal() {
+  const location = useLocation()
   const [entryFormOpen, setEntryFormOpen] = useState(false)
+  const [prefillValues, setPrefillValues] = useState(null)
   const [batchFormOpen, setBatchFormOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
@@ -38,6 +41,15 @@ export default function Journal() {
   useEffect(() => {
     recalculateSellPnl()
   }, [])
+
+  // 캘린더에서 [일지 작성] 클릭 시 prefill 처리
+  useEffect(() => {
+    if (location.state?.prefill) {
+      setPrefillValues(location.state.prefill)
+      setEntryFormOpen(true)
+      window.history.replaceState({}, '')
+    }
+  }, [location.state])
 
   // 날짜 범위 필터 적용 (기본값 'all' = 전체)
   const filteredEntries = useMemo(
@@ -217,7 +229,8 @@ export default function Journal() {
       {/* 폼 모달 */}
       <JournalEntryForm
         open={entryFormOpen}
-        onClose={() => setEntryFormOpen(false)}
+        onClose={() => { setEntryFormOpen(false); setPrefillValues(null) }}
+        initialValues={prefillValues}
       />
       <JournalBatchForm
         open={batchFormOpen}
