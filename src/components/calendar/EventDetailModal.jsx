@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pencil, Trash2, BookOpen } from 'lucide-react'
+import { Pencil, Trash2, BookOpen, BrainCircuit } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCalendarStore } from '../../store/calendarStore'
 import { useAuthStore } from '../../store/authStore'
@@ -41,6 +41,12 @@ export default function EventDetailModal({ open, onClose, event }) {
     setConfirmDelete(false)
     setShowEdit(false)
     onClose()
+  }
+
+  const handleOpenAnalysis = () => {
+    const market = event.market ?? ''
+    handleClose()
+    navigate(`/research/${event.ticker}${market ? `?market=${market}` : ''}`)
   }
 
   const handleOpenJournal = async () => {
@@ -131,6 +137,11 @@ export default function EventDetailModal({ open, onClose, event }) {
               {event.ticker && (
                 <Button variant="outline" size="sm" onClick={handleOpenJournal}>
                   <BookOpen className="h-4 w-4 mr-1" />일지 작성
+                </Button>
+              )}
+              {event.ticker && (
+                <Button variant="outline" size="sm" onClick={handleOpenAnalysis}>
+                  <BrainCircuit className="h-4 w-4 mr-1" />AI분석
                 </Button>
               )}
               <Button size="sm" onClick={() => setShowEdit(true)}>
