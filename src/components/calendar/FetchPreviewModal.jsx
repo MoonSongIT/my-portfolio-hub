@@ -24,27 +24,28 @@ const SOURCE_LABEL   = { dart: 'DART', finnhub: 'Finnhub' }
 export default function FetchPreviewModal({ open, onClose, onConfirm, results = [] }) {
   const existingEvents = useCalendarStore(s => s.events)
 
-  // 기존 DB 이벤트 키 셋 — ticker|date 기준 중복 감지
-  const existingKeys = useMemo(() => {
-    const s = new Set()
+  // 기존 DB 이벤트 맵 — ticker|date|category 기준 중복/업데이트 감지
+  const existingMap = useMemo(() => {
+    const m = new Map()
     for (const e of existingEvents) {
-      if (e.ticker) s.add(`${e.ticker}|${e.date}`)
+      if (e.ticker) m.set(`${e.ticker}|${e.date}|${e.category}`, e)
     }
-    return s
+    return m
   }, [existingEvents])
 
   const [checked, setChecked] = useState(new Set())
 
-  // 모달이 열릴 때마다 비중복 항목 전체 선택으로 초기화
+  // 모달이 열릴 때마다 신규·업데이트 가능 항목 선택, 완전 중복 항목 제외
   useEffect(() => {
     if (!open) return
     const initial = new Set()
     results.forEach((ev, i) => {
-      const isDup = ev.ticker && existingKeys.has(`${ev.ticker}|${ev.date}`)
-      if (!isDup) initial.add(i)
+      const existingEv = ev.ticker ? existingMap.get(`${ev.ticker}|${ev.date}|${ev.category}`) : null
+      const isDuplicate = existingEv && !!existingEv.name  // 기존에 name 있음 → 완전 중복
+      if (!isDuplicate) initial.add(i)
     })
     setChecked(initial)
-  }, [open, results, existingKeys])
+  }, [open, results, existingMap])
 
   const allSelected  = results.length > 0 && checked.size === results.length
   const someSelected = checked.size > 0 && !allSelected
@@ -100,7 +101,9 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
             {/* 이벤트 목록 */}
             <div className="overflow-y-auto flex-1 space-y-1 pr-1">
               {results.map((ev, i) => {
-                const isDup = ev.ticker && existingKeys.has(`${ev.ticker}|${ev.date}`)
+                const existingEv   = ev.ticker ? existingMap.get(`${ev.ticker}|${ev.date}|${ev.category}`) : null
+                const isUpdatable  = existingEv && !existingEv.name   // 기존 있고 name 없음 → 업데이트 가능
+                const isDuplicate  = existingEv && !!existingEv.name  // 기존 있고 name 있음 → 완전 중복
                 return (
                   <label
                     key={i}
@@ -130,8 +133,14 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
                             {CATEGORY_LABEL[ev.category] ?? ev.category}
                           </span>
                         )}
-                        {/* 중복 경고 배지 */}
-                        {isDup && (
+                        {/* 업데이트 배지 — 기존 저장됐지만 name 없어 보완 가능 */}
+                        {isUpdatable && (
+                          <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300">
+                            업데이트
+                          </span>
+                        )}
+                        {/* 중복 경고 배지 — 기존에 name까지 있음 */}
+                        {isDuplicate && (
                           <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300">
                             중복
                           </span>

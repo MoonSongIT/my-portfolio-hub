@@ -1,13 +1,15 @@
 // 증시 일정 페이지 — 연간/월간/주간 캘린더 뷰 및 이벤트 CRUD 진입점
 
 import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
-import { ChevronLeft, ChevronRight, Plus, CalendarDays, CloudDownload, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, CalendarDays, CloudDownload, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCalendarStore } from '../store/calendarStore'
 import { useAuthStore } from '../store/authStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import useAiCredentialStore from '../store/aiCredentialStore'
+import { useSettingsStore } from '../store/settingsStore'
+import { scheduleNotifications, cancelAll } from '../utils/calendarNotifier'
 import { CATEGORY_COLORS } from '../components/calendar/EventBadge'
 import AddEventModal from '../components/calendar/AddEventModal'
 import EventDetailModal from '../components/calendar/EventDetailModal'
@@ -42,6 +44,17 @@ function getDateRange(period) {
   return [fmt(start), fmt(end)]
 }
 
+function currentMonthRange() {
+  const now = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  const first = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`
+  const last  = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return {
+    from: first,
+    to: `${last.getFullYear()}-${pad(last.getMonth() + 1)}-${pad(last.getDate())}`,
+  }
+}
+
 const IMPACT_FILTERS = [
   { value: 'all',    label: '전체' },
   { value: 'high',   label: '높음 ★★★' },
@@ -65,7 +78,7 @@ export default function MarketCalendar() {
     setView, setCurrentDate, setFilter, setFilterImpact, loadEvents,
     isFetching, fetchResult,
     fetchFromDart, fetchFromFinnhub, fetchFromAll,
-    bulkAddEvents, clearFetchResult,
+    bulkAddEvents, clearFetchResult, deleteEventsByRange,
   } = useCalendarStore()
 
   const currentUser = useAuthStore(s => s.currentUser)
@@ -73,12 +86,15 @@ export default function MarketCalendar() {
   const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
   const dartApiKey    = useAiCredentialStore(s => s.dartApiKey)
   const finnhubApiKey = useAiCredentialStore(s => s.finnhubApiKey)
+  const calendarNotification = useSettingsStore(s => s.calendarNotification)
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showFetchDropdown, setShowFetchDropdown] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [clearRange, setClearRange] = useState({ from: '', to: '' })
   const fetchDropdownRef = useRef(null)
 
   const watchlistTickers = useMemo(() => watchlist.map(w => w.ticker), [watchlist])
@@ -107,6 +123,12 @@ export default function MarketCalendar() {
     if (fetchResult !== null) setPreviewOpen(true)
   }, [fetchResult])
 
+  // 증시 일정 알림 스케줄링 — events 또는 알림 설정 변경 시 재등록
+  useEffect(() => {
+    const ids = scheduleNotifications(events, calendarNotification)
+    return () => cancelAll(ids)
+  }, [events, calendarNotification])
+
   const handleFetch = async (source, period) => {
     setShowFetchDropdown(false)
     if (source === 'dart' && !dartApiKey) {
@@ -133,13 +155,30 @@ export default function MarketCalendar() {
     if (!selectedEvents.length) return
     const userId = currentUser?.id
     if (!userId) { toast.error('로그인이 필요합니다'); return }
-    const count = await bulkAddEvents(userId, selectedEvents)
-    toast.success(`${count}건이 일정에 추가되었습니다.`)
+    const { added, updated } = await bulkAddEvents(userId, selectedEvents)
+    const parts = []
+    if (added > 0)   parts.push(`${added}건 추가`)
+    if (updated > 0) parts.push(`${updated}건 업데이트`)
+    toast.success(parts.length > 0 ? `${parts.join(', ')}되었습니다.` : '처리할 항목이 없습니다.')
   }
 
   const handlePreviewClose = () => {
     setPreviewOpen(false)
     clearFetchResult()
+  }
+
+  const openClearDialog = () => {
+    setClearRange(currentMonthRange())
+    setShowClearConfirm(true)
+  }
+
+  const handleClearByRange = async () => {
+    const userId = currentUser?.id
+    if (!userId) return
+    if (!clearRange.from || !clearRange.to) { toast.error('날짜 범위를 선택해 주세요.'); return }
+    const count = await deleteEventsByRange(userId, clearRange.from, clearRange.to)
+    toast.success(`${count}건의 일정이 삭제되었습니다.`)
+    setShowClearConfirm(false)
   }
 
   const displayedEvents = useMemo(() => {
@@ -252,6 +291,14 @@ export default function MarketCalendar() {
           </div>
           <Button size="sm" onClick={() => setShowAddModal(true)}>
             <Plus className="h-4 w-4 mr-1" />일정 추가
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={openClearDialog}
+            className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -395,6 +442,45 @@ export default function MarketCalendar() {
         onConfirm={handlePreviewConfirm}
         results={fetchResult ?? []}
       />
+
+      {/* 날짜 범위 삭제 다이얼로그 */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-96 space-y-4">
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-500" />
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">일정 삭제</h3>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              선택한 기간의 증시 일정을 모두 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+            </p>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">시작일</label>
+                <input
+                  type="date"
+                  value={clearRange.from}
+                  onChange={e => setClearRange(r => ({ ...r, from: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">종료일</label>
+                <input
+                  type="date"
+                  value={clearRange.to}
+                  onChange={e => setClearRange(r => ({ ...r, to: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowClearConfirm(false)}>취소</Button>
+              <Button variant="destructive" size="sm" onClick={handleClearByRange}>삭제</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

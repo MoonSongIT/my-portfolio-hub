@@ -529,4 +529,53 @@ ${toSummarize.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}
 }
 
 
+// ── 증시 이벤트 → AI 채팅 분석 질문 생성 (Haiku) ──────────────────────
+const CATEGORY_KO = {
+  earnings: '실적', dividend: '배당', ipo: 'IPO',
+  economic: '경제지표', holiday: '휴장일', other: '기타',
+}
+
+const ANALYSIS_QUESTION_SYSTEM = `당신은 주식 투자 분석 전문가입니다.
+증시 이벤트 정보를 받아 투자자가 AI 코치에게 물어볼 핵심 분석 질문 하나를 한국어로 생성하세요.
+질문은 구체적이고 투자 의사결정에 도움이 되는 방향으로 작성하세요.
+질문 텍스트만 반환하고, 번호·부가 설명·인용 부호 없이 한 문장으로 끝내세요.`
+
+/**
+ * 증시 이벤트 기반 Haiku 분석 질문 생성
+ * @param {{ ticker?: string, name?: string, category?: string, date?: string, memo?: string, market?: string }} event
+ * @returns {Promise<string>} 생성된 분석 질문
+ */
+export async function generateAnalysisQuestion(event) {
+  const categoryLabel = CATEGORY_KO[event.category] ?? event.category ?? '이벤트'
+  const stockLabel = event.name
+    ? `${event.name}(${event.ticker})`
+    : event.ticker ?? '종목'
+  const parts = [
+    `종목: ${stockLabel}`,
+    `이벤트 유형: ${categoryLabel}`,
+    `날짜: ${event.date ?? ''}`,
+  ]
+  if (event.memo) parts.push(`메모: ${event.memo}`)
+  if (event.market) parts.push(`시장: ${event.market}`)
+
+  const { apiKey } = useAiCredentialStore.getState()
+  const headers = { 'Content-Type': 'application/json' }
+  if (apiKey) headers['X-User-Api-Key'] = apiKey
+
+  const res = await fetch(`${API_BASE}/claude`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      maxTokens: 256,
+      systemPrompt: ANALYSIS_QUESTION_SYSTEM,
+      messages: [{ role: 'user', content: parts.join('\n') }],
+    }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (!res.ok) throw new Error('질문 생성 실패')
+  const data = await res.json()
+  return data.content?.[0]?.text?.trim() ?? ''
+}
+
 export default claudeApi

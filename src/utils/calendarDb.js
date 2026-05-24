@@ -42,3 +42,14 @@ export async function updateEvent(id, eventData) {
 export async function deleteEvent(id) {
   return db.calendarEvents.delete(id)
 }
+
+export async function clearAllEvents(userId) {
+  return db.calendarEvents.where('userId').equals(userId).delete()
+}
+
+export async function deleteEventsByRange(userId, startDate, endDate) {
+  return db.calendarEvents
+    .where('userId').equals(userId)
+    .and(e => e.date >= startDate && e.date <= endDate)
+    .delete()
+}

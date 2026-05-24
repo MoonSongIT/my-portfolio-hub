@@ -9,8 +9,11 @@ import {
   addEvent as dbAddEvent,
   updateEvent as dbUpdateEvent,
   deleteEvent as dbDeleteEvent,
+  clearAllEvents as dbClearAllEvents,
+  deleteEventsByRange as dbDeleteEventsByRange,
 } from '../utils/calendarDb'
 import { fetchDartDividend, fetchDartEarnings, fetchFinnhubEarnings, fetchFinnhubIpo } from '../api/calendarFetchApi.js'
+import { getByTicker } from '../utils/stockMasterDb'
 
 export const useCalendarStore = create(
   immer((set, get) => ({
@@ -81,6 +84,17 @@ export const useCalendarStore = create(
       await get().loadEvents(userId)
     },
 
+    async clearAllEvents(userId) {
+      await dbClearAllEvents(userId)
+      set(s => { s.events = [] })
+    },
+
+    async deleteEventsByRange(userId, startDate, endDate) {
+      const count = await dbDeleteEventsByRange(userId, startDate, endDate)
+      await get().loadEvents(userId)
+      return count
+    },
+
     // ── 자동 탐색 액션 ────────────────────────────────────────────────
 
     async fetchFromDart(startDate, endDate) {
@@ -140,19 +154,64 @@ export const useCalendarStore = create(
       set(s => { s.fetchResult = null })
     },
 
-    // 선택한 이벤트를 DB에 일괄 저장 (ticker+date+category 기준 중복 제거)
-    // 반환값: 실제 저장된 건수
+    // 선택한 이벤트를 DB에 upsert (ticker+date+category 기준)
+    // - 기존 없음 → ADD
+    // - 기존 있고 name 없음 → UPDATE (name·market 보완)
+    // - 기존 있고 name 있음 → SKIP (완전 중복)
+    // 반환값: { added, updated }
     async bulkAddEvents(userId, selectedEvents) {
-      if (!selectedEvents.length) return 0
-      const dates = selectedEvents.map(e => e.date).sort()
+      if (!selectedEvents.length) return { added: 0, updated: 0 }
+
+      // ticker 있고 name 없는 이벤트 병렬 조회로 종목명·시장 보완
+      const enriched = await Promise.all(
+        selectedEvents.map(async ev => {
+          if (!ev.ticker || ev.name) return ev
+          try {
+            const stock = await getByTicker(ev.ticker)
+            if (!stock) return ev
+            return {
+              ...ev,
+              name: stock.name ?? null,
+              market: ev.market ?? stock.exchange ?? null,
+            }
+          } catch {
+            return ev
+          }
+        })
+      )
+
+      const dates = enriched.map(e => e.date).sort()
       const existing = await getEventsByRange(userId, dates[0], dates[dates.length - 1])
-      const keys = new Set(existing.map(e => `${e.ticker}|${e.date}|${e.category}`))
-      const toAdd = selectedEvents.filter(e => !keys.has(`${e.ticker}|${e.date}|${e.category}`))
-      for (const ev of toAdd) {
-        await dbAddEvent(userId, ev)
+      // ticker+date+category → existing event 맵
+      const existingMap = new Map(
+        existing
+          .filter(e => e.ticker)
+          .map(e => [`${e.ticker}|${e.date}|${e.category}`, e])
+      )
+
+      let added = 0
+      let updated = 0
+
+      for (const ev of enriched) {
+        const key = `${ev.ticker}|${ev.date}|${ev.category}`
+        const existingEv = ev.ticker ? existingMap.get(key) : null
+
+        if (!existingEv) {
+          await dbAddEvent(userId, ev)
+          added++
+        } else if (!existingEv.name && ev.name) {
+          // 기존 이벤트에 name 없고 incoming에 name 있으면 name·market 업데이트
+          await dbUpdateEvent(existingEv.id, {
+            name: ev.name,
+            market: ev.market ?? existingEv.market ?? null,
+          })
+          updated++
+        }
+        // else: 완전 중복 (기존에 name 있음) → skip
       }
+
       await get().loadEvents(userId)
-      return toAdd.length
+      return { added, updated }
     },
 
     filteredEvents(watchlistTickers = [], portfolioTickers = []) {

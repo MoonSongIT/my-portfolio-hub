@@ -97,7 +97,8 @@ export async function handleDartCalendarDividend(req, res, dartApiKey) {
       date: fromYYYYMMDD(d.rcept_dt),
       category: 'dividend',
       source: 'dart',
-      ticker: null,
+      ticker: d.stock_code || null,
+      name: d.corp_name || null,
       market: toMarket(d.corp_cls),
       memo: d.report_nm,
     }))
@@ -146,7 +147,8 @@ export async function handleDartCalendarEarnings(req, res, dartApiKey) {
       date: fromYYYYMMDD(d.rcept_dt),
       category: 'earnings',
       source: 'dart',
-      ticker: null,
+      ticker: d.stock_code || null,
+      name: d.corp_name || null,
       market: toMarket(d.corp_cls),
       memo: d.report_nm,
     }))

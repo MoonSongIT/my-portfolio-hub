@@ -14,6 +14,11 @@ export const useSettingsStore = create(
       trailingDropPct: 10,  // 고점 낙폭 모니터링 기본 %
     },
     annualTargetReturn: 10, // 연간 목표 수익률 (%)
+    calendarNotification: {
+      enabled: false,
+      timing: 'on_day',        // 'on_day' | 'day_before' | 'week_before'
+      impactFilter: 'all',     // 'all' | 'high' | 'medium' | 'low'
+    },
 
     setTheme: (theme) => set({ theme }),
     toggleTheme: () => set((state) => ({
@@ -27,6 +32,9 @@ export const useSettingsStore = create(
       watchlistDefaults: { ...state.watchlistDefaults, ...defaults },
     })),
     setAnnualTargetReturn: (value) => set({ annualTargetReturn: value }),
+    setCalendarNotification: (patch) => set((state) => ({
+      calendarNotification: { ...state.calendarNotification, ...patch },
+    })),
   }),
   { name: 'settings-storage' })
 )

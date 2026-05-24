@@ -87,17 +87,19 @@ export default function AiKeyPanel() {
         </div>
       )}
 
-      {/* 키 입력 */}
-      <div className="relative">
+      {/* 키 입력 — form으로 감싸야 브라우저 password 경고 없음 */}
+      <form onSubmit={(e) => { e.preventDefault(); handleSave() }}>
+        {/* 브라우저 접근성 요구사항 — password form에 username 필드 필수 */}
+        <input type="text" name="username" autoComplete="username" className="hidden" aria-hidden="true" readOnly />
         <input
           type="password"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSave()}
           placeholder={keyExists ? '새 키로 교체하려면 입력하세요' : 'sk-ant-...'}
+          autoComplete="new-password"
           className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-      </div>
+      </form>
 
       {/* 버튼 */}
       <div className="flex gap-2">

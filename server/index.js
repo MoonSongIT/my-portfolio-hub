@@ -39,9 +39,16 @@ app.get('/api/health', (req, res) => {
   })
 })
 
+// 허용된 모델 목록 (임의 모델 호출 방지)
+const ALLOWED_MODELS = new Set([
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+])
+
 // Claude API 프록시 엔드포인트 (JSON 응답, 180s timeout)
 app.post('/api/claude', async (req, res) => {
-  const { systemPrompt, messages, maxTokens = 4096 } = req.body
+  const { systemPrompt, messages, maxTokens = 4096, model: reqModel } = req.body
+  const model = ALLOWED_MODELS.has(reqModel) ? reqModel : 'claude-sonnet-4-6'
   const apiKey = req.headers['x-user-api-key'] || ANTHROPIC_API_KEY
 
   if (!apiKey) {
@@ -57,7 +64,7 @@ app.post('/api/claude', async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model,
         max_tokens: maxTokens,
         system: systemPrompt,
         messages,

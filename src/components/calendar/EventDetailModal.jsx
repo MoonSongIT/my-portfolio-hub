@@ -1,10 +1,14 @@
 // 증시 일정 상세 보기 모달 — 수정·삭제 진입점
 
 import { useState } from 'react'
-import { Pencil, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Pencil, Trash2, BookOpen, BrainCircuit, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCalendarStore } from '../../store/calendarStore'
 import { useAuthStore } from '../../store/authStore'
+import { useJournalStore } from '../../store/journalStore'
+import { getByTicker } from '../../utils/stockMasterDb'
+import { generateAnalysisQuestion } from '../../api/claudeApi'
 import EventBadge from './EventBadge'
 import AddEventModal from './AddEventModal'
 import {
@@ -17,8 +21,11 @@ const IMPACT_LABELS = { low: '낮음', medium: '중간', high: '높음' }
 export default function EventDetailModal({ open, onClose, event }) {
   const { deleteEvent } = useCalendarStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const journalEntries = useJournalStore(s => s.entries)
+  const navigate = useNavigate()
   const [showEdit, setShowEdit] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
 
   if (!event) return null
 
@@ -36,6 +43,53 @@ export default function EventDetailModal({ open, onClose, event }) {
     setConfirmDelete(false)
     setShowEdit(false)
     onClose()
+  }
+
+  const handleOpenAnalysis = async () => {
+    setIsGenerating(true)
+    try {
+      const question = await generateAnalysisQuestion(event)
+      handleClose()
+      navigate('/ai-chat', { state: { prefill: question || event.title } })
+    } catch {
+      // 생성 실패 시 이벤트 제목을 기본 질문으로 사용
+      handleClose()
+      navigate('/ai-chat', { state: { prefill: event.title } })
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handleOpenJournal = async () => {
+    const ticker = event.ticker
+    // 이벤트에 저장된 name·market 우선 사용 (AddEventModal에서 선택 시 저장됨)
+    let name = event.name ?? ''
+    let market = event.market ?? ''
+
+    // fallback 1: 기존 일지에서 같은 ticker의 최근 항목
+    if (!name || !market) {
+      const prev = [...journalEntries].reverse().find(e => e.ticker === ticker)
+      if (prev) {
+        if (!name) name = prev.name ?? ''
+        if (!market) market = prev.market ?? ''
+      }
+    }
+
+    // fallback 2: stockMasterDb (이름/시장 여전히 없을 때)
+    if (!name || !market) {
+      try {
+        const stock = await getByTicker(ticker)
+        if (stock) {
+          if (!name) name = stock.name ?? ''
+          if (!market) market = stock.exchange ?? ''
+        }
+      } catch { /* DB 미구축 시 무시 */ }
+    }
+
+    handleClose()
+    navigate('/journal', {
+      state: { prefill: { ticker, name, market, date: event.date, memo: event.title } },
+    })
   }
 
   return (
@@ -59,7 +113,9 @@ export default function EventDetailModal({ open, onClose, event }) {
             {event.ticker && (
               <div className="flex gap-2">
                 <span className="text-gray-500 dark:text-gray-400 w-14 shrink-0">종목</span>
-                <span className="text-gray-900 dark:text-white">{event.ticker}</span>
+                <span className="text-gray-900 dark:text-white">
+                  {event.name ? `${event.name} (${event.ticker})` : event.ticker}
+                </span>
               </div>
             )}
             {event.impact && (
@@ -89,6 +145,20 @@ export default function EventDetailModal({ open, onClose, event }) {
               <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)}>
                 <Trash2 className="h-4 w-4 mr-1" />삭제
               </Button>
+              {event.ticker && (
+                <Button variant="outline" size="sm" onClick={handleOpenJournal}>
+                  <BookOpen className="h-4 w-4 mr-1" />일지 작성
+                </Button>
+              )}
+              {event.ticker && (
+                <Button variant="outline" size="sm" onClick={handleOpenAnalysis} disabled={isGenerating}>
+                  {isGenerating
+                    ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    : <BrainCircuit className="h-4 w-4 mr-1" />
+                  }
+                  AI분석
+                </Button>
+              )}
               <Button size="sm" onClick={() => setShowEdit(true)}>
                 <Pencil className="h-4 w-4 mr-1" />수정
               </Button>
