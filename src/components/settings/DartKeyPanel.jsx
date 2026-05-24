@@ -79,6 +79,8 @@ export default function DartKeyPanel() {
 
       {/* 키 입력 — form으로 감싸야 브라우저 password 경고 없음 */}
       <form onSubmit={(e) => { e.preventDefault(); handleSave() }}>
+        {/* 브라우저 접근성 요구사항 — password form에 username 필드 필수 */}
+        <input type="text" name="username" autoComplete="username" className="hidden" aria-hidden="true" readOnly />
         <input
           type="password"
           value={inputValue}
