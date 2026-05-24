@@ -1,7 +1,7 @@
 // 증시 일정 페이지 — 연간/월간/주간 캘린더 뷰 및 이벤트 CRUD 진입점
 
 import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
-import { ChevronLeft, ChevronRight, Plus, CalendarDays, CloudDownload, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, CalendarDays, CloudDownload, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCalendarStore } from '../store/calendarStore'
 import { useAuthStore } from '../store/authStore'
@@ -65,7 +65,7 @@ export default function MarketCalendar() {
     setView, setCurrentDate, setFilter, setFilterImpact, loadEvents,
     isFetching, fetchResult,
     fetchFromDart, fetchFromFinnhub, fetchFromAll,
-    bulkAddEvents, clearFetchResult,
+    bulkAddEvents, clearFetchResult, clearAllEvents,
   } = useCalendarStore()
 
   const currentUser = useAuthStore(s => s.currentUser)
@@ -79,6 +79,7 @@ export default function MarketCalendar() {
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showFetchDropdown, setShowFetchDropdown] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const fetchDropdownRef = useRef(null)
 
   const watchlistTickers = useMemo(() => watchlist.map(w => w.ticker), [watchlist])
@@ -143,6 +144,14 @@ export default function MarketCalendar() {
   const handlePreviewClose = () => {
     setPreviewOpen(false)
     clearFetchResult()
+  }
+
+  const handleClearAll = async () => {
+    const userId = currentUser?.id
+    if (!userId) return
+    await clearAllEvents(userId)
+    toast.success('모든 일정이 삭제되었습니다.')
+    setShowClearConfirm(false)
   }
 
   const displayedEvents = useMemo(() => {
@@ -255,6 +264,14 @@ export default function MarketCalendar() {
           </div>
           <Button size="sm" onClick={() => setShowAddModal(true)}>
             <Plus className="h-4 w-4 mr-1" />일정 추가
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowClearConfirm(true)}
+            className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -398,6 +415,24 @@ export default function MarketCalendar() {
         onConfirm={handlePreviewConfirm}
         results={fetchResult ?? []}
       />
+
+      {/* 전체 삭제 확인 */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-80 space-y-4">
+            <p className="text-sm font-medium text-gray-900 dark:text-white">
+              모든 증시 일정을 삭제하시겠습니까?
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              이 작업은 되돌릴 수 없습니다.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowClearConfirm(false)}>취소</Button>
+              <Button variant="destructive" size="sm" onClick={handleClearAll}>전체 삭제</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
