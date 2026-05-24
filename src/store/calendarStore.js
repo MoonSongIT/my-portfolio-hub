@@ -11,6 +11,7 @@ import {
   deleteEvent as dbDeleteEvent,
 } from '../utils/calendarDb'
 import { fetchDartDividend, fetchDartEarnings, fetchFinnhubEarnings, fetchFinnhubIpo } from '../api/calendarFetchApi.js'
+import { getByTicker } from '../utils/stockMasterDb'
 
 export const useCalendarStore = create(
   immer((set, get) => ({
@@ -141,13 +142,33 @@ export const useCalendarStore = create(
     },
 
     // 선택한 이벤트를 DB에 일괄 저장 (ticker+date+category 기준 중복 제거)
+    // ticker 있고 name 없는 이벤트는 stockMasterDb에서 종목명·시장 보완 후 저장
     // 반환값: 실제 저장된 건수
     async bulkAddEvents(userId, selectedEvents) {
       if (!selectedEvents.length) return 0
-      const dates = selectedEvents.map(e => e.date).sort()
+
+      // ticker 있고 name 없는 이벤트 병렬 조회로 종목명·시장 보완
+      const enriched = await Promise.all(
+        selectedEvents.map(async ev => {
+          if (!ev.ticker || ev.name) return ev
+          try {
+            const stock = await getByTicker(ev.ticker)
+            if (!stock) return ev
+            return {
+              ...ev,
+              name: stock.name ?? null,
+              market: ev.market ?? stock.exchange ?? null,
+            }
+          } catch {
+            return ev
+          }
+        })
+      )
+
+      const dates = enriched.map(e => e.date).sort()
       const existing = await getEventsByRange(userId, dates[0], dates[dates.length - 1])
       const keys = new Set(existing.map(e => `${e.ticker}|${e.date}|${e.category}`))
-      const toAdd = selectedEvents.filter(e => !keys.has(`${e.ticker}|${e.date}|${e.category}`))
+      const toAdd = enriched.filter(e => !keys.has(`${e.ticker}|${e.date}|${e.category}`))
       for (const ev of toAdd) {
         await dbAddEvent(userId, ev)
       }
