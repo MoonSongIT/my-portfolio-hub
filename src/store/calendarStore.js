@@ -10,6 +10,7 @@ import {
   updateEvent as dbUpdateEvent,
   deleteEvent as dbDeleteEvent,
   clearAllEvents as dbClearAllEvents,
+  deleteEventsByRange as dbDeleteEventsByRange,
 } from '../utils/calendarDb'
 import { fetchDartDividend, fetchDartEarnings, fetchFinnhubEarnings, fetchFinnhubIpo } from '../api/calendarFetchApi.js'
 import { getByTicker } from '../utils/stockMasterDb'
@@ -86,6 +87,12 @@ export const useCalendarStore = create(
     async clearAllEvents(userId) {
       await dbClearAllEvents(userId)
       set(s => { s.events = [] })
+    },
+
+    async deleteEventsByRange(userId, startDate, endDate) {
+      const count = await dbDeleteEventsByRange(userId, startDate, endDate)
+      await get().loadEvents(userId)
+      return count
     },
 
     // ── 자동 탐색 액션 ────────────────────────────────────────────────
