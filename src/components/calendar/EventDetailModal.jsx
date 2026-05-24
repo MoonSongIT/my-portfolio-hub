@@ -45,17 +45,20 @@ export default function EventDetailModal({ open, onClose, event }) {
 
   const handleOpenJournal = async () => {
     const ticker = event.ticker
-    let name = ''
+    // 이벤트에 저장된 name·market 우선 사용 (AddEventModal에서 선택 시 저장됨)
+    let name = event.name ?? ''
     let market = event.market ?? ''
 
-    // 1차: 기존 일지에서 같은 ticker의 최근 항목으로 name·market 조회
-    const prev = [...journalEntries].reverse().find(e => e.ticker === ticker)
-    if (prev) {
-      name = prev.name ?? ''
-      if (!market) market = prev.market ?? ''
+    // fallback 1: 기존 일지에서 같은 ticker의 최근 항목
+    if (!name || !market) {
+      const prev = [...journalEntries].reverse().find(e => e.ticker === ticker)
+      if (prev) {
+        if (!name) name = prev.name ?? ''
+        if (!market) market = prev.market ?? ''
+      }
     }
 
-    // 2차: stockMasterDb fallback (이름/시장 미확보 시)
+    // fallback 2: stockMasterDb (이름/시장 여전히 없을 때)
     if (!name || !market) {
       try {
         const stock = await getByTicker(ticker)
@@ -93,7 +96,9 @@ export default function EventDetailModal({ open, onClose, event }) {
             {event.ticker && (
               <div className="flex gap-2">
                 <span className="text-gray-500 dark:text-gray-400 w-14 shrink-0">종목</span>
-                <span className="text-gray-900 dark:text-white">{event.ticker}</span>
+                <span className="text-gray-900 dark:text-white">
+                  {event.name ? `${event.name} (${event.ticker})` : event.ticker}
+                </span>
               </div>
             )}
             {event.impact && (

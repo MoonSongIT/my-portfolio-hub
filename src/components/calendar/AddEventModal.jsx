@@ -29,7 +29,7 @@ export default function AddEventModal({ open, onClose, editData = null, initialD
 
   const [form, setForm] = useState({
     date: today(), endDate: '', title: '', category: 'earnings',
-    impact: '', ticker: '', memo: '',
+    impact: '', ticker: '', name: '', market: '', memo: '',
   })
   const [errors, setErrors] = useState({})
   const [tickerQuery, setTickerQuery] = useState('')
@@ -50,14 +50,20 @@ export default function AddEventModal({ open, onClose, editData = null, initialD
         category: editData.category ?? 'earnings',
         impact: editData.impact ?? '',
         ticker: editData.ticker ?? '',
+        name: editData.name ?? '',
+        market: editData.market ?? '',
         memo: editData.memo ?? '',
       })
-      setTickerQuery(editData.ticker ?? '')
+      // 기존 이벤트에 name이 있으면 "이름 (티커)" 형태로, 없으면 ticker만 표시
+      setTickerQuery(editData.name
+        ? `${editData.name} (${editData.ticker ?? ''})`
+        : (editData.ticker ?? '')
+      )
     } else {
       setForm({
         date: initialDate ?? today(),
         endDate: '', title: '', category: 'earnings',
-        impact: '', ticker: '', memo: '',
+        impact: '', ticker: '', name: '', market: '', memo: '',
       })
       setTickerQuery('')
     }
@@ -85,6 +91,8 @@ export default function AddEventModal({ open, onClose, editData = null, initialD
       category: form.category,
       impact: form.impact || null,
       ticker: form.ticker.trim().toUpperCase() || null,
+      name: form.name.trim() || null,
+      market: form.market || null,
       memo: form.memo.trim() || null,
     }
 
@@ -103,8 +111,9 @@ export default function AddEventModal({ open, onClose, editData = null, initialD
   }
 
   const handleSelectTicker = (item) => {
-    setForm(prev => ({ ...prev, ticker: item.ticker }))
-    setTickerQuery(item.ticker)
+    setForm(prev => ({ ...prev, ticker: item.ticker, name: item.name ?? '', market: item.market ?? '' }))
+    // 입력창에 "종목명 (티커)" 형태로 표시
+    setTickerQuery(item.name ? `${item.name} (${item.ticker})` : item.ticker)
     setShowSearch(false)
   }
 
@@ -183,7 +192,7 @@ export default function AddEventModal({ open, onClose, editData = null, initialD
               onChange={e => {
                 setTickerQuery(e.target.value)
                 setShowSearch(true)
-                setForm(prev => ({ ...prev, ticker: '' }))
+                setForm(prev => ({ ...prev, ticker: '', name: '', market: '' }))
               }}
               onFocus={() => setShowSearch(true)}
               onBlur={() => setTimeout(() => setShowSearch(false), 150)}
