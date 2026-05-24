@@ -133,8 +133,11 @@ export default function MarketCalendar() {
     if (!selectedEvents.length) return
     const userId = currentUser?.id
     if (!userId) { toast.error('로그인이 필요합니다'); return }
-    const count = await bulkAddEvents(userId, selectedEvents)
-    toast.success(`${count}건이 일정에 추가되었습니다.`)
+    const { added, updated } = await bulkAddEvents(userId, selectedEvents)
+    const parts = []
+    if (added > 0)   parts.push(`${added}건 추가`)
+    if (updated > 0) parts.push(`${updated}건 업데이트`)
+    toast.success(parts.length > 0 ? `${parts.join(', ')}되었습니다.` : '처리할 항목이 없습니다.')
   }
 
   const handlePreviewClose = () => {
