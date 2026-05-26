@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import PsychologySelector from './PsychologySelector'
+import PsychologyFeedback from './PsychologyFeedback'
 import AccountSelector from '../account/AccountSelector'
 import { formatCurrencyShort } from '../../utils/formatters'
 import { Landmark, Wallet, History } from 'lucide-react'
@@ -70,7 +71,7 @@ const INITIAL_FORM = {
 }
 
 export default function JournalEntryForm({ open, onClose, editEntry = null, initialValues = null }) {
-  const { addEntry, updateEntry, entries } = useJournalStore()
+  const { addEntry, updateEntry, entries, addToRecentSelections } = useJournalStore()
   const accounts = useUserAccounts()
   const cashFlows = useCashFlowStore(s => s.cashFlows)
   const { getAvailableCash } = useCashFlowStore()
@@ -176,6 +177,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null, init
       updateEntry(editEntry.id, entry)
     } else {
       addEntry(entry)
+      if (entry.psychology) addToRecentSelections(entry.psychology, entry.action)
       if (entry.action === 'buy' && entry.accountId) {
         ensureHistory(entry.ticker, entry.accountId, entry.market).then(results => {
           if (results.length > 0) {
@@ -257,12 +259,12 @@ export default function JournalEntryForm({ open, onClose, editEntry = null, init
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg flex flex-col max-h-[90dvh]">
         <DialogHeader>
           <DialogTitle>{isEdit ? '매매 기록 수정' : '새 매매 기록'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 overflow-y-auto flex-1 min-h-0 pr-1">
           {/* 계좌 선택 + 선택된 계좌 카드 */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">계좌</label>
@@ -497,6 +499,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null, init
               value={form.psychology}
               onChange={(v) => set('psychology', v)}
             />
+            <PsychologyFeedback psychology={form.psychology} action={form.action} />
             {errors.psychology && <p className="text-red-500 text-xs mt-1">{errors.psychology}</p>}
           </div>
 
