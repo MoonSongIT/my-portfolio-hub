@@ -353,6 +353,73 @@ export const calculateVolatility = (dailyReturns) => {
   return Math.round(annualized * 100) / 100 // %
 }
 
+// ─── 수익성 고도화 인사이트 헬퍼 ───
+
+// 특정 심리 카테고리의 최근 N회 이력 조회
+export const getPsychologyHistory = (entries, psychology, action, recentN = 10) => {
+  const filtered = entries
+    .filter(e => e.psychology === psychology && e.action === action)
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, recentN)
+
+  const count = filtered.length
+  if (count === 0) return { count: 0, lossCount: 0, lossRate: 0, avgPnl: 0, entries: [] }
+
+  const lossCount = filtered.filter(e => (e.pnl ?? 0) < 0).length
+  const avgPnl = Math.round(
+    filtered.reduce((sum, e) => sum + (e.pnl ?? 0), 0) / count
+  )
+
+  return {
+    count,
+    lossCount,
+    lossRate: Math.round((lossCount / count) * 100),
+    avgPnl,
+    entries: filtered,
+  }
+}
+
+// 심리 성숙도 점수 계산 (0~100). 규칙 기반 거래 비율 50% + 전체 승률 50%
+export const calcPsychologyMaturityScore = (entries) => {
+  if (entries.length < 5) return null
+
+  const ruleBasedList = ['미래가치 투자', '분할매수 원칙', '목표가 실현', '손절 원칙', '리밸런싱']
+  const ruleBasedRatio = entries.filter(e => ruleBasedList.includes(e.psychology)).length / entries.length
+  const winRate = entries.filter(e => (e.pnl ?? 0) > 0).length / entries.length
+
+  return Math.min(100, Math.max(0, Math.round(ruleBasedRatio * 50 + winRate * 50)))
+}
+
+// 종목-심리 2D 매트릭스 데이터 생성. { [ticker]: { [psychology]: { avgPnl, count, winRate } } }
+export const buildStockPsychologyMatrix = (entries) => {
+  const matrix = {}
+
+  for (const entry of entries) {
+    const ticker = entry.ticker || '미분류'
+    const psych = entry.psychology
+    if (!psych) continue
+
+    if (!matrix[ticker]) matrix[ticker] = {}
+    if (!matrix[ticker][psych]) matrix[ticker][psych] = { total: 0, wins: 0, pnlSum: 0 }
+
+    matrix[ticker][psych].total += 1
+    matrix[ticker][psych].pnlSum += entry.pnl ?? 0
+    if ((entry.pnl ?? 0) > 0) matrix[ticker][psych].wins += 1
+  }
+
+  for (const ticker of Object.keys(matrix)) {
+    for (const psych of Object.keys(matrix[ticker])) {
+      const cell = matrix[ticker][psych]
+      cell.avgPnl = Math.round(cell.pnlSum / cell.total)
+      cell.winRate = Math.round((cell.wins / cell.total) * 100)
+      delete cell.pnlSum
+      delete cell.wins
+    }
+  }
+
+  return matrix
+}
+
 export const calculateNetCapital = (cashFlows, accountId = 'all', exchangeRate = EXCHANGE_RATE) => {
   const allCategories = Object.values(CASH_FLOW_CATEGORIES)
   const capitalFlows = cashFlows.filter(f => {
