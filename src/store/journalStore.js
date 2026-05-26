@@ -196,7 +196,21 @@ export const useJournalStore = create(
     immer((set, get) => ({
       entries: [],
 
+      psychologyFeedback: {
+        recentSelections: [], // [{ category, action, timestamp }, ...]
+      },
+
       // ─── 액션 ───
+
+      addToRecentSelections: (category, action) => {
+        set((state) => {
+          const next = [
+            { category, action, timestamp: Date.now() },
+            ...state.psychologyFeedback.recentSelections,
+          ].slice(0, 10)
+          state.psychologyFeedback.recentSelections = next
+        })
+      },
 
       addEntry: (entry) => {
         const userId = useAuthStore.getState().currentUser?.id
