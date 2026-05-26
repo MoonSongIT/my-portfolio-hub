@@ -1,10 +1,11 @@
 // 반복 손실 패턴 경고 배너 — lossCount 3회 이상 심리 유형 표시
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useJournalStore, selectPatternAlerts } from '../../store/journalStore'
 import { formatCurrencyShort } from '../../utils/formatters'
 
 export default function PatternWarning() {
-  const alerts = useJournalStore(selectPatternAlerts)
+  const entries = useJournalStore(s => s.entries)
+  const alerts = useMemo(() => selectPatternAlerts({ entries }), [entries])
   const [dismissed, setDismissed] = useState(new Set())
 
   const visible = alerts.filter(a => !dismissed.has(a.psychology))
