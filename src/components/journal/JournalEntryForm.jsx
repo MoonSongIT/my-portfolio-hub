@@ -259,12 +259,12 @@ export default function JournalEntryForm({ open, onClose, editEntry = null, init
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg flex flex-col max-h-[90dvh]">
         <DialogHeader>
           <DialogTitle>{isEdit ? '매매 기록 수정' : '새 매매 기록'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 overflow-y-auto flex-1 min-h-0 pr-1">
           {/* 계좌 선택 + 선택된 계좌 카드 */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">계좌</label>
