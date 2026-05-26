@@ -1,5 +1,7 @@
 // 종목-심리 2D 매트릭스 테이블 — 종목(행) × 심리(열) 평균손익 히트맵
+import { useMemo } from 'react'
 import { usePsychologyInsight } from '../../hooks/usePsychologyInsight'
+import { useJournalStore } from '../../store/journalStore'
 import { formatCurrencyShort } from '../../utils/formatters'
 
 const MAX_TICKERS = 8
@@ -7,6 +9,15 @@ const MAX_PSYCHOLOGIES = 6
 
 export default function StockPsychologyMatrix() {
   const { matrix } = usePsychologyInsight()
+  const entries = useJournalStore(s => s.entries)
+
+  const tickerNameMap = useMemo(() => {
+    const map = {}
+    for (const e of entries) {
+      if (e.ticker && e.name && !map[e.ticker]) map[e.ticker] = e.name
+    }
+    return map
+  }, [entries])
 
   const tickerEntries = Object.entries(matrix)
   if (tickerEntries.length === 0) {
@@ -59,8 +70,8 @@ export default function StockPsychologyMatrix() {
         <tbody>
           {tickersByFreq.map(ticker => (
             <tr key={ticker} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40">
-              <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-3 py-2 font-semibold text-gray-800 dark:text-gray-200">
-                {ticker}
+              <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-3 py-2 font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
+                {tickerNameMap[ticker] || ticker}
               </td>
               {psychologies.map(psy => {
                 const cell = matrix[ticker]?.[psy]
