@@ -23,6 +23,9 @@ export default function PsychologySelector({ action, value, onChange }) {
                 key={cat.value}
                 type="button"
                 onClick={() => onChange(cat.value)}
+                title={`${cat.label} — ${cat.hint}`}
+                aria-label={`${cat.label}: ${cat.hint}`}
+                aria-pressed={value === cat.value}
                 className={`p-2.5 rounded-lg border-2 transition-all text-left ${
                   value === cat.value
                     ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-500'
