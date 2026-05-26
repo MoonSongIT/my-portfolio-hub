@@ -599,11 +599,11 @@ export async function generatePostTradeCoaching(entry, history) {
 심리: ${entry.psychology}
 ${pnlLine}${historyLine}
 
-이 심리적 패턴에 대한 코칭 한 마디를 50자 이내로 작성하세요.`
+이 심리적 패턴에 대한 코칭 한 마디를 100자 이내로 작성하세요. 투자 권유 금지. 데이터 기반으로만 분석하세요.`
 
   const { data } = await callClaudeWithRetry({
     model: 'claude-haiku-4-5-20251001',
-    systemPrompt: '투자 심리 코치입니다. 짧고 실용적인 피드백을 제공합니다.',
+    systemPrompt: '투자 심리 코치입니다. 짧고 실용적인 피드백을 제공합니다. 매수·매도 직접 권유 금지.',
     messages: [{ role: 'user', content: prompt }],
     maxTokens: 200,
   }, 1)
