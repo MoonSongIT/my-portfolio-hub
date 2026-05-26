@@ -30,6 +30,8 @@ import InsightsCard from '../components/reports/InsightsCard'
 import PerformanceRanking from '../components/reports/PerformanceRanking'
 import RealizedVsUnrealized from '../components/reports/RealizedVsUnrealized'
 import PsychologyAnalysis from '../components/reports/PsychologyAnalysis'
+import PsychologyInsightDashboard from '../components/analytics/PsychologyInsightDashboard'
+import StockPsychologyMatrix from '../components/analytics/StockPsychologyMatrix'
 import ReportHistoryDrawer from '../components/reports/ReportHistoryDrawer'
 import RiskKpiCards from '../components/reports/RiskKpiCards'
 import PnlHeatmapCalendar from '../components/reports/PnlHeatmapCalendar'
@@ -867,6 +869,22 @@ export default function Reports() {
             </CardHeader>
             <CardContent>
               <PsychologyAnalysis entries={filteredEntries} />
+            </CardContent>
+          </Card>
+          <Card className="border border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">심리 성숙도 & 인사이트</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PsychologyInsightDashboard />
+            </CardContent>
+          </Card>
+          <Card className="border border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">종목 × 심리 매트릭스</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <StockPsychologyMatrix />
             </CardContent>
           </Card>
           </div>
