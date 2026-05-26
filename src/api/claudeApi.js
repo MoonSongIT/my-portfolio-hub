@@ -578,4 +578,37 @@ export async function generateAnalysisQuestion(event) {
   return data.content?.[0]?.text?.trim() ?? ''
 }
 
+/**
+ * 거래 직후 AI 심리 코칭 피드백 생성 (Haiku, 1회 시도)
+ * @param {{ name: string, ticker: string, action: string, psychology: string, pnl?: number }} entry
+ * @param {{ count: number, lossCount: number, lossRate: number, avgPnl: number }} history
+ * @returns {Promise<string>} 피드백 텍스트
+ */
+export async function generatePostTradeCoaching(entry, history) {
+  const actionLabel = entry.action === 'buy' ? '매수' : '매도'
+  const pnlLine = entry.pnl != null
+    ? `실현 손익: ${Number(entry.pnl).toLocaleString('ko-KR')}원\n`
+    : ''
+  const historyLine = history.count > 0
+    ? `과거 "${entry.psychology}" ${actionLabel} 이력: 총 ${history.count}건, 손실 ${history.lossCount}건 (손실률 ${history.lossRate}%), 평균 손익 ${(history.avgPnl ?? 0).toLocaleString('ko-KR')}원`
+    : `"${entry.psychology}" 심리로 ${actionLabel}한 것은 처음입니다.`
+
+  const prompt = `방금 기록한 거래입니다.
+종목: ${entry.name}(${entry.ticker})
+구분: ${actionLabel}
+심리: ${entry.psychology}
+${pnlLine}${historyLine}
+
+이 심리적 패턴에 대한 코칭 한 마디를 50자 이내로 작성하세요.`
+
+  const { data } = await callClaudeWithRetry({
+    model: 'claude-haiku-4-5-20251001',
+    systemPrompt: '투자 심리 코치입니다. 짧고 실용적인 피드백을 제공합니다.',
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 200,
+  }, 1)
+
+  return data.content?.[0]?.text?.trim() ?? ''
+}
+
 export default claudeApi
