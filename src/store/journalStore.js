@@ -382,7 +382,24 @@ export const useJournalStore = create(
         if (!userId) return
         try {
           const dbEntries = await getTransactionsByUser(userId)
-          set((state) => { state.entries = dbEntries })
+
+          // 구 카테고리명 → 신규 카테고리명 마이그레이션 (변경된 항목만 write-back)
+          const toUpdate = []
+          const migrated = dbEntries.map(e => {
+            const map = PSYCHOLOGY_MIGRATION_MAP[e.action]
+            if (!map || !e.psychology) return e
+            const newPsychology = map[e.psychology] ?? e.psychology
+            if (newPsychology === e.psychology) return e
+            toUpdate.push({ id: e.id, psychology: newPsychology })
+            return { ...e, psychology: newPsychology }
+          })
+          toUpdate.forEach(({ id, psychology }) =>
+            updateTransaction(id, { psychology }).catch(err =>
+              console.warn('[DB] psychology migration write-back failed:', err)
+            )
+          )
+
+          set((state) => { state.entries = migrated })
 
           // 매수 이력이 있는 종목을 관심종목에 동기화 (중복 방지는 watchlistStore에서 처리)
           const addToWatchlist = useWatchlistStore.getState().addToWatchlist
