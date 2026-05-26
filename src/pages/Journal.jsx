@@ -11,6 +11,7 @@ import JournalEntryForm from '../components/journal/JournalEntryForm'
 import JournalBatchForm from '../components/journal/JournalBatchForm'
 import JournalList from '../components/journal/JournalList'
 import HtsImportModal from '../components/journal/HtsImportModal'
+import PatternWarning from '../components/journal/PatternWarning'
 import PsychologyProfitChart from '../components/charts/PsychologyProfitChart'
 import ChatPanel from '../components/chat/ChatPanel'
 import { Button } from '../components/ui/button'
@@ -61,22 +62,6 @@ export default function Journal() {
   const accountFilter = selectedAccountId === 'all' ? undefined : selectedAccountId
   const chartData = getProfitByPsychology(accountFilter, exchangeRate, filteredEntries)
   const stats = getSummaryStats(accountFilter, filteredEntries)
-
-  // 최근 7일 심리 패턴 경고 (추격매매 / 공포에 매도 3회 이상)
-  const patternWarnings = useMemo(() => {
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - 6)
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
-    const recent = entries.filter(e => e.date >= cutoffStr)
-    const count추격 = recent.filter(e => e.psychology === '추격매매').length
-    const count공포 = recent.filter(e => e.psychology === '공포에 매도').length
-    const warns = []
-    if (count추격 >= 3) warns.push({ key: '추격매매', count: count추격 })
-    if (count공포 >= 3) warns.push({ key: '공포에 매도', count: count공포 })
-    return warns
-  }, [entries])
-  const [dismissedWarnings, setDismissedWarnings] = useState([])
-  const visibleWarnings = patternWarnings.filter(w => !dismissedWarnings.includes(w.key))
 
   // 월별 거래 건수 + 실현손익 집계 (최근 6개월)
   const monthlyStats = useMemo(() => {
@@ -152,16 +137,7 @@ export default function Journal() {
       </div>
 
       {/* 심리 패턴 경고 배너 */}
-      {visibleWarnings.map(w => (
-        <div key={w.key} className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-300 text-sm">
-          <span>⚠️ 이번 주 <strong>{w.key}</strong> {w.count}회 — AI 코치에게 패턴 분석을 요청해보세요.</span>
-          <button
-            onClick={() => setDismissedWarnings(prev => [...prev, w.key])}
-            className="shrink-0 text-yellow-600 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-100"
-            aria-label="닫기"
-          >✕</button>
-        </div>
-      ))}
+      <PatternWarning />
 
       {/* 요약 통계 */}
       {stats.totalCount > 0 && (

@@ -6,6 +6,7 @@ import { db, addTransaction, updateTransaction, deleteTransaction, getTransactio
 import { useCashFlowStore } from './cashFlowStore'
 import { useWatchlistStore } from './watchlistStore'
 import { useAuthStore } from './authStore'
+import { groupByPsychology } from '../utils/calculator'
 
 // ─── 심리 카테고리 상수 ───
 
@@ -190,6 +191,25 @@ export const PSYCHOLOGY_MIGRATION_MAP = {
 }
 
 // ─── 스토어 ───
+
+// ─── 반복 실수 패턴 경고 셀렉터 ───
+// lossCount >= 3인 심리 유형을 손실률·레벨과 함께 반환
+export const selectPatternAlerts = (state) => {
+  const groups = groupByPsychology(state.entries)
+  return Object.entries(groups)
+    .map(([psychology, items]) => {
+      const pnlItems = items.filter(e => e.pnl != null)
+      const losses = pnlItems.filter(e => e.pnl < 0)
+      const lossCount = losses.length
+      if (lossCount < 3) return null
+      const lossRate = pnlItems.length > 0 ? Math.round((lossCount / pnlItems.length) * 100) : 0
+      const avgLoss = losses.length > 0 ? Math.round(losses.reduce((s, e) => s + e.pnl, 0) / losses.length) : 0
+      const level = lossRate >= 70 ? 'danger' : 'warning'
+      return { psychology, totalCount: items.length, lossCount, lossRate, avgLoss, level }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.lossCount - a.lossCount)
+}
 
 export const useJournalStore = create(
   persist(
