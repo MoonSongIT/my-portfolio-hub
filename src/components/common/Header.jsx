@@ -40,12 +40,12 @@ export default function Header({ onToggleSidebar }) {
     accounts: userAccounts,
   }), [holdings, exchangeRate, watchlist, journalEntries, userAccounts])
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearAccounts()
     clearEntries()
     clearCashFlows()
     clearDailyPnl()
-    logout()
+    await logout()
     navigate('/login')
   }
 

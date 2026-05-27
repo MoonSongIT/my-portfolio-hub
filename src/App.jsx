@@ -10,6 +10,7 @@ import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
 import useAiCredentialStore from './store/aiCredentialStore'
+import { authService } from './services/authService'
 import { getReportsByUser } from './utils/db'
 import { shouldGenerateWeeklyReport } from './agents/reportAgent'
 import { Toaster, toast } from 'sonner'
@@ -81,6 +82,19 @@ function App() {
   // 앱 시작 시 1회 DB 자동 정리 (24시간 경과 시에만 실행)
   useEffect(() => {
     runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Supabase 세션 복구 + 세션 변경 구독 (Supabase 미설정 시 무시)
+  useEffect(() => {
+    authService.getSession().then((session) => {
+      useAuthStore.getState().setSupabaseSession(session)
+    })
+
+    const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
+      useAuthStore.getState().setSupabaseSession(session)
+    })
+
+    return () => subscription.unsubscribe()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 앱 시작 시 AI API 키 IDB → 메모리 로드
