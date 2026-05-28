@@ -36,6 +36,7 @@ const AIChat    = lazy(() => import('./pages/AIChat'))
 const CashFlow  = lazy(() => import('./pages/CashFlow'))
 const Settings  = lazy(() => import('./pages/Settings'))
 const Login     = lazy(() => import('./pages/Login'))
+const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 const ImportHts = lazy(() => import('./pages/ImportHts'))
 const MarketCalendar = lazy(() => import('./pages/MarketCalendar'))
 
@@ -211,6 +212,10 @@ function App() {
         <Routes>
           {/* 로그인 페이지 (레이아웃 없음) */}
           <Route path="/login" element={<Login />} />
+
+          {/* OAuth 콜백 (보호 없음 — 인증 전 처리) */}
+          <Route path="/api/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
           {/* 보호된 페이지 (Header + Sidebar 레이아웃) */}
           <Route

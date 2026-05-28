@@ -12,6 +12,7 @@ import AiKeyPanel from '../components/settings/AiKeyPanel'
 import DartKeyPanel from '../components/settings/DartKeyPanel'
 import FinnhubKeyPanel from '../components/settings/FinnhubKeyPanel'
 import UserRoleManager from '../components/admin/UserRoleManager'
+import { SupabaseLoginModal } from '../components/auth/SupabaseLoginModal'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -55,6 +56,7 @@ export default function Settings() {
 
   const fileInputRef = useRef(null)
 
+  const [supabaseModalOpen, setSupabaseModalOpen] = useState(false)
   const [importing, setImporting]               = useState(false)
   const [importProgress, setImportProgress]     = useState(null)
   const [confirmOpen, setConfirmOpen]           = useState(false)
@@ -323,6 +325,35 @@ export default function Settings() {
         </div>
       </section>
 
+      {/* ─── 서버 계정 연결 (Supabase) ─── */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">서버 계정</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
+          {isSupabaseUser ? (
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">연결됨</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">서버 동기화 및 관리자 기능을 사용할 수 있습니다.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">서버 계정 연결</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">종목 DB 서버 동기화 및 관리자 기능을 사용하려면 연결하세요.</p>
+              </div>
+              <button
+                onClick={() => setSupabaseModalOpen(true)}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
+              >
+                로그인
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* ─── AI 설정 ─── */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 설정</h2>
@@ -459,6 +490,11 @@ export default function Settings() {
           <div className="flex justify-between"><span>저장 방식</span><span className="text-gray-900 dark:text-white font-medium">로컬 전용 (IndexedDB + LocalStorage)</span></div>
         </div>
       </section>
+
+      {/* ─── Supabase 로그인 모달 ─── */}
+      {supabaseModalOpen && (
+        <SupabaseLoginModal onClose={() => setSupabaseModalOpen(false)} />
+      )}
 
       {/* ─── 백업 복원 확인 다이얼로그 ─── */}
       {confirmOpen && (

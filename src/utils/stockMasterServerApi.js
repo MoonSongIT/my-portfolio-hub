@@ -34,13 +34,21 @@ export async function fetchServerMeta() {
 export async function checkIsAdmin() {
   if (!supabase) return false
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return false
+  if (!session) {
+    console.warn('[checkIsAdmin] 세션 없음 — false 반환')
+    return false
+  }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('user_roles')
     .select('role')
     .eq('user_id', session.user.id)
     .single()
+
+  if (error) {
+    console.warn('[checkIsAdmin] 쿼리 오류:', error.code, error.message)
+  }
+  console.log('[checkIsAdmin] userId:', session.user.id, '| data:', data)
 
   return data?.role === 'admin'
 }
