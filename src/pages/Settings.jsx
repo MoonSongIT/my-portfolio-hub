@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Moon, Sun, Download, Upload, AlertCircle, CheckCircle2, Trash2, Bell, BellOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettingsStore } from '../store/settingsStore'
+import { useAuthStore } from '../store/authStore'
 import { requestPermission } from '../utils/calendarNotifier'
 import StorageInfo from '../components/common/StorageInfo'
 import { exportAllData, importData } from '../utils/dataExport'
@@ -10,6 +11,7 @@ import StockMasterPanel from '../components/settings/StockMasterPanel'
 import AiKeyPanel from '../components/settings/AiKeyPanel'
 import DartKeyPanel from '../components/settings/DartKeyPanel'
 import FinnhubKeyPanel from '../components/settings/FinnhubKeyPanel'
+import UserRoleManager from '../components/admin/UserRoleManager'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -23,6 +25,7 @@ export default function Settings() {
     watchlistDefaults, setWatchlistDefaults,
     calendarNotification, setCalendarNotification,
   } = useSettingsStore()
+  const { isAdmin, isSupabaseUser } = useAuthStore()
 
   const notifPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
 
@@ -333,6 +336,14 @@ export default function Settings() {
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">종목 DB 관리</h2>
         <StockMasterPanel />
       </section>
+
+      {/* ─── 관리자 ─── */}
+      {isAdmin && isSupabaseUser && (
+        <section className="space-y-4">
+          <h2 className="text-base font-semibold text-orange-600 dark:text-orange-400">관리자</h2>
+          <UserRoleManager />
+        </section>
+      )}
 
       {/* ─── 데이터 관리 ─── */}
       <section className="space-y-4">

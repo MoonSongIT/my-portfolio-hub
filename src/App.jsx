@@ -5,6 +5,7 @@ import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { migrateFromLegacy } from './utils/stockMasterMigrate'
 import { migrateLocalUserData } from './utils/migrateLocalUser'
+import { checkIsAdmin } from './utils/stockMasterServerApi'
 import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
@@ -89,8 +90,10 @@ function App() {
   useEffect(() => {
     authService.getSession().then(async (session) => {
       useAuthStore.getState().setSupabaseSession(session)
-      // 기존 로컬 userId 데이터를 Supabase userId로 자동 재할당 (최초 1회)
+      // 관리자 권한 확인
       if (session?.user?.id) {
+        checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+        // 기존 로컬 userId 데이터를 Supabase userId로 자동 재할당 (최초 1회)
         const migrated = await migrateLocalUserData(session.user.id)
         if (migrated) {
           // 마이그레이션 완료 — 데이터 재로드
@@ -104,6 +107,11 @@ function App() {
 
     const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
       useAuthStore.getState().setSupabaseSession(session)
+      if (session?.user?.id) {
+        checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+      } else {
+        useAuthStore.getState().setIsAdmin(false)
+      }
     })
 
     return () => subscription.unsubscribe()

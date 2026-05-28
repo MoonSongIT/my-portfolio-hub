@@ -32,9 +32,14 @@ export const useStockMasterStore = create(
 
       /** 현재 진행 중인 작업 상태 (null = idle) */
       progress: null,
-      // { exchange, phase: 'fetch'|'sync', current?: N, total?: N }
+      // { exchange, phase: 'fetch'|'sync'|'download'|'upload', current?: N, total?: N }
+
+      /** 종목 마스터 데이터 출처: 'origin' = DART/KRX/NASDAQ 직접, 'server' = Supabase 서버 */
+      preferredSource: 'origin',
 
       // ── 액션 ───────────────────────────────────────────────────────────
+
+      setPreferredSource: (src) => set({ preferredSource: src }),
 
       /**
        * 진행 상태 갱신 (sync 실행 중 onProgress 콜백에서 호출)
@@ -111,9 +116,10 @@ export const useStockMasterStore = create(
       name: 'stock-master-meta-v1',
       // rows 는 IDB에 있으므로 persist 대상에서 명시적 제외 (기본 전체 포함이므로 allowlist 방식)
       partialize: (state) => ({
-        counts:    state.counts,
-        lastSync:  state.lastSync,
-        lastStats: state.lastStats,
+        counts:          state.counts,
+        lastSync:        state.lastSync,
+        lastStats:       state.lastStats,
+        preferredSource: state.preferredSource,
         // progress 는 재기동 시 초기화 (저장 불필요)
       }),
     }

@@ -14,6 +14,7 @@ export const useAuthStore = create(
       // ── Supabase 계정 (신규) ──
       isSupabaseUser: false,
       supabaseSession: null,
+      isAdmin: false,         // persist 하지 않음 — 로그인마다 서버에서 재검증
 
       // 회원가입
       register: (name, email, password) => {
@@ -49,8 +50,10 @@ export const useAuthStore = create(
         if (get().isSupabaseUser) {
           await authService.signOut()
         }
-        set({ currentUser: null, isLoggedIn: false, isSupabaseUser: false, supabaseSession: null })
+        set({ currentUser: null, isLoggedIn: false, isSupabaseUser: false, supabaseSession: null, isAdmin: false })
       },
+
+      setIsAdmin: (v) => set({ isAdmin: v }),
 
       // ── Supabase 세션 동기화 ──
       setSupabaseSession: (session) => {
