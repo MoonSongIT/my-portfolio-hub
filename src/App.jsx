@@ -4,6 +4,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { migrateFromLegacy } from './utils/stockMasterMigrate'
+import { migrateLocalUserData } from './utils/migrateLocalUser'
 import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
@@ -86,8 +87,19 @@ function App() {
 
   // Supabase 세션 복구 + 세션 변경 구독 (Supabase 미설정 시 무시)
   useEffect(() => {
-    authService.getSession().then((session) => {
+    authService.getSession().then(async (session) => {
       useAuthStore.getState().setSupabaseSession(session)
+      // 기존 로컬 userId 데이터를 Supabase userId로 자동 재할당 (최초 1회)
+      if (session?.user?.id) {
+        const migrated = await migrateLocalUserData(session.user.id)
+        if (migrated) {
+          // 마이그레이션 완료 — 데이터 재로드
+          const userId = session.user.id
+          useJournalStore.getState().loadFromDB(userId)
+          useCashFlowStore.getState().loadFromDB(userId)
+          useDailyPnlStore.getState().loadFromDB(userId)
+        }
+      }
     })
 
     const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
