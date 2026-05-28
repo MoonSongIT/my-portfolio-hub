@@ -1,8 +1,44 @@
 // Supabase 로그인 후 기존 로컬 userId 데이터를 새 userId로 재할당하는 마이그레이션 유틸
 import { db } from './db'
+import { useAccountStore } from '../store/accountStore'
 
 // 마이그레이션 대상 테이블 (aiCredentials 제외 — 보안 필수)
 const MIGRATE_TABLES = ['transactions', 'cashFlows', 'calendarEvents', 'dailyPnl', 'reports']
+
+/**
+ * localStorage의 account-storage에서 구 userId를 새 userId로 교체.
+ * accountStore는 IndexedDB 대신 Zustand persist(localStorage)를 사용하므로 별도 처리 필요.
+ */
+function migrateAccountStorage(legacyUserIds, newUserId) {
+  try {
+    const raw = localStorage.getItem('account-storage')
+    if (!raw) return
+
+    const parsed = JSON.parse(raw)
+    const accounts = parsed?.state?.accounts
+    if (!Array.isArray(accounts) || accounts.length === 0) return
+
+    let changed = false
+    const updated = accounts.map(acc => {
+      if (legacyUserIds.includes(acc.userId)) {
+        changed = true
+        return { ...acc, userId: newUserId }
+      }
+      return acc
+    })
+    if (!changed) return
+
+    // localStorage 직접 업데이트
+    parsed.state.accounts = updated
+    localStorage.setItem('account-storage', JSON.stringify(parsed))
+
+    // 인메모리 스토어도 즉시 반영 (리렌더 트리거)
+    useAccountStore.setState({ accounts: updated })
+    console.info('[Migration] account-storage 계좌 userId 재할당 완료')
+  } catch (err) {
+    console.warn('[Migration] account-storage 마이그레이션 실패:', err)
+  }
+}
 
 /**
  * 로컬 "user-*" 형식 userId 데이터를 Supabase UUID로 재할당
@@ -18,7 +54,7 @@ export async function migrateLocalUserData(newUserId) {
 
   // 이미 마이그레이션했는지 확인 (localStorage 플래그)
   const migratedKey = `migrated_to_${newUserId}`
-  if (localStorage.getItem(migratedKey)) return false
+  const alreadyMigrated = !!localStorage.getItem(migratedKey)
 
   try {
     // 1. 새 userId로 기존 데이터가 있는지 확인
@@ -26,10 +62,22 @@ export async function migrateLocalUserData(newUserId) {
       .where('userId').equals(newUserId).count()
 
     if (existingCount > 0) {
-      // 이미 데이터 있음 — 마이그레이션 불필요
-      localStorage.setItem(migratedKey, '1')
+      // IDB는 이미 마이그레이션됨 — account-storage는 누락됐을 수 있으므로 별도 처리
+      if (!alreadyMigrated) {
+        const legacyInAccounts = [...new Set(
+          (useAccountStore.getState().accounts || [])
+            .map(a => a.userId)
+            .filter(id => typeof id === 'string' && id.startsWith('user-'))
+        )]
+        if (legacyInAccounts.length > 0) {
+          migrateAccountStorage(legacyInAccounts, newUserId)
+        }
+        localStorage.setItem(migratedKey, '1')
+      }
       return false
     }
+
+    if (alreadyMigrated) return false
 
     // 2. "user-" 접두사를 가진 구 userId 레코드 탐색
     const sampleRecords = await db.transactions.limit(200).toArray()
@@ -47,7 +95,7 @@ export async function migrateLocalUserData(newUserId) {
       return false
     }
 
-    // 3. 각 테이블의 구 userId 레코드를 새 userId로 업데이트
+    // 3. 각 IndexedDB 테이블의 구 userId 레코드를 새 userId로 업데이트
     for (const table of MIGRATE_TABLES) {
       if (!db[table]) continue
 
@@ -57,6 +105,9 @@ export async function migrateLocalUserData(newUserId) {
           .modify({ userId: newUserId })
       }
     }
+
+    // 4. localStorage의 계좌(account-storage) userId도 재할당
+    migrateAccountStorage(legacyUserIds, newUserId)
 
     localStorage.setItem(migratedKey, '1')
     console.info(`[Migration] 로컬 데이터를 Supabase 계정으로 이전 완료 (${legacyUserIds.join(', ')} → ${newUserId})`)
