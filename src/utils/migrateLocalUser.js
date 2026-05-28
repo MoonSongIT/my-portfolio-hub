@@ -52,9 +52,24 @@ function migrateAccountStorage(legacyUserIds, newUserId) {
 export async function migrateLocalUserData(newUserId) {
   if (!newUserId) return false
 
-  // 이미 마이그레이션했는지 확인 (localStorage 플래그)
+  // ── 계좌 마이그레이션 (IDB와 독립적 — 별도 플래그 사용) ──
+  // IDB 마이그레이션 완료 여부와 무관하게, 계좌의 userId가 구 형식이면 항상 재할당
+  const accountMigratedKey = `account_migrated_to_${newUserId}`
+  if (!localStorage.getItem(accountMigratedKey)) {
+    const legacyInAccounts = [...new Set(
+      (useAccountStore.getState().accounts || [])
+        .map(a => a.userId)
+        .filter(id => typeof id === 'string' && id.startsWith('user-'))
+    )]
+    if (legacyInAccounts.length > 0) {
+      migrateAccountStorage(legacyInAccounts, newUserId)
+    }
+    localStorage.setItem(accountMigratedKey, '1')
+  }
+
+  // ── IndexedDB 마이그레이션 ──
   const migratedKey = `migrated_to_${newUserId}`
-  const alreadyMigrated = !!localStorage.getItem(migratedKey)
+  if (localStorage.getItem(migratedKey)) return false
 
   try {
     // 1. 새 userId로 기존 데이터가 있는지 확인
@@ -62,22 +77,10 @@ export async function migrateLocalUserData(newUserId) {
       .where('userId').equals(newUserId).count()
 
     if (existingCount > 0) {
-      // IDB는 이미 마이그레이션됨 — account-storage는 누락됐을 수 있으므로 별도 처리
-      if (!alreadyMigrated) {
-        const legacyInAccounts = [...new Set(
-          (useAccountStore.getState().accounts || [])
-            .map(a => a.userId)
-            .filter(id => typeof id === 'string' && id.startsWith('user-'))
-        )]
-        if (legacyInAccounts.length > 0) {
-          migrateAccountStorage(legacyInAccounts, newUserId)
-        }
-        localStorage.setItem(migratedKey, '1')
-      }
+      // IDB는 이미 마이그레이션됨
+      localStorage.setItem(migratedKey, '1')
       return false
     }
-
-    if (alreadyMigrated) return false
 
     // 2. "user-" 접두사를 가진 구 userId 레코드 탐색
     const sampleRecords = await db.transactions.limit(200).toArray()
