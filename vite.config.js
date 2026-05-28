@@ -8,6 +8,7 @@ import { handleEdgarFilings } from './server/edgarHandler.js'
 import { handleAgenticRequest } from './server/agenticHandler.js'
 import { handleStockUpdate } from './server/stockUpdateHandler.js'
 import { handleStockMaster } from './server/stockMaster/index.js'
+import { handleAdminUsers } from './server/adminHandler.js'
 import { handleDartCalendarDividend, handleDartCalendarEarnings, handleFinnhubCalendarEarnings, handleFinnhubCalendarIpo } from './server/calendarHandler.js'
 
 export default defineConfig(({ mode }) => {
@@ -141,6 +142,24 @@ export default defineConfig(({ mode }) => {
                 errors: [err.message],
                 collectedAt: new Date().toISOString(),
               }))
+            }
+          }
+        })
+      },
+    },
+    // 관리자 API 미들웨어 (/api/admin/users)
+    {
+      name: 'admin-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/admin')) return next()
+          try {
+            await handleAdminUsers(req, res, env)
+          } catch (err) {
+            console.error('[Admin] 핸들러 예외:', err.message)
+            if (!res.writableEnded) {
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: err.message }))
             }
           }
         })

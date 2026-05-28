@@ -4,12 +4,15 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { migrateFromLegacy } from './utils/stockMasterMigrate'
+import { migrateLocalUserData } from './utils/migrateLocalUser'
+import { checkIsAdmin } from './utils/stockMasterServerApi'
 import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
 import useAiCredentialStore from './store/aiCredentialStore'
+import { authService } from './services/authService'
 import { getReportsByUser } from './utils/db'
 import { shouldGenerateWeeklyReport } from './agents/reportAgent'
 import { Toaster, toast } from 'sonner'
@@ -33,6 +36,7 @@ const AIChat    = lazy(() => import('./pages/AIChat'))
 const CashFlow  = lazy(() => import('./pages/CashFlow'))
 const Settings  = lazy(() => import('./pages/Settings'))
 const Login     = lazy(() => import('./pages/Login'))
+const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 const ImportHts = lazy(() => import('./pages/ImportHts'))
 const MarketCalendar = lazy(() => import('./pages/MarketCalendar'))
 
@@ -43,6 +47,7 @@ function App() {
   const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
   const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const isLoggedIn = useAuthStore(s => s.isLoggedIn)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { dialogOpen, countdown, handleConfirm, handleDismiss } = useAutoSnapshot()
 
@@ -82,6 +87,47 @@ function App() {
   useEffect(() => {
     runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Supabase 세션 복구 + 세션 변경 구독 (Supabase 미설정 시 무시)
+  useEffect(() => {
+    authService.getSession().then(async (session) => {
+      useAuthStore.getState().setSupabaseSession(session)
+      // 관리자 권한 확인
+      if (session?.user?.id) {
+        checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+        // 기존 로컬 userId 데이터를 Supabase userId로 자동 재할당 (최초 1회)
+        const migrated = await migrateLocalUserData(session.user.id)
+        if (migrated) {
+          // 마이그레이션 완료 — 데이터 재로드
+          const userId = session.user.id
+          useJournalStore.getState().loadFromDB(userId)
+          useCashFlowStore.getState().loadFromDB(userId)
+          useDailyPnlStore.getState().loadFromDB(userId)
+        }
+      }
+    })
+
+    const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
+      useAuthStore.getState().setSupabaseSession(session)
+      if (session?.user?.id) {
+        checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+      } else {
+        useAuthStore.getState().setIsAdmin(false)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 로컬 로그인 후 Supabase 세션 자동 복원 (로그아웃 → 재로그인 시 관리자 권한 복원)
+  useEffect(() => {
+    if (!isLoggedIn) return
+    authService.getSession().then(async (session) => {
+      if (!session) return
+      useAuthStore.getState().setSupabaseSession(session)
+      checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+    })
+  }, [isLoggedIn]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 앱 시작 시 AI API 키 IDB → 메모리 로드
   useEffect(() => {
@@ -177,6 +223,10 @@ function App() {
         <Routes>
           {/* 로그인 페이지 (레이아웃 없음) */}
           <Route path="/login" element={<Login />} />
+
+          {/* OAuth 콜백 (보호 없음 — 인증 전 처리) */}
+          <Route path="/api/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
           {/* 보호된 페이지 (Header + Sidebar 레이아웃) */}
           <Route

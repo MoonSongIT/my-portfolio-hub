@@ -114,6 +114,25 @@ db.version(10).stores({
   calendarEvents: '++id, userId, date, category, ticker, source',
 })
 
+// v11: 서버 동기화 필드 추가 (syncVersion, syncedAt, deletedAt)
+// aiCredentials 는 동기화 제외 — 보안 필수
+db.version(11).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId, syncVersion',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId, syncVersion',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, date, category, ticker, source, syncVersion',
+})
+.upgrade(async (tx) => {
+  await tx.transactions.toCollection().modify({ syncVersion: 0, syncedAt: null, deletedAt: null })
+  await tx.cashFlows.toCollection().modify({ syncVersion: 0, syncedAt: null, deletedAt: null })
+  await tx.calendarEvents.toCollection().modify({ syncVersion: 0, syncedAt: null, deletedAt: null })
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
@@ -364,4 +383,38 @@ export async function saveAiCredential(credential) {
 
 export async function deleteAiCredential(provider = 'anthropic') {
   return db.aiCredentials.delete(provider)
+}
+
+// ─── 동기화 헬퍼 ───
+
+// 레코드 저장 시 호출 — syncVersion 자동 증가, syncedAt 초기화
+export function bumpSyncVersion(record) {
+  return {
+    ...record,
+    syncVersion: (record.syncVersion ?? 0) + 1,
+    syncedAt: null,
+    deletedAt: record.deletedAt ?? null,
+  }
+}
+
+// ─── calendarEvents CRUD ───
+
+export async function addCalendarEvent(event) {
+  return db.calendarEvents.add(event)
+}
+
+export async function updateCalendarEvent(id, updates) {
+  return db.calendarEvents.update(id, updates)
+}
+
+export async function deleteCalendarEvent(id) {
+  return db.calendarEvents.delete(id)
+}
+
+export async function getAllCalendarEvents() {
+  return db.calendarEvents.toArray()
+}
+
+export async function getCalendarEventsByUser(userId) {
+  return db.calendarEvents.where('userId').equals(userId).toArray()
 }
