@@ -8,6 +8,8 @@ import { handleEdgarFilings } from './server/edgarHandler.js'
 import { handleAgenticRequest } from './server/agenticHandler.js'
 import { handleStockUpdate } from './server/stockUpdateHandler.js'
 import { handleStockMaster } from './server/stockMaster/index.js'
+import { handleAdminUsers } from './server/adminHandler.js'
+import { handleDartCalendarDividend, handleDartCalendarEarnings, handleFinnhubCalendarEarnings, handleFinnhubCalendarIpo } from './server/calendarHandler.js'
 
 export default defineConfig(({ mode }) => {
   // vitest 환경에서는 yahoo-finance2 임포트 스킵
@@ -79,6 +81,40 @@ export default defineConfig(({ mode }) => {
         })
       },
     },
+    // DART 캘린더 미들웨어 — 배당·실적 일정 조회
+    {
+      name: 'dart-calendar-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/dart/calendar')) return next()
+          const dartKey = req.headers['x-dart-api-key'] || env.DART_API_KEY || ''
+          if (req.url.startsWith('/api/dart/calendar/dividend')) {
+            await handleDartCalendarDividend(req, res, dartKey)
+          } else if (req.url.startsWith('/api/dart/calendar/earnings')) {
+            await handleDartCalendarEarnings(req, res, dartKey)
+          } else {
+            next()
+          }
+        })
+      },
+    },
+    // Finnhub 캘린더 미들웨어 — 미국 실적·IPO 일정 조회
+    {
+      name: 'finnhub-calendar-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/finnhub/calendar')) return next()
+          const finnhubKey = req.headers['x-finnhub-api-key'] || env.FINNHUB_API_KEY || ''
+          if (req.url.startsWith('/api/finnhub/calendar/earnings')) {
+            await handleFinnhubCalendarEarnings(req, res, finnhubKey)
+          } else if (req.url.startsWith('/api/finnhub/calendar/ipo')) {
+            await handleFinnhubCalendarIpo(req, res, finnhubKey)
+          } else {
+            next()
+          }
+        })
+      },
+    },
     // 종목 DB 업데이트 미들웨어 (/api/stock-update) — 하위호환 유지
     {
       name: 'stock-update-proxy',
@@ -106,6 +142,24 @@ export default defineConfig(({ mode }) => {
                 errors: [err.message],
                 collectedAt: new Date().toISOString(),
               }))
+            }
+          }
+        })
+      },
+    },
+    // 관리자 API 미들웨어 (/api/admin/users)
+    {
+      name: 'admin-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/admin')) return next()
+          try {
+            await handleAdminUsers(req, res, env)
+          } catch (err) {
+            console.error('[Admin] 핸들러 예외:', err.message)
+            if (!res.writableEnded) {
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: err.message }))
             }
           }
         })

@@ -10,9 +10,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import PsychologySelector from './PsychologySelector'
+import PsychologyFeedback from './PsychologyFeedback'
+import PostTradeInsight from './PostTradeInsight'
 import AccountSelector from '../account/AccountSelector'
 import { formatCurrencyShort } from '../../utils/formatters'
-import { Landmark, Wallet, History } from 'lucide-react'
+import { Landmark, Wallet, History, CheckCircle2 } from 'lucide-react'
 
 // ─── 천단위 콤마 헬퍼 ───
 
@@ -69,8 +71,8 @@ const INITIAL_FORM = {
   pnl: '',
 }
 
-export default function JournalEntryForm({ open, onClose, editEntry = null }) {
-  const { addEntry, updateEntry, entries } = useJournalStore()
+export default function JournalEntryForm({ open, onClose, editEntry = null, initialValues = null }) {
+  const { addEntry, updateEntry, entries, addToRecentSelections } = useJournalStore()
   const accounts = useUserAccounts()
   const cashFlows = useCashFlowStore(s => s.cashFlows)
   const { getAvailableCash } = useCashFlowStore()
@@ -81,6 +83,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
   const [errors, setErrors] = useState({})
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
+  const [savedEntry, setSavedEntry] = useState(null)
   const isEdit = !!editEntry
 
   // 관심종목 + 보유종목 합산 후 ticker 중복 제거
@@ -124,6 +127,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
 
   // 수정 모드: 기존 데이터 채우기
   useEffect(() => {
+    setSavedEntry(null)
     if (editEntry) {
       setForm({
         accountId: editEntry.accountId ?? '',
@@ -141,7 +145,8 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
       })
     } else {
       const defaultAccountId = accounts.length > 0 ? accounts[0].id : ''
-      setForm({ ...INITIAL_FORM, date: today(), accountId: defaultAccountId })
+      const base = { ...INITIAL_FORM, date: today(), accountId: defaultAccountId }
+      setForm(initialValues ? { ...base, ...initialValues } : base)
     }
     setErrors({})
     setSearchQuery('')
@@ -170,22 +175,29 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
     return Object.keys(e).length === 0
   }
 
+  const handleClose = () => {
+    setSavedEntry(null)
+    onClose()
+  }
+
   const doSave = (entry) => {
     if (isEdit) {
       updateEntry(editEntry.id, entry)
-    } else {
-      addEntry(entry)
-      if (entry.action === 'buy' && entry.accountId) {
-        ensureHistory(entry.ticker, entry.accountId, entry.market).then(results => {
-          if (results.length > 0) {
-            toast.success(`${entry.name} 손익 히스토리 로드 완료 (${results.length}일)`)
-          }
-        }).catch(() => {
-          toast.error(`${entry.name} 손익 히스토리 로드 실패. 포트폴리오에서 수동으로 로드해주세요.`)
-        })
-      }
+      onClose()
+      return
     }
-    onClose()
+    addEntry(entry)
+    if (entry.psychology) addToRecentSelections(entry.psychology, entry.action)
+    if (entry.action === 'buy' && entry.accountId) {
+      ensureHistory(entry.ticker, entry.accountId, entry.market).then(results => {
+        if (results.length > 0) {
+          toast.success(`${entry.name} 손익 히스토리 로드 완료 (${results.length}일)`)
+        }
+      }).catch(() => {
+        toast.error(`${entry.name} 손익 히스토리 로드 실패. 포트폴리오에서 수동으로 로드해주세요.`)
+      })
+    }
+    setSavedEntry(entry)
   }
 
   const handleSubmit = () => {
@@ -255,13 +267,31 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
   const dropdownLabel = searchQuery.length > 0 ? null : '최근 거래 종목'
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-lg flex flex-col max-h-[90dvh]">
         <DialogHeader>
           <DialogTitle>{isEdit ? '매매 기록 수정' : '새 매매 기록'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        {savedEntry ? (
+          <div className="py-6 flex flex-col items-center gap-4 overflow-y-auto px-1">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+                <CheckCircle2 size={20} className="text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-800 dark:text-gray-200">
+                  {savedEntry.name} {savedEntry.action === 'buy' ? '매수' : '매도'} 기록 완료
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  {Number(savedEntry.price).toLocaleString('ko-KR')}원 × {savedEntry.quantity}주 · {savedEntry.psychology}
+                </p>
+              </div>
+            </div>
+            <PostTradeInsight entry={savedEntry} />
+          </div>
+        ) : (
+        <div className="space-y-4 py-2 overflow-y-auto flex-1 min-h-0 pr-1">
           {/* 계좌 선택 + 선택된 계좌 카드 */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">계좌</label>
@@ -496,6 +526,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
               value={form.psychology}
               onChange={(v) => set('psychology', v)}
             />
+            <PsychologyFeedback psychology={form.psychology} action={form.action} />
             {errors.psychology && <p className="text-red-500 text-xs mt-1">{errors.psychology}</p>}
           </div>
 
@@ -538,10 +569,17 @@ export default function JournalEntryForm({ open, onClose, editEntry = null }) {
             )}
           </div>
         </div>
+        )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>취소</Button>
-          <Button onClick={handleSubmit}>{isEdit ? '수정하기' : '저장'}</Button>
+          {savedEntry ? (
+            <Button onClick={handleClose}>닫기</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={handleClose}>취소</Button>
+              <Button onClick={handleSubmit}>{isEdit ? '수정하기' : '저장'}</Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

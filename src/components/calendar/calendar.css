@@ -1,0 +1,92 @@
+/* FullCalendar 다크 모드 CSS 오버라이드 */
+
+.dark .fc {
+  --fc-border-color: #374151;
+  --fc-today-bg-color: rgba(59, 130, 246, 0.1);
+  --fc-neutral-bg-color: #1f2937;
+  --fc-page-bg-color: #111827;
+  --fc-neutral-text-color: #d1d5db;
+  --fc-small-font-size: 0.85em;
+}
+
+.dark .fc-theme-standard .fc-scrollgrid,
+.dark .fc-theme-standard td,
+.dark .fc-theme-standard th {
+  border-color: #374151;
+}
+
+.dark .fc-col-header-cell-cushion,
+.dark .fc-daygrid-day-number {
+  color: #d1d5db;
+  text-decoration: none;
+}
+
+.dark .fc-toolbar-title {
+  color: #f9fafb;
+}
+
+.dark .fc-day-today .fc-daygrid-day-number {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.dark .fc-more-link,
+.dark .fc-daygrid-more-link {
+  color: #93c5fd;
+}
+
+.dark .fc-daygrid-day.fc-day-today {
+  background-color: rgba(251, 191, 36, 0.12);
+}
+
+/* 밝은 모드 — 날짜 숫자 색상 */
+.fc-col-header-cell-cushion,
+.fc-daygrid-day-number {
+  text-decoration: none;
+  color: #374151;
+}
+
+.fc-daygrid-day-number:hover {
+  color: #1d4ed8;
+}
+
+/* 오늘 날짜 — 노란색 배경 + 진한 텍스트 */
+.fc-daygrid-day.fc-day-today {
+  background-color: rgba(253, 224, 71, 0.25) !important;
+}
+
+.fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+/* 일요일 — 빨강 */
+.fc-col-header-cell.fc-day-sun .fc-col-header-cell-cushion,
+.fc-daygrid-day.fc-day-sun .fc-daygrid-day-number {
+  color: #dc2626;
+}
+
+/* 토요일 — 파랑 */
+.fc-col-header-cell.fc-day-sat .fc-col-header-cell-cushion,
+.fc-daygrid-day.fc-day-sat .fc-daygrid-day-number {
+  color: #2563eb;
+}
+
+/* 다크 모드 — 일요일 빨강 */
+.dark .fc-col-header-cell.fc-day-sun .fc-col-header-cell-cushion,
+.dark .fc-daygrid-day.fc-day-sun .fc-daygrid-day-number {
+  color: #f87171;
+}
+
+/* 다크 모드 — 토요일 파랑 */
+.dark .fc-col-header-cell.fc-day-sat .fc-col-header-cell-cushion,
+.dark .fc-daygrid-day.fc-day-sat .fc-daygrid-day-number {
+  color: #60a5fa;
+}
+
+/* 이벤트 텍스트 줄임 */
+.fc-event-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -173,6 +173,11 @@ export const useChatStore = create(
             agentInfo,
             incomplete: !!incomplete,
             timestamp: new Date().toISOString(),
+            // 품질 피드백 필드 (7-1)
+            feedback: null,           // 'helpful' | 'unhelpful' | null
+            qualityScore: null,       // 0~100 암묵적 점수
+            followUpWithin60s: false, // 60초 이내 재질문 여부
+            negativeKeyword: false,   // 부정 키워드 포함 여부
           }
 
           const updatedSessions = sessions.map(s => {
@@ -187,6 +192,48 @@ export const useChatStore = create(
           })
 
           return { sessions: updatedSessions, lastAgentType: agentType, isLoading: false }
+        })
+      },
+
+      /**
+       * 메시지 피드백 업데이트 (7-1)
+       * @param {string} messageId
+       * @param {string} value - 'helpful' | 'unhelpful'
+       */
+      updateMessageFeedback: (messageId, value) => {
+        set((state) => {
+          const { sessions, currentSessionId } = state
+          const updatedSessions = sessions.map(s => {
+            if (s.id !== currentSessionId) return s
+            return {
+              ...s,
+              messages: s.messages.map(m =>
+                m.id === messageId ? { ...m, feedback: value } : m
+              ),
+            }
+          })
+          return { sessions: updatedSessions }
+        })
+      },
+
+      /**
+       * 이전 AI 응답에 암묵적 신호 기록 (7-3)
+       * @param {string} messageId
+       * @param {{ negativeKeyword: boolean, followUpWithin60s: boolean, qualityScore: number }} signals
+       */
+      updateMessageSignals: (messageId, signals) => {
+        set((state) => {
+          const { sessions, currentSessionId } = state
+          const updatedSessions = sessions.map(s => {
+            if (s.id !== currentSessionId) return s
+            return {
+              ...s,
+              messages: s.messages.map(m =>
+                m.id === messageId ? { ...m, ...signals } : m
+              ),
+            }
+          })
+          return { sessions: updatedSessions }
         })
       },
 

@@ -1,13 +1,19 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Moon, Sun, Download, Upload, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react'
+import { Moon, Sun, Download, Upload, AlertCircle, CheckCircle2, Trash2, Bell, BellOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettingsStore } from '../store/settingsStore'
+import { useAuthStore } from '../store/authStore'
+import { requestPermission } from '../utils/calendarNotifier'
 import StorageInfo from '../components/common/StorageInfo'
 import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
 import AiKeyPanel from '../components/settings/AiKeyPanel'
 import DartKeyPanel from '../components/settings/DartKeyPanel'
+import FinnhubKeyPanel from '../components/settings/FinnhubKeyPanel'
+import UserRoleManager from '../components/admin/UserRoleManager'
+import { SupabaseLoginModal } from '../components/auth/SupabaseLoginModal'
+import { authService } from '../services/authService'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -15,7 +21,34 @@ import { useDailyPnlStore } from '../store/dailyPnlStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 
 export default function Settings() {
-  const { theme, toggleTheme, benchmarkIndex, setBenchmark, watchlistDefaults, setWatchlistDefaults } = useSettingsStore()
+  const {
+    theme, toggleTheme,
+    benchmarkIndex, setBenchmark,
+    watchlistDefaults, setWatchlistDefaults,
+    calendarNotification, setCalendarNotification,
+  } = useSettingsStore()
+  const { isAdmin, isSupabaseUser } = useAuthStore()
+
+  const handleSupabaseSignOut = async () => {
+    await authService.signOut().catch(() => {})
+    useAuthStore.getState().setSupabaseSession(null)
+    useAuthStore.getState().setIsAdmin(false)
+    toast.success('서버 계정 연결이 해제되었습니다.')
+  }
+
+  const notifPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+
+  const handleRequestPermission = async () => {
+    const result = await requestPermission()
+    if (result === 'granted') {
+      toast.success('알림 권한이 허용되었습니다.')
+      setCalendarNotification({ enabled: true })
+    } else if (result === 'denied') {
+      toast.error('알림 권한이 거부되었습니다. 브라우저 설정에서 직접 허용해 주세요.')
+    } else if (result === 'unsupported') {
+      toast.error('이 브라우저는 알림을 지원하지 않습니다.')
+    }
+  }
 
   const [wlDraft, setWlDraft] = useState({
     targetPct: watchlistDefaults.targetPct,
@@ -31,6 +64,7 @@ export default function Settings() {
 
   const fileInputRef = useRef(null)
 
+  const [supabaseModalOpen, setSupabaseModalOpen] = useState(false)
   const [importing, setImporting]               = useState(false)
   const [importProgress, setImportProgress]     = useState(null)
   const [confirmOpen, setConfirmOpen]           = useState(false)
@@ -146,6 +180,87 @@ export default function Settings() {
         </div>
       </section>
 
+      {/* ─── 증시 일정 알림 ─── */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">증시 일정 알림</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
+
+          {/* 알림 켜기/끄기 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white">브라우저 알림</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                캘린더 페이지 진입 시 당일 이벤트를 알림으로 안내합니다.
+              </p>
+            </div>
+            {notifPermission !== 'granted' ? (
+              <button
+                onClick={handleRequestPermission}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
+              >
+                <Bell className="w-4 h-4" />
+                권한 요청
+              </button>
+            ) : (
+              <button
+                onClick={() => setCalendarNotification({ enabled: !calendarNotification.enabled })}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  calendarNotification.enabled
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'
+                }`}
+              >
+                {calendarNotification.enabled
+                  ? <><Bell className="w-4 h-4" /> 알림 켜짐</>
+                  : <><BellOff className="w-4 h-4" /> 알림 꺼짐</>
+                }
+              </button>
+            )}
+          </div>
+
+          {/* 알림 시점 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">알림 시점</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">이벤트 대비 언제 알림을 받을지 선택합니다.</p>
+            </div>
+            <select
+              value={calendarNotification.timing}
+              onChange={(e) => setCalendarNotification({ timing: e.target.value })}
+              disabled={!calendarNotification.enabled}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
+            >
+              <option value="on_day">당일 (오전 9시)</option>
+              <option value="day_before">하루 전 (오전 9시)</option>
+              <option value="week_before">일주일 전 (오전 9시)</option>
+            </select>
+          </div>
+
+          {/* 임팩트 필터 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">중요도 필터</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">선택한 중요도 이상의 이벤트만 알림 전송합니다.</p>
+            </div>
+            <select
+              value={calendarNotification.impactFilter}
+              onChange={(e) => setCalendarNotification({ impactFilter: e.target.value })}
+              disabled={!calendarNotification.enabled}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
+            >
+              <option value="all">전체</option>
+              <option value="high">높음만</option>
+              <option value="medium">중간 이상</option>
+              <option value="low">낮음 이상</option>
+            </select>
+          </div>
+
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            ※ 알림은 증시 일정 페이지를 열었을 때 스케줄링됩니다. 브라우저가 닫혀 있으면 발송되지 않습니다.
+          </p>
+        </div>
+      </section>
+
       {/* ─── 관심종목 기본값 ─── */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">관심종목 기본값</h2>
@@ -218,11 +333,49 @@ export default function Settings() {
         </div>
       </section>
 
+      {/* ─── 서버 계정 연결 (Supabase) ─── */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">서버 계정</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
+          {isSupabaseUser ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">연결됨</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">서버 동기화 및 관리자 기능을 사용할 수 있습니다.</p>
+                </div>
+              </div>
+              <button
+                onClick={handleSupabaseSignOut}
+                className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+              >
+                연결 해제
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">서버 계정 연결</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">종목 DB 서버 동기화 및 관리자 기능을 사용하려면 연결하세요.</p>
+              </div>
+              <button
+                onClick={() => setSupabaseModalOpen(true)}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
+              >
+                로그인
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* ─── AI 설정 ─── */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 설정</h2>
         <AiKeyPanel />
         <DartKeyPanel />
+        <FinnhubKeyPanel />
       </section>
 
       {/* ─── 종목 DB 관리 ─── */}
@@ -230,6 +383,14 @@ export default function Settings() {
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">종목 DB 관리</h2>
         <StockMasterPanel />
       </section>
+
+      {/* ─── 관리자 ─── */}
+      {isAdmin && isSupabaseUser && (
+        <section className="space-y-4">
+          <h2 className="text-base font-semibold text-orange-600 dark:text-orange-400">관리자</h2>
+          <UserRoleManager />
+        </section>
+      )}
 
       {/* ─── 데이터 관리 ─── */}
       <section className="space-y-4">
@@ -345,6 +506,11 @@ export default function Settings() {
           <div className="flex justify-between"><span>저장 방식</span><span className="text-gray-900 dark:text-white font-medium">로컬 전용 (IndexedDB + LocalStorage)</span></div>
         </div>
       </section>
+
+      {/* ─── Supabase 로그인 모달 ─── */}
+      {supabaseModalOpen && (
+        <SupabaseLoginModal onClose={() => setSupabaseModalOpen(false)} />
+      )}
 
       {/* ─── 백업 복원 확인 다이얼로그 ─── */}
       {confirmOpen && (

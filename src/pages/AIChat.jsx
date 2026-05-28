@@ -1,5 +1,6 @@
 // AI 분석 채팅 전용 페이지 — 세션 관리 포함
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Send, Trash2, Bot, Loader2, WifiOff,
   Plus, MessageSquare, ChevronLeft, ChevronRight,
@@ -10,14 +11,18 @@ import { useWatchlistStore } from '../store/watchlistStore'
 import { useJournalStore } from '../store/journalStore'
 import { useAuthStore } from '../store/authStore'
 import { useChatStore } from '../store/chatStore'
-import { sendToAgent, summarizeAndCompressHistory } from '../api/claudeApi'
+import { sendToAgent, summarizeAndCompressHistory, continuePreviousResponse, runAgentPipeline } from '../api/claudeApi'
+import { recordImplicitFeedback, generateQualityReport } from '../utils/feedbackDetector'
 import { useApiKeyGuard } from '../hooks/useApiKeyGuard'
 import ApiKeyRequiredDialog from '../components/common/ApiKeyRequiredDialog'
 import { buildJournalCoachPrompt, buildJournalContext } from '../agents/journalCoachAgent'
+import { detectCompoundIntent } from '../agents/orchestrator'
 import MessageBubble from '../components/chat/MessageBubble'
 import QuickPromptButtons from '../components/chat/QuickPromptButtons'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
+
+const CONTINUATION_RE = /이어서|계속|더\s*설명|계속해|이어서\s*설명|이어서\s*알려|더\s*알려|다음\s*내용|계속해서/
 
 /** 사용자 메시지에서 리포트 기간 감지 */
 function detectPeriod(text) {
@@ -44,7 +49,20 @@ export default function AIChat() {
   const [input, setInput] = useState('')
   const [localLoading, setLocalLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [pipelineStep, setPipelineStep] = useState(null)
+  const location = useLocation()
   const { isOnline } = useOnlineStatus()
+
+  // 증시 일정 AI분석으로 진입 시 생성된 질문을 input에 자동 세팅
+  useEffect(() => {
+    const prefill = location.state?.prefill
+    if (prefill) {
+      setInput(prefill)
+      // state 소비 후 히스토리 교체 (뒤로가기 시 재세팅 방지)
+      window.history.replaceState({}, '')
+      inputRef.current?.focus()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const { ensureKey, guardProps } = useApiKeyGuard()
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -56,6 +74,7 @@ export default function AIChat() {
     createSession, switchSession, deleteCurrentSession,
     addUserMessage, addAIMessage, setLoading, setError, clearHistory,
     saveCurrentSession, loadSessionsFromDB,
+    updateMessageFeedback, updateMessageSignals,
     error,
   } = useChatStore()
 
@@ -120,6 +139,14 @@ export default function AIChat() {
     const ok = await ensureKey()
     if (!ok) return
 
+    // 7-3: 이전 AI 응답에 암묵적 신호 기록
+    const prevAI = [...messages].reverse().find(m => m.role === 'assistant')
+    if (prevAI?.id && prevAI?.timestamp) {
+      const timeDelta = Date.now() - new Date(prevAI.timestamp).getTime()
+      const signals = recordImplicitFeedback(msg, timeDelta)
+      updateMessageSignals(prevAI.id, signals)
+    }
+
     addUserMessage(msg)
     setInput('')
     setLocalLoading(true)
@@ -135,24 +162,36 @@ export default function AIChat() {
         messagesToSend = await summarizeAndCompressHistory(messagesToSend, systemPrompt)
       }
 
-      // AIChat 페이지 전용 라우팅 보강: holdings가 있고 뉴스/등락 관련 키워드 포함 시 analysis 강제
-      // (오타·표현 다양성에 대비 — orchestrator routeToAgent의 compound 조건 보강)
-      const lowered = msg.toLowerCase()
-      const mentionsPortfolio =
-        lowered.includes('포트폴리오') || lowered.includes('포트포리오') ||
-        lowered.includes('내 종목') || lowered.includes('보유') ||
-        lowered.includes('내 주식') || lowered.includes('내 자산')
-      const mentionsMarketEvent =
-        lowered.includes('뉴스') || lowered.includes('시장') ||
-        lowered.includes('등락') || lowered.includes('급등') || lowered.includes('급락') ||
-        lowered.includes('하락') || lowered.includes('상승')
-      const forceAgent = (mentionsPortfolio && mentionsMarketEvent && context.holdings?.length > 0)
-        ? 'analysis'
-        : null
-      // 2-4: 사용자 메시지에서 리포트 기간 감지 후 context에 주입
-      const period = detectPeriod(msg)
-      const enrichedContext = period ? { ...context, period } : context
-      const result = await sendToAgent(msg, enrichedContext, forceAgent)
+      // 연속 발화 감지: "이어서", "계속" 등 → 직전 응답 이어서 생성
+      const lastAI = [...messages].reverse().find(m => m.role === 'assistant')
+      const isContinuation = CONTINUATION_RE.test(msg) && !!lastAI?.agentType
+
+      let result
+      if (isContinuation) {
+        const lastUser = [...messages].reverse().find(
+          m => m.role === 'user' && !CONTINUATION_RE.test(m.content)
+        )
+        result = await continuePreviousResponse(
+          lastUser?.content || msg,
+          lastAI.content,
+          lastAI.agentType,
+        )
+      } else {
+        // 2-4: 사용자 메시지에서 리포트 기간 감지 후 context에 주입
+        const period = detectPeriod(msg)
+        const enrichedContext = period ? { ...context, period } : context
+        const compoundAgents = detectCompoundIntent(msg)
+        if (compoundAgents) {
+          result = await runAgentPipeline(
+            compoundAgents,
+            msg,
+            enrichedContext,
+            (current, total) => setPipelineStep({ current, total }),
+          )
+        } else {
+          result = await sendToAgent(msg, enrichedContext)
+        }
+      }
       addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
 
       // IndexedDB에 세션 저장
@@ -163,6 +202,7 @@ export default function AIChat() {
       setError(err.message || '알 수 없는 오류가 발생했습니다.')
     } finally {
       setLocalLoading(false)
+      setPipelineStep(null)
     }
   }
 
@@ -173,7 +213,14 @@ export default function AIChat() {
     }
   }
 
+  // 7-3: 피드백 버튼 클릭 핸들러
+  function handleFeedback(messageId, value) {
+    updateMessageFeedback(messageId, value)
+  }
+
   function handleNewSession() {
+    // 7-6: 세션 전환 시 품질 리포트 출력 (개발 모드)
+    generateQualityReport(messages)
     createSession('journal')
   }
 
@@ -238,7 +285,9 @@ export default function AIChat() {
         {/* 로딩 배너 */}
         {isLoading && (
           <div className="bg-blue-600 text-white text-center py-3 text-sm font-bold animate-pulse shrink-0">
-            🔄 AI가 분석 중입니다... 잠시만 기다려 주세요
+            {pipelineStep
+              ? `🔗 ${pipelineStep.current}/${pipelineStep.total}단계 분석 중...`
+              : '🔄 AI가 분석 중입니다... 잠시만 기다려 주세요'}
           </div>
         )}
 
@@ -314,7 +363,7 @@ export default function AIChat() {
           ) : (
             <div className="mx-auto max-w-3xl space-y-4">
               {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
+                <MessageBubble key={msg.id} message={msg} onFeedback={handleFeedback} />
               ))}
               {isLoading && (
                 <MessageBubble message={{ role: 'assistant', content: '' }} loading />

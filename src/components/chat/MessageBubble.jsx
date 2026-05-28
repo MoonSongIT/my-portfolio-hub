@@ -2,7 +2,9 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import AgentBadge from './AgentBadge'
+import FeedbackButtons from './FeedbackButtons'
 import { extractStructuredData, stripJsonBlock } from '../../utils/responseParser'
+import { detectHallucination } from '../../utils/hallucinationGuard'
 
 /**
  * 3점 점멸 로딩 애니메이션
@@ -81,6 +83,9 @@ const markdownComponents = {
   strong: ({ children }) => (
     <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
   ),
+  hr: () => (
+    <hr className="my-4 border-t-2 border-gray-300 dark:border-gray-600" />
+  ),
 }
 
 /**
@@ -103,7 +108,7 @@ const ATTRACTIVENESS_STYLE = {
   '하': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 }
 
-export default function MessageBubble({ message, loading = false }) {
+export default function MessageBubble({ message, loading = false, onFeedback }) {
   const isUser = message.role === 'user'
 
   // 로딩 상태 (AI 응답 대기 중)
@@ -129,7 +134,7 @@ export default function MessageBubble({ message, loading = false }) {
         {/* AI 메시지: 에이전트 배지 표시 */}
         {!isUser && message.agentType && (
           <div className="mb-2">
-            <AgentBadge agentType={message.agentType} />
+            <AgentBadge agentType={message.agentType} agentInfo={message.agentInfo} />
           </div>
         )}
 
@@ -181,6 +186,26 @@ export default function MessageBubble({ message, loading = false }) {
             <span>⚠️</span>
             <span>응답이 길어 중간에 잘렸습니다. &quot;이어서 설명해줘&quot;라고 입력하면 계속 받을 수 있습니다.</span>
           </div>
+        )}
+
+        {/* 7-8: 환각 의심 경고 배지 */}
+        {!isUser && (() => {
+          const warnings = detectHallucination(message.content, message.agentType)
+          return warnings ? (
+            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-orange-300 bg-orange-50 px-2.5 py-1.5 text-xs text-orange-700 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-300">
+              <span className="shrink-0">🔍</span>
+              <span>AI가 구체적 수치·날짜를 제시했습니다. 실제 공시·뉴스로 교차 확인 후 참고하세요. ({warnings.join(', ')})</span>
+            </div>
+          ) : null
+        })()}
+
+        {/* 7-5: 피드백 버튼 */}
+        {!isUser && onFeedback && (
+          <FeedbackButtons
+            messageId={message.id}
+            feedback={message.feedback ?? null}
+            onFeedback={onFeedback}
+          />
         )}
 
         {/* 타임스탬프 */}

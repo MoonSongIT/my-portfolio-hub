@@ -4,6 +4,7 @@ import { isValidFormat } from '../utils/apiKeyValidator.js'
 
 const PROVIDER = 'anthropic'
 const DART_PROVIDER = 'dart'
+const FINNHUB_PROVIDER = 'finnhub'
 
 const useAiCredentialStore = create((set, get) => ({
   // ── Anthropic ──
@@ -17,13 +18,18 @@ const useAiCredentialStore = create((set, get) => ({
   dartApiKey: null,
   dartSavedAt: null,
 
-  // 앱 시작 시 IDB → 메모리 로드 (Anthropic + DART)
+  // ── Finnhub ──
+  finnhubApiKey: null,
+  finnhubSavedAt: null,
+
+  // 앱 시작 시 IDB → 메모리 로드 (Anthropic + DART + Finnhub)
   hydrate: async () => {
     if (get().isHydrated) return
     try {
-      const [credential, dartCredential] = await Promise.all([
+      const [credential, dartCredential, finnhubCredential] = await Promise.all([
         getAiCredential(PROVIDER),
         getAiCredential(DART_PROVIDER),
+        getAiCredential(FINNHUB_PROVIDER),
       ])
       set({
         apiKey: credential?.apiKey || null,
@@ -31,6 +37,8 @@ const useAiCredentialStore = create((set, get) => ({
         validatedAt: credential?.validatedAt || null,
         dartApiKey: dartCredential?.apiKey || null,
         dartSavedAt: dartCredential?.updatedAt || null,
+        finnhubApiKey: finnhubCredential?.apiKey || null,
+        finnhubSavedAt: finnhubCredential?.updatedAt || null,
         isHydrated: true,
       })
     } catch {
@@ -103,6 +111,28 @@ const useAiCredentialStore = create((set, get) => ({
 
   hasDartKey: () => {
     const key = get().dartApiKey
+    return key !== null && key !== ''
+  },
+
+  // ── Finnhub 키 저장/삭제 ──
+  setFinnhubKey: async (key) => {
+    const now = new Date().toISOString()
+    set({ finnhubApiKey: key, finnhubSavedAt: now })
+    await saveAiCredential({
+      provider: FINNHUB_PROVIDER,
+      apiKey: key,
+      isValid: null,
+      validatedAt: null,
+    })
+  },
+
+  clearFinnhubKey: async () => {
+    await deleteAiCredential(FINNHUB_PROVIDER)
+    set({ finnhubApiKey: null, finnhubSavedAt: null })
+  },
+
+  hasFinnhubKey: () => {
+    const key = get().finnhubApiKey
     return key !== null && key !== ''
   },
 }))

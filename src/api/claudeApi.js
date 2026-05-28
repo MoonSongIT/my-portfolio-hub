@@ -62,12 +62,12 @@ const AGENT_PROMPTS = {
  * - portfolio / alert: 짧은 요약 → 2048
  */
 const AGENT_MAX_TOKENS = {
-  analysis: 2048,
-  journal: 4096,
-  report: 4096,
-  research: 4096,
-  portfolio: 2048,
-  alert: 2048,
+  analysis: 1024,
+  journal: 2048,
+  report: 2048,
+  research: 2048,
+  portfolio: 1024,
+  alert: 1024,
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -208,7 +208,7 @@ export async function callClaudeWithRetry(payload, maxAttempts = 3) {
  */
 export async function sendToAgent(userMessage, context = {}, forceAgent = null) {
   // 에이전트 라우팅
-  const agentType = forceAgent || routeToAgent(userMessage)
+  const agentType = forceAgent || await routeToAgent(userMessage, context)
   const agentInfo = AGENT_LABELS[agentType] || AGENT_LABELS.portfolio
   const maxTokens = AGENT_MAX_TOKENS[agentType] || 2048
 
@@ -276,6 +276,10 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           ? buildCompressedJournalContext(entries, context.accounts || [])
           : buildJournalContext(entries, context.accounts || [])
         systemPrompt = buildJournalCoachPrompt(journalContext)
+        // 파이프라인 2단계: 선행 분석 결과 주입
+        if (context.previousAnalysis) {
+          contextText = `[선행 분석 결과]\n${context.previousAnalysis.slice(0, 1000)}\n위 분석을 참조하여 매매 패턴 관점에서 추가 의견을 제시하세요.`
+        }
         break
       }
       case 'research': {
@@ -317,10 +321,18 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
             }
           }
         }
+        // 파이프라인 2단계: 선행 분석 결과 주입
+        if (context.previousAnalysis && contextText) {
+          contextText += `\n\n[선행 분석 결과]\n${context.previousAnalysis.slice(0, 1000)}\n위 분석을 참조하여 종목 리서치 관점에서 추가 의견을 제시하세요.`
+        }
         break
       }
       case 'portfolio':
-        contextText = buildPortfolioContext(context.holdings || [], context.exchangeRate || null)
+        contextText = buildPortfolioContext(
+          context.holdings || [],
+          context.exchangeRate || null,
+          context.previousAnalysis || null,
+        )
         break
       case 'alert': {
         // 2-1: alert 요청 시에만 watchlist 종목 실시간 시세 병렬 fetch → quotesMap 구성
@@ -388,6 +400,46 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
 }
 
 /**
+ * 에이전트 파이프라인 결과 합성 — 단계별 응답을 하나의 텍스트로 결합
+ */
+function synthesizeResults(results) {
+  if (results.length === 1) return results[0].text
+  return results.map((r, i) => `### ${i + 1}단계 분석\n${r.text}`).join('\n\n---\n\n')
+}
+
+/**
+ * 복합 의도용 순차 에이전트 파이프라인 실행
+ * @param {string[]} agentTypes - 순서대로 실행할 에이전트 타입 배열
+ * @param {string} message - 사용자 메시지
+ * @param {object} context - 컨텍스트 데이터
+ * @param {function} [onStep] - 단계 진행 콜백 (current, total) => void
+ * @returns {Promise<{text: string, agentType: string, agentInfo: object}>}
+ */
+export async function runAgentPipeline(agentTypes, message, context, onStep) {
+  let cumulativeContext = { ...context }
+  const results = []
+
+  for (let i = 0; i < agentTypes.length; i++) {
+    if (onStep) onStep(i + 1, agentTypes.length)
+    const result = await sendToAgent(message, cumulativeContext, agentTypes[i])
+    results.push({ agentType: agentTypes[i], text: result.text, incomplete: result.incomplete })
+    // 앞 에이전트 결과를 다음 에이전트 컨텍스트에 주입 (1,000자 이내)
+    cumulativeContext = {
+      ...cumulativeContext,
+      previousAnalysis: result.text.slice(0, 1000),
+      previousAgent: agentTypes[i],
+    }
+  }
+
+  return {
+    text: synthesizeResults(results),
+    agentType: agentTypes.join('+'),
+    agentInfo: { label: '복합 분석', icon: '🔗', color: 'violet' },
+    incomplete: results.some(r => r.incomplete),
+  }
+}
+
+/**
  * 대화 히스토리 포함 멀티턴 메시지 전송
  * @param {Array<{role: string, content: string}>} messages - 대화 히스토리
  * @param {string} systemPrompt - 시스템 프롬프트
@@ -395,7 +447,7 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
  * @returns {Promise<{text: string}>}
  */
 export async function sendWithHistory(messages, systemPrompt, agentType = 'journal') {
-  const maxTokens = AGENT_MAX_TOKENS[agentType] || 4096
+  const maxTokens = AGENT_MAX_TOKENS[agentType] || 2048
   // system 역할 메시지는 별도 system 파라미터로 전달되므로 messages에서 제거 (중복 방지)
   const filteredMessages = messages.filter(m => m.role !== 'system')
   try {
@@ -405,6 +457,32 @@ export async function sendWithHistory(messages, systemPrompt, agentType = 'journ
     return { text, incomplete }
   } catch (error) {
     return { text: getErrorMessage(error) }
+  }
+}
+
+/**
+ * 직전 응답이 max_tokens로 잘렸을 때 이어서 생성
+ * @param {string} lastUserMsg - 직전 사용자 메시지
+ * @param {string} lastAIMsg - 직전 AI 응답 (잘린 내용)
+ * @param {string} agentType - 에이전트 타입
+ * @returns {Promise<{text: string, agentType: string, agentInfo: object, incomplete: boolean}>}
+ */
+export async function continuePreviousResponse(lastUserMsg, lastAIMsg, agentType) {
+  const systemPrompt = AGENT_PROMPTS[agentType] || AGENT_PROMPTS.portfolio
+  const maxTokens = AGENT_MAX_TOKENS[agentType] || 2048
+  const agentInfo = AGENT_LABELS[agentType] || AGENT_LABELS.portfolio
+  const continueMessages = [
+    { role: 'user', content: lastUserMsg },
+    { role: 'assistant', content: lastAIMsg },
+    { role: 'user', content: '직전 답변이 길이 제한으로 잘렸습니다. 멈춘 지점부터 자연스럽게 이어서 계속 작성해 주세요. 중복 없이.' },
+  ]
+  try {
+    const response = await callClaudeWithRetry({ systemPrompt, messages: continueMessages, maxTokens })
+    const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
+    const incomplete = response.data?.stop_reason === 'max_tokens'
+    return { text, agentType, agentInfo, incomplete }
+  } catch (error) {
+    return { text: getErrorMessage(error), agentType, agentInfo }
   }
 }
 
@@ -450,5 +528,87 @@ ${toSummarize.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}
   }
 }
 
+
+// ── 증시 이벤트 → AI 채팅 분석 질문 생성 (Haiku) ──────────────────────
+const CATEGORY_KO = {
+  earnings: '실적', dividend: '배당', ipo: 'IPO',
+  economic: '경제지표', holiday: '휴장일', other: '기타',
+}
+
+const ANALYSIS_QUESTION_SYSTEM = `당신은 주식 투자 분석 전문가입니다.
+증시 이벤트 정보를 받아 투자자가 AI 코치에게 물어볼 핵심 분석 질문 하나를 한국어로 생성하세요.
+질문은 구체적이고 투자 의사결정에 도움이 되는 방향으로 작성하세요.
+질문 텍스트만 반환하고, 번호·부가 설명·인용 부호 없이 한 문장으로 끝내세요.`
+
+/**
+ * 증시 이벤트 기반 Haiku 분석 질문 생성
+ * @param {{ ticker?: string, name?: string, category?: string, date?: string, memo?: string, market?: string }} event
+ * @returns {Promise<string>} 생성된 분석 질문
+ */
+export async function generateAnalysisQuestion(event) {
+  const categoryLabel = CATEGORY_KO[event.category] ?? event.category ?? '이벤트'
+  const stockLabel = event.name
+    ? `${event.name}(${event.ticker})`
+    : event.ticker ?? '종목'
+  const parts = [
+    `종목: ${stockLabel}`,
+    `이벤트 유형: ${categoryLabel}`,
+    `날짜: ${event.date ?? ''}`,
+  ]
+  if (event.memo) parts.push(`메모: ${event.memo}`)
+  if (event.market) parts.push(`시장: ${event.market}`)
+
+  const { apiKey } = useAiCredentialStore.getState()
+  const headers = { 'Content-Type': 'application/json' }
+  if (apiKey) headers['X-User-Api-Key'] = apiKey
+
+  const res = await fetch(`${API_BASE}/claude`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      maxTokens: 256,
+      systemPrompt: ANALYSIS_QUESTION_SYSTEM,
+      messages: [{ role: 'user', content: parts.join('\n') }],
+    }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (!res.ok) throw new Error('질문 생성 실패')
+  const data = await res.json()
+  return data.content?.[0]?.text?.trim() ?? ''
+}
+
+/**
+ * 거래 직후 AI 심리 코칭 피드백 생성 (Haiku, 1회 시도)
+ * @param {{ name: string, ticker: string, action: string, psychology: string, pnl?: number }} entry
+ * @param {{ count: number, lossCount: number, lossRate: number, avgPnl: number }} history
+ * @returns {Promise<string>} 피드백 텍스트
+ */
+export async function generatePostTradeCoaching(entry, history) {
+  const actionLabel = entry.action === 'buy' ? '매수' : '매도'
+  const pnlLine = entry.pnl != null
+    ? `실현 손익: ${Number(entry.pnl).toLocaleString('ko-KR')}원\n`
+    : ''
+  const historyLine = history.count > 0
+    ? `과거 "${entry.psychology}" ${actionLabel} 이력: 총 ${history.count}건, 손실 ${history.lossCount}건 (손실률 ${history.lossRate}%), 평균 손익 ${(history.avgPnl ?? 0).toLocaleString('ko-KR')}원`
+    : `"${entry.psychology}" 심리로 ${actionLabel}한 것은 처음입니다.`
+
+  const prompt = `방금 기록한 거래입니다.
+종목: ${entry.name}(${entry.ticker})
+구분: ${actionLabel}
+심리: ${entry.psychology}
+${pnlLine}${historyLine}
+
+이 심리적 패턴에 대한 코칭 한 마디를 100자 이내로 작성하세요. 투자 권유 금지. 데이터 기반으로만 분석하세요.`
+
+  const { data } = await callClaudeWithRetry({
+    model: 'claude-haiku-4-5-20251001',
+    systemPrompt: '투자 심리 코치입니다. 짧고 실용적인 피드백을 제공합니다. 매수·매도 직접 권유 금지.',
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 200,
+  }, 1)
+
+  return data.content?.[0]?.text?.trim() ?? ''
+}
 
 export default claudeApi

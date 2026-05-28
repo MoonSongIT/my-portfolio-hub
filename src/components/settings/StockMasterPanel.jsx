@@ -3,19 +3,26 @@
  *
  * 국내/해외 exchange 카드 + 액션 버튼 + 진행바 + 커스텀 종목 폼
  */
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Database, RefreshCw, Zap, Trash2,
   AlertCircle, ChevronDown, ChevronUp,
+  Server, Upload, Download, Globe,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStockMasterStore } from '@/store/stockMasterStore'
+import { useAuthStore } from '@/store/authStore'
 import {
   syncAll, syncCategory, syncIncremental,
   EXCHANGES, EXCHANGE_LABELS,
 } from '@/api/stockMasterApi'
 import { stockMasterDb } from '@/utils/stockMasterDb'
 import { fetchNaverSector } from '@/api/naverApi'
+import {
+  fetchServerMeta,
+  downloadAllFromServer,
+  uploadAllToServer,
+} from '@/utils/stockMasterServerApi'
 import CustomStockForm from './CustomStockForm'
 
 // ── KRX sector 보강 헬퍼 ──────────────────────────────────────────────────
@@ -119,8 +126,10 @@ function ProgressBar({ progress }) {
     ? 'KRX 업종 정보'
     : (EXCHANGE_LABELS[exchange] || exchange)
   const phaseLabel =
-    phase === 'fetch'  ? '서버 수집 중' :
-    phase === 'sector' ? '업종 조회 중' :
+    phase === 'fetch'    ? '서버 수집 중' :
+    phase === 'sector'   ? '업종 조회 중' :
+    phase === 'download' ? '서버 다운로드 중' :
+    phase === 'upload'   ? '서버 업로드 중' :
     'DB 동기화 중'
 
   return (
@@ -163,15 +172,26 @@ export default function StockMasterPanel() {
   const {
     counts, lastSync, lastStats, progress,
     setProgress, setSyncResult, refreshCounts, reset,
+    preferredSource, setPreferredSource,
   } = useStockMasterStore()
+  const { isAdmin, isSupabaseUser } = useAuthStore()
 
   const [confirmClear, setConfirmClear] = useState(false)
   const [showDomestic, setShowDomestic] = useState(true)
   const [showOverseas,  setShowOverseas]  = useState(true)
+  const [serverMeta, setServerMeta] = useState(null)
   const abortRef = useRef(null)
 
   const isSyncing = progress !== null
   const totalCount = Object.values(counts).reduce((s, n) => s + n, 0)
+
+  // 서버 선택 시 메타 정보 자동 조회
+  useEffect(() => {
+    if (preferredSource !== 'server') return
+    fetchServerMeta()
+      .then(setServerMeta)
+      .catch(err => console.warn('[StockMasterPanel] 서버 메타 조회 실패:', err.message))
+  }, [preferredSource])
 
   // ── 공통 onProgress 콜백 ─────────────────────────────────────────────
   const makeOnProgress = () => (info) => setProgress(info)
@@ -328,6 +348,52 @@ export default function StockMasterPanel() {
     abortRef.current?.abort()
   }
 
+  // ── 서버에서 다운로드 ─────────────────────────────────────────────────
+  const handleDownloadFromServer = async () => {
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      const results = await downloadAllFromServer({
+        onProgress: (phase, exchange, done, total) =>
+          setProgress({ exchange, phase, current: done, total }),
+        signal: controller.signal,
+      })
+      const totals = Object.values(results).reduce(
+        (acc, r) => ({ added: acc.added + r.added, changed: acc.changed + r.changed, removed: acc.removed + r.removed }),
+        { added: 0, changed: 0, removed: 0 }
+      )
+      await handleDone(totals, '서버 다운로드')
+    } catch (err) {
+      if (err.name !== 'AbortError') toast.error(`다운로드 실패: ${err.message}`)
+    } finally {
+      setProgress(null)
+      abortRef.current = null
+    }
+  }
+
+  // ── 서버로 업로드 (관리자 전용) ────────────────────────────────────────
+  const handleUploadToServer = async () => {
+    if (!isAdmin) return
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      const { upserted } = await uploadAllToServer({
+        onProgress: (phase, exchange, done, total) =>
+          setProgress({ exchange, phase, current: done, total }),
+        signal: controller.signal,
+      })
+      setProgress(null)
+      const meta = await fetchServerMeta()
+      setServerMeta(meta)
+      toast.success(`서버 업로드 완료 — ${upserted.toLocaleString()}행 upserted`)
+    } catch (err) {
+      if (err.name !== 'AbortError') toast.error(`업로드 실패: ${err.message}`)
+    } finally {
+      setProgress(null)
+      abortRef.current = null
+    }
+  }
+
   return (
     <div className="space-y-4">
 
@@ -361,50 +427,56 @@ export default function StockMasterPanel() {
         {/* 진행바 */}
         <ProgressBar progress={progress} />
 
-        {/* 액션 버튼 */}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={handleSyncAll}
-            disabled={isSyncing}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            전체 업데이트
-          </button>
-          <button
-            onClick={handleIncremental}
-            disabled={isSyncing}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium transition"
-          >
-            <Zap className="w-3.5 h-3.5" />
-            증분 동기화
-          </button>
-          <button
-            onClick={handleSyncDomestic}
-            disabled={isSyncing}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 text-sm font-medium transition"
-          >
-            국내 업데이트
-          </button>
-          <button
-            onClick={handleSyncOverseas}
-            disabled={isSyncing}
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 text-sm font-medium transition"
-          >
-            해외 업데이트
-          </button>
-        </div>
+        {/* 액션 버튼 — origin 출처 선택 시만 표시 */}
+        {preferredSource === 'origin' && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleSyncAll}
+                disabled={isSyncing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                전체 업데이트
+              </button>
+              <button
+                onClick={handleIncremental}
+                disabled={isSyncing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium transition"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                증분 동기화
+              </button>
+              <button
+                onClick={handleSyncDomestic}
+                disabled={isSyncing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 text-sm font-medium transition"
+              >
+                국내 업데이트
+              </button>
+              <button
+                onClick={handleSyncOverseas}
+                disabled={isSyncing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 text-sm font-medium transition"
+              >
+                해외 업데이트
+              </button>
+            </div>
 
-        {/* 실행 중 취소 + 초기화 */}
+            {/* 실행 중 취소 */}
+            {isSyncing && (
+              <button
+                onClick={handleCancel}
+                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline"
+              >
+                취소
+              </button>
+            )}
+          </>
+        )}
+
+        {/* 초기화 — 항상 표시 */}
         <div className="flex items-center gap-2">
-          {isSyncing && (
-            <button
-              onClick={handleCancel}
-              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline"
-            >
-              취소
-            </button>
-          )}
           {totalCount > 0 && !isSyncing && (
             <button
               onClick={() => setConfirmClear(true)}
@@ -417,13 +489,106 @@ export default function StockMasterPanel() {
           )}
         </div>
 
-        <p className="text-xs text-amber-600 dark:text-amber-400">
-          ※ 개발 서버 실행 중에만 업데이트 가능합니다 (API 프록시 경유).
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          ※ 종목 수집 후 KRX 업종(sector) 정보를 자동 보강합니다 — 최초 1회 약 30~50분 소요(이후 증분만 처리).
+        {preferredSource === 'origin' && (
+          <>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              ※ 개발 서버 실행 중에만 업데이트 가능합니다 (API 프록시 경유).
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              ※ 종목 수집 후 KRX 업종(sector) 정보를 자동 보강합니다 — 최초 1회 약 30~50분 소요(이후 증분만 처리).
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* ── 데이터 출처 선택 ── */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-3">
+        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">데이터 출처</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setPreferredSource('origin')}
+            className={[
+              'flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition',
+              preferredSource === 'origin'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700',
+            ].join(' ')}
+          >
+            <Globe className="w-4 h-4 flex-shrink-0" />
+            <span>원본 직접 수집</span>
+          </button>
+          <button
+            onClick={() => setPreferredSource('server')}
+            className={[
+              'flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition',
+              preferredSource === 'server'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700',
+            ].join(' ')}
+          >
+            <Server className="w-4 h-4 flex-shrink-0" />
+            <span>서버에서 받기</span>
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          {preferredSource === 'origin'
+            ? 'DART · KRX · NASDAQ 에서 직접 수집합니다. 개발 서버 프록시 필요.'
+            : '관리자가 미리 올린 서버 데이터를 받아옵니다. 로그인 불필요.'}
         </p>
       </div>
+
+      {/* ── 서버 다운로드 섹션 ── */}
+      {preferredSource === 'server' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Server className="w-4 h-4 text-blue-500" />
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">서버 종목 데이터</p>
+            </div>
+            {serverMeta && serverMeta.total != null && (
+              <span className="text-xs text-gray-400">
+                총 {serverMeta.total.toLocaleString()}개
+                {serverMeta.uploadedAt && ` · ${new Date(serverMeta.uploadedAt).toLocaleDateString('ko-KR')} 업데이트`}
+              </span>
+            )}
+          </div>
+
+          <ProgressBar progress={progress} />
+
+          <button
+            onClick={handleDownloadFromServer}
+            disabled={isSyncing}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition"
+          >
+            <Download className={`w-3.5 h-3.5 ${isSyncing ? 'animate-bounce' : ''}`} />
+            서버에서 다운로드
+          </button>
+
+          {isSyncing && (
+            <button onClick={handleCancel} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline">
+              취소
+            </button>
+          )}
+
+          {/* 관리자 전용 업로드 */}
+          {isAdmin && isSupabaseUser && (
+            <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                <span className="px-1.5 py-0.5 rounded text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">관리자</span>
+                로컬 IDB의 종목 데이터를 서버에 업로드합니다.
+              </p>
+              <button
+                onClick={handleUploadToServer}
+                disabled={isSyncing || totalCount === 0}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-sm font-medium transition"
+              >
+                <Upload className={`w-3.5 h-3.5 ${isSyncing ? 'animate-pulse' : ''}`} />
+                서버에 업로드 ({totalCount.toLocaleString()}개)
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── 국내 거래소 ── */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">

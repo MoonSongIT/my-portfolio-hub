@@ -4,12 +4,15 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { migrateFromLegacy } from './utils/stockMasterMigrate'
+import { migrateLocalUserData } from './utils/migrateLocalUser'
+import { checkIsAdmin } from './utils/stockMasterServerApi'
 import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
 import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
 import useAiCredentialStore from './store/aiCredentialStore'
+import { authService } from './services/authService'
 import { getReportsByUser } from './utils/db'
 import { shouldGenerateWeeklyReport } from './agents/reportAgent'
 import { Toaster, toast } from 'sonner'
@@ -33,7 +36,9 @@ const AIChat    = lazy(() => import('./pages/AIChat'))
 const CashFlow  = lazy(() => import('./pages/CashFlow'))
 const Settings  = lazy(() => import('./pages/Settings'))
 const Login     = lazy(() => import('./pages/Login'))
+const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 const ImportHts = lazy(() => import('./pages/ImportHts'))
+const MarketCalendar = lazy(() => import('./pages/MarketCalendar'))
 
 function App() {
   const { theme } = useSettingsStore()
@@ -42,6 +47,7 @@ function App() {
   const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
   const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const isLoggedIn = useAuthStore(s => s.isLoggedIn)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { dialogOpen, countdown, handleConfirm, handleDismiss } = useAutoSnapshot()
 
@@ -82,6 +88,47 @@ function App() {
     runMaintenanceIfNeeded().catch(err => console.warn('[App] DB 정리 실패:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Supabase 세션 복구 + 세션 변경 구독 (Supabase 미설정 시 무시)
+  useEffect(() => {
+    authService.getSession().then(async (session) => {
+      useAuthStore.getState().setSupabaseSession(session)
+      // 관리자 권한 확인
+      if (session?.user?.id) {
+        checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+        // 기존 로컬 userId 데이터를 Supabase userId로 자동 재할당 (최초 1회)
+        const migrated = await migrateLocalUserData(session.user.id)
+        if (migrated) {
+          // 마이그레이션 완료 — 데이터 재로드
+          const userId = session.user.id
+          useJournalStore.getState().loadFromDB(userId)
+          useCashFlowStore.getState().loadFromDB(userId)
+          useDailyPnlStore.getState().loadFromDB(userId)
+        }
+      }
+    })
+
+    const { data: { subscription } } = authService.onAuthStateChange((_event, session) => {
+      useAuthStore.getState().setSupabaseSession(session)
+      if (session?.user?.id) {
+        checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+      } else {
+        useAuthStore.getState().setIsAdmin(false)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 로컬 로그인 후 Supabase 세션 자동 복원 (로그아웃 → 재로그인 시 관리자 권한 복원)
+  useEffect(() => {
+    if (!isLoggedIn) return
+    authService.getSession().then(async (session) => {
+      if (!session) return
+      useAuthStore.getState().setSupabaseSession(session)
+      checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+    })
+  }, [isLoggedIn]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // 앱 시작 시 AI API 키 IDB → 메모리 로드
   useEffect(() => {
     useAiCredentialStore.getState().hydrate()
@@ -100,32 +147,43 @@ function App() {
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 로그인 후 주간 리포트 알림 (지난주 리포트가 있으면 확인 토스트 — 세션당 1회)
+  // 로그인 후 주간 리포트 알림 (확인하지 않은 새 리포트가 있을 때만 1회)
   useEffect(() => {
     const userId = currentUser?.id
     if (!userId) return
-    if (sessionStorage.getItem('weeklyReportToastShown')) return
+
+    let started = false
 
     const checkWeeklyReport = async () => {
       try {
         const reports = await getReportsByUser(userId)
         const weeklyReports = reports.filter(r => r.type === 'weekly')
         const latest = weeklyReports[0] || null
+        if (!latest) return
+        if (shouldGenerateWeeklyReport(latest.generatedAt)) return
 
-        if (latest && !shouldGenerateWeeklyReport(latest.generatedAt)) {
-          // 이번 주에 이미 리포트가 있으면 알림 — Reports 페이지로 유도 (세션당 1회)
-          sessionStorage.setItem('weeklyReportToastShown', '1')
-          setTimeout(() => {
-            toast.info('📊 지난 주간 리포트가 있습니다.', {
-              description: latest.title,
-              action: {
-                label: '확인하기',
-                onClick: () => { window.history.pushState({}, '', '/reports'); window.dispatchEvent(new PopStateEvent('popstate')) },
+        // 이미 확인한 리포트 ID와 같으면 알림 생략
+        const seenId = localStorage.getItem(`weeklyReportSeen_${userId}`)
+        if (seenId === String(latest.id)) return
+
+        // 레이스 컨디션 방지: 비동기 완료 후 한 번만 토스트 발행
+        if (started) return
+        started = true
+
+        setTimeout(() => {
+          toast.info('📊 지난 주간 리포트가 있습니다.', {
+            description: latest.title,
+            action: {
+              label: '확인하기',
+              onClick: () => {
+                localStorage.setItem(`weeklyReportSeen_${userId}`, String(latest.id))
+                window.history.pushState({}, '', '/reports')
+                window.dispatchEvent(new PopStateEvent('popstate'))
               },
-              duration: 8000,
-            })
-          }, 2000) // 앱 로딩 후 2초 뒤 표시
-        }
+            },
+            duration: 8000,
+          })
+        }, 2000) // 앱 로딩 후 2초 뒤 표시
       } catch (err) {
         console.warn('[App] 주간 리포트 확인 실패:', err)
       }
@@ -166,6 +224,10 @@ function App() {
           {/* 로그인 페이지 (레이아웃 없음) */}
           <Route path="/login" element={<Login />} />
 
+          {/* OAuth 콜백 (보호 없음 — 인증 전 처리) */}
+          <Route path="/api/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+
           {/* 보호된 페이지 (Header + Sidebar 레이아웃) */}
           <Route
             path="/*"
@@ -190,6 +252,7 @@ function App() {
                           <Route path="/cashflow" element={<CashFlow />} />
                           <Route path="/settings" element={<Settings />} />
                           <Route path="/import/hts" element={<ImportHts />} />
+                          <Route path="/calendar" element={<MarketCalendar />} />
                           <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                       </Suspense>

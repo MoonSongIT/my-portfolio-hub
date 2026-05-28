@@ -6,38 +6,231 @@ import { db, addTransaction, updateTransaction, deleteTransaction, getTransactio
 import { useCashFlowStore } from './cashFlowStore'
 import { useWatchlistStore } from './watchlistStore'
 import { useAuthStore } from './authStore'
+import { groupByPsychology } from '../utils/calculator'
 
 // ─── 심리 카테고리 상수 ───
 
 export const BUY_PSYCHOLOGY = [
   '미래가치 투자',
   '분할매수 원칙',
-  '추격매매',
-  '뉴스 편승',
   '저가 매수',
+  '기술적 분석(상승추세)',
+  '추격매매(모멘텀)',
+  '뉴스 편승',
   '목표가 도달',
-  '기술적 분석(20일상승)',
+  '리밸런싱',
+  'FOMO(두려움)',
+  '되돌림 매수(손절후)',
+  '외국인/기관 추종',
   '기타',
 ]
 
 export const SELL_PSYCHOLOGY = [
   '목표가 실현',
+  '수익 실현(조급)',
+  '리밸런싱',
   '손절 원칙',
   '공포에 매도',
-  '수익 실현 (조급)',
-  '리밸런싱',
-  '기술적 분석(20일하락)',
+  '되돌림 손절(수익후)',
+  '기술적 분석(하락추세)',
+  '과신에서의 손절',
+  '악재 반응',
+  '외국인/기관 이탈',
   '기타',
 ]
 
+export const PSYCHOLOGY_METADATA = {
+  buy: {
+    '기본전략': {
+      emoji: '📈',
+      color: 'from-blue-400 to-blue-600',
+      description: '기본적 가치 투자 접근법',
+      categories: [
+        { value: '미래가치 투자', label: '미래가치 투자', hint: '기업 가치와 미래 성장성 중심' },
+        { value: '분할매수 원칙', label: '분할매수 원칙', hint: '계획된 단계별 매수' },
+        { value: '저가 매수', label: '저가 매수', hint: '저평가 종목 발굴' },
+      ],
+    },
+    '추세전략': {
+      emoji: '🚀',
+      color: 'from-purple-400 to-purple-600',
+      description: '추세 추종 기반 매매',
+      categories: [
+        { value: '기술적 분석(상승추세)', label: '기술적 분석(상승추세)', hint: '이동평균선 등 지표 활용' },
+        { value: '추격매매(모멘텀)', label: '추격매매(모멘텀)', hint: '급등 추진력 추종' },
+      ],
+    },
+    '뉴스/이벤트': {
+      emoji: '📰',
+      color: 'from-orange-400 to-orange-600',
+      description: '뉴스 및 호재 기반 매수',
+      categories: [
+        { value: '뉴스 편승', label: '뉴스 편승', hint: '긍정적 뉴스 반응' },
+        { value: '목표가 도달', label: '목표가 도달', hint: '애널리스트 목표가 달성' },
+      ],
+    },
+    '리밸런싱': {
+      emoji: '⚖️',
+      color: 'from-cyan-400 to-cyan-600',
+      description: '포트폴리오 균형 조정',
+      categories: [
+        { value: '리밸런싱', label: '리밸런싱', hint: '비중 조정 목적' },
+      ],
+    },
+    '심리적요인': {
+      emoji: '😌',
+      color: 'from-pink-400 to-pink-600',
+      description: '감정 및 심리 기반 매수',
+      categories: [
+        { value: 'FOMO(두려움)', label: 'FOMO(두려움)', hint: '놓칠까봐 매수' },
+        { value: '되돌림 매수(손절후)', label: '되돌림 매수(손절후)', hint: '손절 후 되돌려 올라올 때 재매수' },
+      ],
+    },
+    '패턴': {
+      emoji: '🔄',
+      color: 'from-indigo-400 to-indigo-600',
+      description: '기관/외국인 따라하기',
+      categories: [
+        { value: '외국인/기관 추종', label: '외국인/기관 추종', hint: '대형 기관 움직임 추종' },
+      ],
+    },
+    '기타': {
+      emoji: '❓',
+      color: 'from-gray-400 to-gray-600',
+      description: '분류 불가 항목',
+      categories: [
+        { value: '기타', label: '기타', hint: '위 항목에 해당 사항 없음' },
+      ],
+    },
+  },
+  sell: {
+    '수익실현': {
+      emoji: '✅',
+      color: 'from-green-400 to-green-600',
+      description: '계획된 수익 실현',
+      categories: [
+        { value: '목표가 실현', label: '목표가 실현', hint: '목표 수익률 달성' },
+        { value: '수익 실현(조급)', label: '수익 실현(조급)', hint: '충동적 조기 실현' },
+        { value: '리밸런싱', label: '리밸런싱', hint: '비중 조정 목적' },
+      ],
+    },
+    '손절': {
+      emoji: '🛑',
+      color: 'from-red-400 to-red-600',
+      description: '손실 제한 및 손절',
+      categories: [
+        { value: '손절 원칙', label: '손절 원칙', hint: '계획된 손실 한도 실행' },
+        { value: '공포에 매도', label: '공포에 매도', hint: '급락 시 공포심 매도' },
+        { value: '되돌림 손절(수익후)', label: '되돌림 손절(수익후)', hint: '수익 후 급락하여 손절' },
+      ],
+    },
+    '기술적매도': {
+      emoji: '📉',
+      color: 'from-teal-400 to-teal-600',
+      description: '기술 지표 기반 매도',
+      categories: [
+        { value: '기술적 분석(하락추세)', label: '기술적 분석(하락추세)', hint: '지표 하락 신호 매도' },
+      ],
+    },
+    '심리적요인': {
+      emoji: '😌',
+      color: 'from-pink-400 to-pink-600',
+      description: '감정 및 인지 오류',
+      categories: [
+        { value: '과신에서의 손절', label: '과신에서의 손절', hint: '예상과 달라 급히 매도' },
+      ],
+    },
+    '뉴스/이벤트': {
+      emoji: '📰',
+      color: 'from-orange-400 to-orange-600',
+      description: '악재 반응 매도',
+      categories: [
+        { value: '악재 반응', label: '악재 반응', hint: '부정적 뉴스 반응' },
+      ],
+    },
+    '패턴': {
+      emoji: '🔄',
+      color: 'from-indigo-400 to-indigo-600',
+      description: '기관/외국인 따라하기',
+      categories: [
+        { value: '외국인/기관 이탈', label: '외국인/기관 이탈', hint: '대형 기관 이탈 추종' },
+      ],
+    },
+    '기타': {
+      emoji: '❓',
+      color: 'from-gray-400 to-gray-600',
+      description: '분류 불가 항목',
+      categories: [
+        { value: '기타', label: '기타', hint: '위 항목에 해당 사항 없음' },
+      ],
+    },
+  },
+}
+
+export const PSYCHOLOGY_MIGRATION_MAP = {
+  buy: {
+    '미래가치 투자': '미래가치 투자',
+    '분할매수 원칙': '분할매수 원칙',
+    '추격매매': '추격매매(모멘텀)',
+    '뉴스 편승': '뉴스 편승',
+    '저가 매수': '저가 매수',
+    '목표가 도달': '목표가 도달',
+    '기술적 분석(20일상승)': '기술적 분석(상승추세)',
+    '기타': '기타',
+  },
+  sell: {
+    '목표가 실현': '목표가 실현',
+    '손절 원칙': '손절 원칙',
+    '공포에 매도': '공포에 매도',
+    '수익 실현 (조급)': '수익 실현(조급)',
+    '수익 실현(조급)': '수익 실현(조급)',
+    '리밸런싱': '리밸런싱',
+    '기술적 분석(20일하락)': '기술적 분석(하락추세)',
+    '기타': '기타',
+  },
+}
+
 // ─── 스토어 ───
+
+// ─── 반복 실수 패턴 경고 셀렉터 ───
+// lossCount >= 3인 심리 유형을 손실률·레벨과 함께 반환
+export const selectPatternAlerts = (state) => {
+  const groups = groupByPsychology(state.entries)
+  return Object.entries(groups)
+    .map(([psychology, items]) => {
+      const pnlItems = items.filter(e => e.pnl != null)
+      const losses = pnlItems.filter(e => e.pnl < 0)
+      const lossCount = losses.length
+      if (lossCount < 3) return null
+      const lossRate = pnlItems.length > 0 ? Math.round((lossCount / pnlItems.length) * 100) : 0
+      const avgLoss = losses.length > 0 ? Math.round(losses.reduce((s, e) => s + e.pnl, 0) / losses.length) : 0
+      const level = lossRate >= 70 ? 'danger' : 'warning'
+      return { psychology, totalCount: items.length, lossCount, lossRate, avgLoss, level }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.lossCount - a.lossCount)
+}
 
 export const useJournalStore = create(
   persist(
     immer((set, get) => ({
       entries: [],
 
+      psychologyFeedback: {
+        recentSelections: [], // [{ category, action, timestamp }, ...]
+      },
+
       // ─── 액션 ───
+
+      addToRecentSelections: (category, action) => {
+        set((state) => {
+          const next = [
+            { category, action, timestamp: Date.now() },
+            ...state.psychologyFeedback.recentSelections,
+          ].slice(0, 10)
+          state.psychologyFeedback.recentSelections = next
+        })
+      },
 
       addEntry: (entry) => {
         const userId = useAuthStore.getState().currentUser?.id
@@ -209,7 +402,24 @@ export const useJournalStore = create(
         if (!userId) return
         try {
           const dbEntries = await getTransactionsByUser(userId)
-          set((state) => { state.entries = dbEntries })
+
+          // 구 카테고리명 → 신규 카테고리명 마이그레이션 (변경된 항목만 write-back)
+          const toUpdate = []
+          const migrated = dbEntries.map(e => {
+            const map = PSYCHOLOGY_MIGRATION_MAP[e.action]
+            if (!map || !e.psychology) return e
+            const newPsychology = map[e.psychology] ?? e.psychology
+            if (newPsychology === e.psychology) return e
+            toUpdate.push({ id: e.id, psychology: newPsychology })
+            return { ...e, psychology: newPsychology }
+          })
+          toUpdate.forEach(({ id, psychology }) =>
+            updateTransaction(id, { psychology }).catch(err =>
+              console.warn('[DB] psychology migration write-back failed:', err)
+            )
+          )
+
+          set((state) => { state.entries = migrated })
 
           // 매수 이력이 있는 종목을 관심종목에 동기화 (중복 방지는 watchlistStore에서 처리)
           const addToWatchlist = useWatchlistStore.getState().addToWatchlist
