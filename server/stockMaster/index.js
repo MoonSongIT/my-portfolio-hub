@@ -277,6 +277,18 @@ export async function handleStockMaster(req, res) {
   const rawUrl = req.url || ''
   const urlObj = new URL(rawUrl, 'http://localhost')
 
+  // ── /api/stock-master/meta, /api/stock-master/download, /api/stock-master/upload ──
+  // 이 경로들은 Vercel 서버리스 함수(api/ 디렉터리)에서만 처리.
+  // 개발 서버에서는 "서버 기능 미지원" 응답을 반환해 잘못된 라우팅 방지.
+  if (rawUrl.startsWith('/api/stock-master/meta') ||
+      rawUrl.startsWith('/api/stock-master/download') ||
+      rawUrl.startsWith('/api/stock-master/upload')) {
+    res.writeHead(501, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify({
+      error: '개발 서버에서는 서버 종목 DB 기능을 지원하지 않습니다. Vercel 배포 환경에서 사용하세요.',
+    }))
+  }
+
   // ── /api/stock-master/manifest ──────────────────────────────────────────
   if (rawUrl.startsWith('/api/stock-master/manifest')) {
     res.writeHead(200, { 'Content-Type': 'application/json' })

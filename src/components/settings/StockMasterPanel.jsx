@@ -545,7 +545,7 @@ export default function StockMasterPanel() {
               <Server className="w-4 h-4 text-blue-500" />
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">서버 종목 데이터</p>
             </div>
-            {serverMeta && (
+            {serverMeta && serverMeta.total != null && (
               <span className="text-xs text-gray-400">
                 총 {serverMeta.total.toLocaleString()}개
                 {serverMeta.uploadedAt && ` · ${new Date(serverMeta.uploadedAt).toLocaleDateString('ko-KR')} 업데이트`}
