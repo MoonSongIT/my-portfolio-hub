@@ -13,6 +13,7 @@ import DartKeyPanel from '../components/settings/DartKeyPanel'
 import FinnhubKeyPanel from '../components/settings/FinnhubKeyPanel'
 import UserRoleManager from '../components/admin/UserRoleManager'
 import { SupabaseLoginModal } from '../components/auth/SupabaseLoginModal'
+import { authService } from '../services/authService'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
@@ -27,6 +28,13 @@ export default function Settings() {
     calendarNotification, setCalendarNotification,
   } = useSettingsStore()
   const { isAdmin, isSupabaseUser } = useAuthStore()
+
+  const handleSupabaseSignOut = async () => {
+    await authService.signOut().catch(() => {})
+    useAuthStore.getState().setSupabaseSession(null)
+    useAuthStore.getState().setIsAdmin(false)
+    toast.success('서버 계정 연결이 해제되었습니다.')
+  }
 
   const notifPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
 
@@ -330,12 +338,20 @@ export default function Settings() {
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">서버 계정</h2>
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
           {isSupabaseUser ? (
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">연결됨</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">서버 동기화 및 관리자 기능을 사용할 수 있습니다.</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">연결됨</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">서버 동기화 및 관리자 기능을 사용할 수 있습니다.</p>
+                </div>
               </div>
+              <button
+                onClick={handleSupabaseSignOut}
+                className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+              >
+                연결 해제
+              </button>
             </div>
           ) : (
             <div className="flex items-center justify-between">

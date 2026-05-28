@@ -47,9 +47,8 @@ export const useAuthStore = create(
       },
 
       logout: async () => {
-        if (get().isSupabaseUser) {
-          await authService.signOut()
-        }
+        // Supabase 세션은 브라우저에 유지 — 재로그인 시 자동 복원됨
+        // 완전 연결 해제는 Settings의 '서버 계정 연결 해제' 버튼으로 처리
         set({ currentUser: null, isLoggedIn: false, isSupabaseUser: false, supabaseSession: null, isAdmin: false })
       },
 

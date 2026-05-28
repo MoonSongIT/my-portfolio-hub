@@ -47,6 +47,7 @@ function App() {
   const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
   const { loadFromDB: loadDailyPnlFromDB } = useDailyPnlStore()
   const currentUser = useAuthStore(s => s.currentUser)
+  const isLoggedIn = useAuthStore(s => s.isLoggedIn)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { dialogOpen, countdown, handleConfirm, handleDismiss } = useAutoSnapshot()
 
@@ -117,6 +118,16 @@ function App() {
 
     return () => subscription.unsubscribe()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 로컬 로그인 후 Supabase 세션 자동 복원 (로그아웃 → 재로그인 시 관리자 권한 복원)
+  useEffect(() => {
+    if (!isLoggedIn) return
+    authService.getSession().then(async (session) => {
+      if (!session) return
+      useAuthStore.getState().setSupabaseSession(session)
+      checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+    })
+  }, [isLoggedIn]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 앱 시작 시 AI API 키 IDB → 메모리 로드
   useEffect(() => {
