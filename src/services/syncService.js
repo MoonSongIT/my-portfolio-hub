@@ -105,10 +105,12 @@ export const syncService = {
         for (const record of records) {
           if (record.deleted_at) {
             // 소프트 삭제 처리
-            await db[table].delete(record.id)
+            await db[table].delete(String(record.id))
           } else {
+            // 서버는 실제 데이터를 data 컬럼에 저장 — unwrap 필수
+            const payload = record.data ?? record
             await db[table].put({
-              ...record,
+              ...payload,
               syncedAt: record.synced_at ?? new Date().toISOString(),
             })
           }

@@ -21,26 +21,40 @@ export default async function handler(req, res) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
 
-  // since: ISO 타임스탬프 — 이 시각 이후 변경분만 반환 (증분 동기화)
-  const since = req.query.since ?? null
+  // table: 테이블명, since: ISO 타임스탬프 (증분 동기화)
+  const { table, since } = req.query
 
-  const result = {}
-
-  for (const table of TABLES) {
-    let query = supabase
-      .from(table)
-      .select('*')
-      .eq('user_id', user.id)
-
-    if (since) {
-      query = query.gte('synced_at', since)
-    }
-
-    const { data, error } = await query
-    if (error) return res.status(500).json({ error: error.message, table })
-
-    result[table] = data ?? []
+  // TABLE_MAP — Dexie 테이블명 → PostgreSQL 테이블명
+  const TABLE_MAP = {
+    transactions:   'transactions',
+    cashFlows:      'cash_flows',
+    calendarEvents: 'calendar_events',
   }
 
-  res.status(200).json(result)
+  const pgTable = TABLE_MAP[table]
+  if (!pgTable) return res.status(400).json({ error: `Unknown table: ${table}` })
+
+  let query = supabase
+    .from(pgTable)
+    .select('*')
+    .eq('user_id', user.id)
+
+  if (since) {
+    query = query.gte('synced_at', since)
+  }
+
+  const { data, error } = await query
+  if (error) return res.status(500).json({ error: error.message })
+
+  // 서버 글로벌 버전도 함께 반환
+  const { data: meta } = await supabase
+    .from('user_sync_meta')
+    .select('global_version')
+    .eq('user_id', user.id)
+    .single()
+
+  res.status(200).json({
+    records: data ?? [],
+    version: meta?.global_version ?? 0,
+  })
 }
