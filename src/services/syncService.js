@@ -135,9 +135,8 @@ export const syncService = {
 
     try {
       for (const table of SYNC_TABLES) {
-        const records = await db[table]
-          .where('userId').equals(userId)
-          .toArray()
+        // userId 불문하고 로컬 전체 데이터를 이전 (로컬 ID ≠ Supabase ID 대응)
+        const records = await db[table].toArray()
 
         if (records.length === 0) continue
 
