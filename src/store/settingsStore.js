@@ -35,6 +35,11 @@ export const useSettingsStore = create(
     setCalendarNotification: (patch) => set((state) => ({
       calendarNotification: { ...state.calendarNotification, ...patch },
     })),
+
+    // 동기화 활성화 / 비활성화
+    syncEnabled: false,
+    enableSync: () => set({ syncEnabled: true }),
+    disableSync: () => set({ syncEnabled: false }),
   }),
   { name: 'settings-storage' })
 )

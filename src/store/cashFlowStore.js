@@ -8,8 +8,10 @@ import {
   getCashFlowsByUser,
   deleteCashFlowsByUser as dbDeleteByUser,
   deleteCashFlowsByAccount as dbDeleteByAccount,
+  bumpSyncVersion,
 } from '../utils/db'
 import { useAuthStore } from './authStore'
+import { useSyncStore } from './syncStore'
 
 // ─── 입출금 유형 상수 ───
 export const CASH_FLOW_TYPES = {
@@ -54,9 +56,11 @@ export const useCashFlowStore = create(
           category: defaultCategory,
           ...flow,
         }
-        set((state) => { state.cashFlows.push(newFlow) })
-        dbAdd(newFlow).catch(err => console.warn('[DB] addCashFlow failed:', err))
-        return newFlow.id
+        const syncedFlow = bumpSyncVersion(newFlow)
+        set((state) => { state.cashFlows.push(syncedFlow) })
+        dbAdd(syncedFlow).catch(err => console.warn('[DB] addCashFlow failed:', err))
+        useSyncStore.getState().incrementPending()
+        return syncedFlow.id
       },
 
       // 매매 연동 자동 입출금 추가 (journalStore에서 호출)
@@ -70,17 +74,21 @@ export const useCashFlowStore = create(
           userId,
           ...flow,
         }
-        set((state) => { state.cashFlows.push(newFlow) })
-        dbAdd(newFlow).catch(err => console.warn('[DB] addAutoFlow failed:', err))
-        return newFlow.id
+        const syncedFlow = bumpSyncVersion(newFlow)
+        set((state) => { state.cashFlows.push(syncedFlow) })
+        dbAdd(syncedFlow).catch(err => console.warn('[DB] addAutoFlow failed:', err))
+        useSyncStore.getState().incrementPending()
+        return syncedFlow.id
       },
 
       updateCashFlow: (id, updates) => {
+        const syncUpdates = bumpSyncVersion(updates)
         set((state) => {
           const flow = state.cashFlows.find(f => f.id === id)
-          if (flow) Object.assign(flow, updates)
+          if (flow) Object.assign(flow, syncUpdates)
         })
-        dbUpdate(id, updates).catch(err => console.warn('[DB] updateCashFlow failed:', err))
+        dbUpdate(id, syncUpdates).catch(err => console.warn('[DB] updateCashFlow failed:', err))
+        useSyncStore.getState().incrementPending()
       },
 
       // 수동 입출금 삭제 (자동 연동 항목은 journalStore에서 삭제)
@@ -88,7 +96,11 @@ export const useCashFlowStore = create(
         set((state) => {
           state.cashFlows = state.cashFlows.filter(f => f.id !== id)
         })
-        dbDelete(id).catch(err => console.warn('[DB] deleteCashFlow failed:', err))
+        const softDelete = bumpSyncVersion({ deletedAt: new Date().toISOString() })
+        dbUpdate(id, softDelete)
+          .catch(() => dbDelete(id))
+          .catch(err => console.warn('[DB] deleteCashFlow failed:', err))
+        useSyncStore.getState().incrementPending()
       },
 
       // 특정 계좌의 모든 입출금 내역을 다른 계좌로 이동

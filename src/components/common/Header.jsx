@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Sun, Moon, Menu, LogOut, Bot } from 'lucide-react'
+import { Sun, Moon, Menu, LogOut, Bot, Cloud, CloudOff, RefreshCw, AlertCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useAuthStore } from '../../store/authStore'
@@ -11,6 +11,7 @@ import { useDailyPnlStore } from '../../store/dailyPnlStore'
 import { useUserAccounts } from '../../store/accountStore'
 import { Button } from '../ui/button'
 import ChatPanel from '../chat/ChatPanel'
+import { useSyncStatus } from '../../hooks/useSyncStatus'
 
 export default function Header({ onToggleSidebar }) {
   const navigate = useNavigate()
@@ -39,6 +40,19 @@ export default function Header({ onToggleSidebar }) {
     journalEntries,
     accounts: userAccounts,
   }), [holdings, exchangeRate, watchlist, journalEntries, userAccounts])
+
+  const { syncStatus, pendingChanges, isOnline, triggerSync } = useSyncStatus()
+  const isSupabaseUser = useAuthStore((s) => s.isSupabaseUser)
+
+  // syncStatus별 아이콘/색상
+  const syncIcon = (() => {
+    if (!isOnline) return <CloudOff className="w-4 h-4 text-gray-400" />
+    if (syncStatus === 'syncing') return <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+    if (syncStatus === 'conflict') return <AlertCircle className="w-4 h-4 text-yellow-500" />
+    if (syncStatus === 'error') return <AlertCircle className="w-4 h-4 text-red-500" />
+    if (syncStatus === 'synced') return <Cloud className="w-4 h-4 text-green-500" />
+    return <Cloud className="w-4 h-4 text-gray-400" />
+  })()
 
   const handleLogout = async () => {
     clearAccounts()
@@ -76,6 +90,24 @@ export default function Header({ onToggleSidebar }) {
           <Bot className="w-4 h-4" />
           <span className="hidden sm:inline">AI 분석</span>
         </Button>
+
+        {/* 동기화 상태 아이콘 — Supabase 로그인 시에만 표시 */}
+        {isSupabaseUser && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={triggerSync}
+            title={pendingChanges > 0 ? `미동기화 ${pendingChanges}건` : '동기화 상태'}
+            className="relative text-gray-600 dark:text-gray-300"
+          >
+            {syncIcon}
+            {pendingChanges > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[9px] flex items-center justify-center font-bold">
+                {pendingChanges > 9 ? '9+' : pendingChanges}
+              </span>
+            )}
+          </Button>
+        )}
 
         {/* 다크모드 토글 */}
         <Button
