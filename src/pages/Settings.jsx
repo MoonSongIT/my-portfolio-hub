@@ -13,6 +13,9 @@ import DartKeyPanel from '../components/settings/DartKeyPanel'
 import FinnhubKeyPanel from '../components/settings/FinnhubKeyPanel'
 import UserRoleManager from '../components/admin/UserRoleManager'
 import { SupabaseLoginModal } from '../components/auth/SupabaseLoginModal'
+import SyncSettings from '../components/settings/SyncSettings'
+import ConflictModal from '../components/settings/ConflictModal'
+import MigrateDataModal from '../components/auth/MigrateDataModal'
 import { authService } from '../services/authService'
 import { useJournalStore } from '../store/journalStore'
 import { usePortfolioStore } from '../store/portfolioStore'
@@ -65,6 +68,7 @@ export default function Settings() {
   const fileInputRef = useRef(null)
 
   const [supabaseModalOpen, setSupabaseModalOpen] = useState(false)
+  const [migrateModalOpen, setMigrateModalOpen] = useState(false)
   const [importing, setImporting]               = useState(false)
   const [importProgress, setImportProgress]     = useState(null)
   const [confirmOpen, setConfirmOpen]           = useState(false)
@@ -370,6 +374,30 @@ export default function Settings() {
         </div>
       </section>
 
+      {/* ─── 동기화 ─── */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">동기화</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
+          <SyncSettings />
+          {isSupabaseUser && (
+            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">로컬 데이터 서버 이전</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">기기의 기존 데이터를 서버로 한 번에 업로드합니다.</p>
+                </div>
+                <button
+                  onClick={() => setMigrateModalOpen(true)}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                >
+                  이전 시작
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* ─── AI 설정 ─── */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 설정</h2>
@@ -511,6 +539,12 @@ export default function Settings() {
       {supabaseModalOpen && (
         <SupabaseLoginModal onClose={() => setSupabaseModalOpen(false)} />
       )}
+
+      {/* ─── 로컬 데이터 이전 모달 ─── */}
+      <MigrateDataModal open={migrateModalOpen} onClose={() => setMigrateModalOpen(false)} />
+
+      {/* ─── 동기화 충돌 모달 ─── */}
+      <ConflictModal />
 
       {/* ─── 백업 복원 확인 다이얼로그 ─── */}
       {confirmOpen && (
