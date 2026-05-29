@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { toast } from 'sonner'
-import { db, addTransaction, updateTransaction, deleteTransaction, getTransactionsByUser, deleteTransactionsByUser } from '../utils/db'
+import { db, addTransaction, updateTransaction, deleteTransaction, getTransactionsByUser, deleteTransactionsByUser, bumpSyncVersion } from '../utils/db'
+import { useSyncStore } from './syncStore'
 import { useCashFlowStore } from './cashFlowStore'
 import { useWatchlistStore } from './watchlistStore'
 import { useAuthStore } from './authStore'
@@ -281,12 +282,14 @@ export const useJournalStore = create(
           newEntry.linkedCashFlowId = cashFlowId
         }
 
-        set((state) => { state.entries.push(newEntry) })
-        // IndexedDB에도 저장 (비동기, 실패해도 로컬스토리지 백업 유지)
-        addTransaction(newEntry).catch(err => {
+        const syncedEntry = bumpSyncVersion(newEntry)
+        set((state) => { state.entries.push(syncedEntry) })
+        // IndexedDB에도 저장 (비동기, 실패해도 로컬스토리스 백업 유지)
+        addTransaction(syncedEntry).catch(err => {
           console.warn('[DB] addTransaction failed:', err)
           toast.warning('로컬 DB 저장 실패 — 앱 데이터는 보존됩니다.')
         })
+        useSyncStore.getState().incrementPending()
 
         // 매수 종목은 관심종목에 자동 등록 (중복은 watchlistStore에서 방지)
         if (newEntry.action === 'buy' && newEntry.ticker) {
@@ -332,11 +335,13 @@ export const useJournalStore = create(
           }
         }
 
+        const syncUpdates = bumpSyncVersion(updates)
         set((state) => {
           const e = state.entries.find(e => e.id === id)
-          if (e) Object.assign(e, updates)
+          if (e) Object.assign(e, syncUpdates)
         })
-        updateTransaction(id, updates).catch(err => console.warn('[DB] updateTransaction failed:', err))
+        updateTransaction(id, syncUpdates).catch(err => console.warn('[DB] updateTransaction failed:', err))
+        useSyncStore.getState().incrementPending()
       },
 
       deleteEntry: (id) => {
@@ -348,7 +353,12 @@ export const useJournalStore = create(
         set((state) => {
           state.entries = state.entries.filter(e => e.id !== id)
         })
-        deleteTransaction(id).catch(err => console.warn('[DB] deleteTransaction failed:', err))
+        // 소프트 삭제: deletedAt 마킹 후 동기화 → 서버에서도 삭제되도록
+        const softDelete = bumpSyncVersion({ deletedAt: new Date().toISOString() })
+        updateTransaction(id, softDelete)
+          .catch(() => deleteTransaction(id))
+          .catch(err => console.warn('[DB] deleteTransaction failed:', err))
+        useSyncStore.getState().incrementPending()
       },
 
       // 매매일지 accountId 기준으로 연결된 cashFlow accountId를 강제 동기화

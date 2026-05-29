@@ -13,6 +13,8 @@ import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
 import useAiCredentialStore from './store/aiCredentialStore'
 import { authService } from './services/authService'
+import { syncService } from './services/syncService'
+import { useSyncStore } from './store/syncStore'
 import { getReportsByUser } from './utils/db'
 import { shouldGenerateWeeklyReport } from './agents/reportAgent'
 import { Toaster, toast } from 'sonner'
@@ -42,7 +44,8 @@ const ImportHts = lazy(() => import('./pages/ImportHts'))
 const MarketCalendar = lazy(() => import('./pages/MarketCalendar'))
 
 function App() {
-  const { theme } = useSettingsStore()
+  const { theme, enableSync, disableSync, syncEnabled } = useSettingsStore()
+  const syncInterval = useSyncStore(s => s.syncInterval)
   const refreshCounts = useStockMasterStore(s => s.refreshCounts)
   const { loadFromDB } = useJournalStore()
   const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
@@ -112,8 +115,10 @@ function App() {
       useAuthStore.getState().setSupabaseSession(session)
       if (session?.user?.id) {
         checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+        enableSync()
       } else {
         useAuthStore.getState().setIsAdmin(false)
+        disableSync()
       }
     })
 
@@ -192,6 +197,18 @@ function App() {
 
     checkWeeklyReport()
   }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 자동 동기화 인터벌 (syncEnabled + syncInterval 설정에 따라)
+  useEffect(() => {
+    if (!syncEnabled) return
+    const INTERVALS = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000 }
+    const ms = INTERVALS[syncInterval]
+    if (!ms) return // 'realtime' or 'manual' — 인터벌 미등록
+    const id = setInterval(() => {
+      syncService.uploadPending().catch(err => console.warn('[Sync] 자동 동기화 실패:', err))
+    }, ms)
+    return () => clearInterval(id)
+  }, [syncEnabled, syncInterval])
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
