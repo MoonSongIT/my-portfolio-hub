@@ -1,7 +1,7 @@
 // 비밀번호 재설정 페이지 — Supabase recovery 링크 처리
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/utils/supabaseClient'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function ResetPassword() {
   const navigate = useNavigate()
