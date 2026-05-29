@@ -25,6 +25,14 @@ export const authService = {
     if (error) throw error
   },
 
+  async resetPasswordForEmail(email) {
+    if (!supabase) throw new Error('Supabase 미설정')
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    })
+    if (error) throw error
+  },
+
   async signOut() {
     if (!supabase) return
     const { error } = await supabase.auth.signOut()
