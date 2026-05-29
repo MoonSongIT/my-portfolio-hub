@@ -28,18 +28,18 @@ export default async function handler(req, res) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
 
-  const { records } = req.body
+  // syncService는 { table, records } 형태로 전송
+  const { table, records } = req.body
+  const pgTable = TABLE_MAP[table]
+  if (!pgTable) return res.status(400).json({ error: `Unknown table: ${table}` })
   if (!Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ error: 'records must be a non-empty array' })
   }
 
   const conflicts = []
-  const upserted = []
+  const uploaded = []
 
   for (const record of records) {
-    const pgTable = TABLE_MAP[record.table]
-    if (!pgTable) continue
-
     // 서버 현재 버전 조회 — 충돌 감지
     const { data: existing } = await supabase
       .from(pgTable)
@@ -47,10 +47,9 @@ export default async function handler(req, res) {
       .eq('id', String(record.id))
       .single()
 
-    if (existing && existing.sync_version > record.syncVersion) {
+    if (existing && existing.sync_version > (record.syncVersion ?? 0)) {
       conflicts.push({
         id: record.id,
-        table: record.table,
         serverVersion: existing.sync_version,
         localVersion: record.syncVersion,
       })
@@ -60,12 +59,12 @@ export default async function handler(req, res) {
     await supabase.from(pgTable).upsert({
       id:           String(record.id),
       user_id:      user.id,
-      data:         record.data,
-      sync_version: record.syncVersion,
+      data:         record,
+      sync_version: (record.syncVersion ?? 0) + 1,
       synced_at:    new Date().toISOString(),
       deleted_at:   record.deletedAt ?? null,
     })
-    upserted.push(record.id)
+    uploaded.push({ ...record, syncVersion: (record.syncVersion ?? 0) + 1 })
   }
 
   // 글로벌 버전 갱신
@@ -75,5 +74,5 @@ export default async function handler(req, res) {
     last_synced_at: new Date().toISOString(),
   })
 
-  res.status(200).json({ upserted, conflicts })
+  res.status(200).json({ uploaded, conflicts })
 }
