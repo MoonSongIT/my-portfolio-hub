@@ -134,9 +134,19 @@ export const syncService = {
     setSyncStatus('syncing')
 
     try {
+      // Supabase 이메일과 일치하는 로컬 userId 찾기 (로컬 ID ≠ Supabase ID 대응)
+      const { useAuthStore } = await import('@/store/authStore')
+      const { users: localUsers } = useAuthStore.getState()
+      const session = await authService.getSession()
+      const email = session?.user?.email
+      const localUser = email ? localUsers.find(u => u.email === email) : null
+      // 로컬 계정이 있으면 그 id로, 없으면 Supabase userId로 조회
+      const localUserId = localUser?.id ?? userId
+
       for (const table of SYNC_TABLES) {
-        // userId 불문하고 로컬 전체 데이터를 이전 (로컬 ID ≠ Supabase ID 대응)
-        const records = await db[table].toArray()
+        const records = await db[table]
+          .where('userId').equals(localUserId)
+          .toArray()
 
         if (records.length === 0) continue
 
