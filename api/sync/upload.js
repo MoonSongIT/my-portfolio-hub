@@ -1,5 +1,6 @@
 // POST /api/sync/upload — 로컬 변경사항을 서버에 업로드 (충돌 감지 포함)
 import { createClient } from '@supabase/supabase-js'
+import { setCors, handlePreflight } from '../_cors.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -17,6 +18,8 @@ const TABLE_MAP = {
 }
 
 export default async function handler(req, res) {
+  if (handlePreflight(req, res)) return
+  setCors(req, res)
   if (req.method !== 'POST') return res.status(405).end()
 
   const token = req.headers.authorization?.replace('Bearer ', '')

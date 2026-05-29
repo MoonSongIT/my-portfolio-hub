@@ -6,6 +6,9 @@ import { authService } from '@/services/authService'
 // aiCredentials 는 절대 동기화 금지 — 보안 필수
 const SYNC_TABLES = ['transactions', 'cashFlows', 'calendarEvents']
 
+// 로컬 개발 환경에서는 배포된 Vercel API를 직접 호출
+const API_BASE = import.meta.env.VITE_SYNC_API_BASE || ''
+
 async function getAuthToken() {
   const session = await authService.getSession()
   if (!session?.access_token) throw new Error('로그인이 필요합니다')
@@ -16,7 +19,7 @@ export const syncService = {
   // 서버 버전 확인
   async checkServerVersion() {
     const token = await getAuthToken()
-    const res = await fetch('/api/sync/version', {
+    const res = await fetch(`${API_BASE}/api/sync/version`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('버전 확인 실패')
@@ -41,7 +44,7 @@ export const syncService = {
 
         if (pending.length === 0) continue
 
-        const res = await fetch('/api/sync/upload', {
+        const res = await fetch(`${API_BASE}/api/sync/upload`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -88,8 +91,8 @@ export const syncService = {
     try {
       for (const table of SYNC_TABLES) {
         const url = since
-          ? `/api/sync/download?table=${table}&since=${encodeURIComponent(since)}`
-          : `/api/sync/download?table=${table}`
+          ? `${API_BASE}/api/sync/download?table=${table}&since=${encodeURIComponent(since)}`
+          : `${API_BASE}/api/sync/download?table=${table}`
 
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
@@ -136,7 +139,7 @@ export const syncService = {
 
         if (records.length === 0) continue
 
-        const res = await fetch('/api/sync/upload', {
+        const res = await fetch(`${API_BASE}/api/sync/upload`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,

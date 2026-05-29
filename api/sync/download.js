@@ -1,5 +1,6 @@
 // GET /api/sync/download — 서버에서 로컬로 데이터 다운로드 (증분 동기화 지원)
 import { createClient } from '@supabase/supabase-js'
+import { setCors, handlePreflight } from '../_cors.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -10,6 +11,8 @@ const supabase = createClient(
 const TABLES = ['transactions', 'cash_flows', 'calendar_events', 'accounts', 'watchlist']
 
 export default async function handler(req, res) {
+  if (handlePreflight(req, res)) return
+  setCors(req, res)
   if (req.method !== 'GET') return res.status(405).end()
 
   const token = req.headers.authorization?.replace('Bearer ', '')

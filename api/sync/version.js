@@ -1,5 +1,6 @@
 // GET /api/sync/version — 서버의 현재 글로벌 sync 버전 반환
 import { createClient } from '@supabase/supabase-js'
+import { setCors, handlePreflight } from '../_cors.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -7,6 +8,8 @@ const supabase = createClient(
 )
 
 export default async function handler(req, res) {
+  if (handlePreflight(req, res)) return
+  setCors(req, res)
   const token = req.headers.authorization?.replace('Bearer ', '')
   if (!token) return res.status(401).json({ error: 'Unauthorized' })
 
