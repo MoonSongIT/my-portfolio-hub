@@ -51,11 +51,27 @@ export default function Login() {
     navigate('/')
   }
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email.trim()) { setError('이메일을 입력하세요'); return }
     if (!password) { setError('비밀번호를 입력하세요'); return }
 
     setLoading(true)
+
+    // 1) Supabase 로그인 먼저 시도
+    try {
+      const data = await authService.signInWithEmail(email.trim(), password)
+      const session = data?.session
+      if (session) {
+        setLoading(false)
+        useAuthStore.getState().setSupabaseSession(session)
+        afterLogin()
+        return
+      }
+    } catch {
+      // Supabase 미설정 또는 실패 → 로컬 로그인으로 폴백
+    }
+
+    // 2) 로컬 로그인 폴백
     const success = login(email.trim(), password)
     setLoading(false)
 
