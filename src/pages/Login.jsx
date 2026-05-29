@@ -166,8 +166,15 @@ export default function Login() {
     try {
       await authService.resetPasswordForEmail(email.trim())
       setForgotSent(true)
-    } catch {
-      setError('메일 발송에 실패했습니다. 이메일 주소를 확인해 주세요.')
+    } catch (err) {
+      const msg = err?.message || ''
+      if (msg.includes('rate') || msg.includes('limit')) {
+        setError('잠시 후 다시 시도해 주세요. (1시간에 최대 3회 발송 가능)')
+      } else if (msg.includes('redirect') || msg.includes('not allowed')) {
+        setError('설정 오류: Supabase redirect URL을 확인해 주세요.')
+      } else {
+        setError(`메일 발송 실패: ${msg || '이메일 주소를 확인해 주세요.'}`)
+      }
     } finally {
       setLoading(false)
     }
