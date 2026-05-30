@@ -5,6 +5,7 @@ import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { migrateFromLegacy } from './utils/stockMasterMigrate'
 import { checkIsAdmin } from './utils/stockMasterServerApi'
+import { migrateLocalIdsIfNeeded } from './utils/migrateLocalIds'
 import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
@@ -98,6 +99,15 @@ function App() {
       // 관리자 권한 확인
       if (session?.user?.id) {
         checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+        // M-2: 기존 user-XXXX → Supabase UUID 교정 (1회성, await 블로킹)
+        const migrated = await migrateLocalIdsIfNeeded(session.user.id, session.user.email)
+        if (migrated > 0) {
+          // 교정 완료 → IndexedDB 재로드
+          const uid = session.user.id
+          useJournalStore.getState().loadFromDB(uid)
+          useCashFlowStore.getState().loadFromDB(uid)
+          useDailyPnlStore.getState().loadFromDB(uid)
+        }
       }
     })
 
