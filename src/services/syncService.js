@@ -1,4 +1,5 @@
 // 서버↔로컬 동기화 서비스 — upload / download 단방향 구현
+// 개발 환경에서 콘솔 테스트: window.__sync.uploadTable('userAccounts')
 import { db } from '@/utils/db'
 import { SYNC_TABLE_MAP } from '@/constants/syncConfig'
 import { authService } from '@/services/authService'
@@ -123,4 +124,9 @@ export const syncService = {
       throw err
     }
   },
+}
+
+// 개발 환경 전용 — 콘솔에서 window.__sync 으로 테스트
+if (import.meta.env?.DEV && typeof window !== 'undefined') {
+  window.__sync = syncService
 }
