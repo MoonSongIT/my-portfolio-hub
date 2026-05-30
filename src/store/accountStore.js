@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { deleteCashFlowsByAccount as dbDeleteByAccount } from '../utils/db'
+import { db, deleteCashFlowsByAccount as dbDeleteByAccount } from '../utils/db'
 import { useCashFlowStore } from './cashFlowStore'
 import { useAuthStore } from './authStore'
 
@@ -24,10 +24,11 @@ export const useAccountStore = create(
 
       addAccount: (account) => set((state) => {
         if (state.accounts.find(a => a.id === account.id)) return
-        const userId = useAuthStore.getState().currentUser?.id
-        state.accounts.push({
+        const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
+        const newAccount = {
           id: account.id || crypto.randomUUID(),
           userId,
+          userEmail: userEmail || '',
           name: account.name,
           broker: account.broker || '',
           type: account.type || 'GENERAL',
@@ -35,19 +36,31 @@ export const useAccountStore = create(
           initialBalance: account.initialBalance ?? 0,
           memo: account.memo || '',
           createdAt: new Date().toISOString(),
-        })
+          syncedAt: null,
+          syncVersion: 0,
+        }
+        state.accounts.push(newAccount)
+        // IDB에도 저장 (syncService 업로드 대상)
+        db.userAccounts.put(newAccount).catch(err => console.warn('[DB] addAccount IDB failed:', err))
       }),
 
       updateAccount: (id, updates) => set((state) => {
         const account = state.accounts.find(a => a.id === id)
-        if (account) Object.assign(account, updates)
+        if (!account) return
+        Object.assign(account, updates, { syncedAt: null })
+        db.userAccounts.update(id, { ...updates, syncedAt: null })
+          .catch(err => console.warn('[DB] updateAccount IDB failed:', err))
       }),
 
       deleteAccount: (id) => {
         set((state) => {
           state.accounts = state.accounts.filter(a => a.id !== id)
         })
-        // 연결된 입출금 내역 cascade 삭제 (cashFlowStore + IndexedDB)
+        // IDB에서 소프트 삭제 (동기화 시 서버에서도 삭제)
+        db.userAccounts.update(id, { deletedAt: new Date().toISOString(), syncedAt: null })
+          .catch(() => db.userAccounts.delete(id))
+          .catch(err => console.warn('[DB] deleteAccount IDB failed:', err))
+        // 연결된 입출금 내역 cascade 삭제
         useCashFlowStore.getState().deleteCashFlowsByAccount(id)
         dbDeleteByAccount(id).catch(err => console.warn('[DB] cascade deleteCashFlows failed:', err))
       },
@@ -59,6 +72,21 @@ export const useAccountStore = create(
           ? state.accounts.filter(a => a.userId !== userId)
           : []
       }),
+
+      // localStorage 계좌를 IDB로 복사 (1회성, M-3 업로드 준비)
+      syncToIDB: async () => {
+        const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
+        if (!userId) return
+        const accounts = useAccountStore.getState().accounts.filter(a => a.userId === userId)
+        if (accounts.length === 0) return
+        const toSave = accounts.map(a => ({
+          ...a,
+          userEmail: a.userEmail || userEmail || '',
+          syncedAt: a.syncedAt ?? null,
+          syncVersion: a.syncVersion ?? 0,
+        }))
+        await db.userAccounts.bulkPut(toSave)
+      },
 
       // ─── 셀렉터 ───
 

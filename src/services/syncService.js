@@ -1,179 +1,132 @@
-// 서버↔로컬 동기화 서비스 — 업로드·다운로드·충돌 처리·초기 이전
+// 서버↔로컬 동기화 서비스 — upload / download 단방향 구현
+// 개발 환경에서 콘솔 테스트: window.__sync.uploadTable('userAccounts')
 import { db } from '@/utils/db'
-import { useSyncStore } from '@/store/syncStore'
+import { SYNC_TABLE_MAP } from '@/constants/syncConfig'
 import { authService } from '@/services/authService'
+import { useSyncStore } from '@/store/syncStore'
 
-// aiCredentials 는 절대 동기화 금지 — 보안 필수
-const SYNC_TABLES = ['transactions', 'cashFlows', 'calendarEvents']
-
-// 로컬 개발 환경에서는 배포된 Vercel API를 직접 호출
 const API_BASE = import.meta.env.VITE_SYNC_API_BASE || ''
 
-async function getAuthToken() {
+async function getToken() {
   const session = await authService.getSession()
   if (!session?.access_token) throw new Error('로그인이 필요합니다')
   return session.access_token
 }
 
 export const syncService = {
-  // 서버 버전 확인
-  async checkServerVersion() {
-    const token = await getAuthToken()
-    const res = await fetch(`${API_BASE}/api/sync/version`, {
+  /**
+   * 단일 테이블 업로드 — syncedAt=null 레코드를 서버에 upsert
+   * @param {string} localTable - Dexie 테이블명 (예: 'transactions')
+   * @returns {{ uploaded: number, failed: number }}
+   */
+  async uploadTable(localTable) {
+    if (!db[localTable]) throw new Error(`Unknown table: ${localTable}`)
+
+    const token = await getToken()
+
+    const pending = await db[localTable]
+      .filter(r => !r.syncedAt)
+      .toArray()
+
+    if (pending.length === 0) return { uploaded: 0, failed: 0 }
+
+    const res = await fetch(`${API_BASE}/api/sync/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ table: localTable, records: pending }),
+    })
+
+    if (!res.ok) throw new Error(`Upload 실패 (${localTable}): ${res.status}`)
+
+    const { uploaded, failed } = await res.json()
+
+    // 업로드 성공 레코드에 syncedAt 기록
+    if (uploaded?.length > 0) {
+      const now = new Date().toISOString()
+      await db[localTable].bulkPut(
+        uploaded.map(r => ({ ...r, syncedAt: now }))
+      )
+    }
+
+    return { uploaded: uploaded?.length ?? 0, failed: failed?.length ?? 0 }
+  },
+
+  /**
+   * 단일 테이블 다운로드 — 서버 전체 레코드를 로컬 IDB에 PUT
+   * @param {string} localTable - Dexie 테이블명
+   * @returns {{ downloaded: number }}
+   */
+  async downloadTable(localTable) {
+    if (!db[localTable]) throw new Error(`Unknown table: ${localTable}`)
+
+    const token = await getToken()
+
+    const res = await fetch(`${API_BASE}/api/sync/download?table=${localTable}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!res.ok) throw new Error('버전 확인 실패')
-    const data = await res.json()
-    useSyncStore.getState().setServerVersion(data.version)
-    return data.version
+
+    if (!res.ok) throw new Error(`Download 실패 (${localTable}): ${res.status}`)
+
+    const { records } = await res.json()
+
+    if (records?.length > 0) {
+      await db[localTable].bulkPut(records)
+    }
+
+    return { downloaded: records?.length ?? 0 }
   },
 
-  // 미동기화 레코드 서버 업로드
-  async uploadPending() {
-    const token = await getAuthToken()
-    const { setSyncStatus, setLastSyncedAt, resetPending, addConflict } =
-      useSyncStore.getState()
-
+  /**
+   * 전체 테이블 업로드 (SYNC_TABLE_MAP 순서)
+   */
+  async uploadAll() {
+    const { setSyncStatus, setLastSyncedAt } = useSyncStore.getState()
     setSyncStatus('syncing')
 
     try {
-      for (const table of SYNC_TABLES) {
-        const pending = await db[table]
-          .filter((r) => r.syncedAt === null || r.syncedAt === undefined)
-          .toArray()
-
-        if (pending.length === 0) continue
-
-        const res = await fetch(`${API_BASE}/api/sync/upload`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ table, records: pending }),
-        })
-
-        if (!res.ok) throw new Error(`업로드 실패: ${table}`)
-
-        const { conflicts, uploaded } = await res.json()
-
-        // 충돌 레코드 저장
-        if (conflicts?.length) {
-          conflicts.forEach((c) => addConflict({ table, ...c }))
-          setSyncStatus('conflict')
-          return
-        }
-
-        // 업로드 성공한 레코드에 syncedAt 표시
-        const now = new Date().toISOString()
-        await db[table].bulkPut(
-          uploaded.map((r) => ({ ...r, syncedAt: now }))
-        )
+      let total = 0
+      for (const { local } of SYNC_TABLE_MAP) {
+        if (!db[local]) continue
+        const { uploaded } = await syncService.uploadTable(local)
+        total += uploaded
       }
-
-      resetPending()
       setLastSyncedAt(new Date().toISOString())
       setSyncStatus('synced')
+      return { total }
     } catch (err) {
       setSyncStatus('error')
       throw err
     }
   },
 
-  // 서버에서 로컬로 다운로드
-  async downloadFromServer(since = null) {
-    const token = await getAuthToken()
-    const { setSyncStatus, setLastSyncedAt, setServerVersion } =
-      useSyncStore.getState()
-
+  /**
+   * 전체 테이블 다운로드 (SYNC_TABLE_MAP 순서)
+   */
+  async downloadAll() {
+    const { setSyncStatus, setLastSyncedAt } = useSyncStore.getState()
     setSyncStatus('syncing')
 
     try {
-      for (const table of SYNC_TABLES) {
-        const url = since
-          ? `${API_BASE}/api/sync/download?table=${table}&since=${encodeURIComponent(since)}`
-          : `${API_BASE}/api/sync/download?table=${table}`
-
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!res.ok) throw new Error(`다운로드 실패: ${table}`)
-
-        const { records, version } = await res.json()
-        if (version !== undefined) setServerVersion(version)
-
-        for (const record of records) {
-          if (record.deleted_at) {
-            // 소프트 삭제 처리
-            await db[table].delete(String(record.id))
-          } else {
-            // 서버는 실제 데이터를 data 컬럼에 저장 — unwrap 필수
-            const payload = record.data ?? record
-            await db[table].put({
-              ...payload,
-              syncedAt: record.synced_at ?? new Date().toISOString(),
-            })
-          }
-        }
+      let total = 0
+      for (const { local } of SYNC_TABLE_MAP) {
+        if (!db[local]) continue
+        const { downloaded } = await syncService.downloadTable(local)
+        total += downloaded
       }
-
       setLastSyncedAt(new Date().toISOString())
       setSyncStatus('synced')
+      return { total }
     } catch (err) {
       setSyncStatus('error')
       throw err
     }
   },
+}
 
-  // 최초 Supabase 가입 시 로컬 데이터 전체 서버 이전
-  async migrateLocalToServer(userId) {
-    const token = await getAuthToken()
-    const { setSyncStatus, setLastSyncedAt, resetPending } =
-      useSyncStore.getState()
-
-    setSyncStatus('syncing')
-
-    try {
-      // Supabase 이메일과 일치하는 로컬 userId 찾기 (로컬 ID ≠ Supabase ID 대응)
-      const { useAuthStore } = await import('@/store/authStore')
-      const { users: localUsers } = useAuthStore.getState()
-      const session = await authService.getSession()
-      const email = session?.user?.email
-      const localUser = email ? localUsers.find(u => u.email === email) : null
-      // 로컬 계정이 있으면 그 id로, 없으면 Supabase userId로 조회
-      const localUserId = localUser?.id ?? userId
-
-      for (const table of SYNC_TABLES) {
-        const records = await db[table]
-          .where('userId').equals(localUserId)
-          .toArray()
-
-        if (records.length === 0) continue
-
-        const res = await fetch(`${API_BASE}/api/sync/upload`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ table, records, migrate: true }),
-        })
-
-        if (!res.ok) throw new Error(`이전 실패: ${table}`)
-
-        const { uploaded } = await res.json()
-        const now = new Date().toISOString()
-        await db[table].bulkPut(
-          uploaded.map((r) => ({ ...r, syncedAt: now }))
-        )
-      }
-
-      resetPending()
-      setLastSyncedAt(new Date().toISOString())
-      setSyncStatus('synced')
-    } catch (err) {
-      setSyncStatus('error')
-      throw err
-    }
-  },
+// 개발 환경 전용 — 콘솔에서 window.__sync 으로 테스트
+if (import.meta.env?.DEV && typeof window !== 'undefined') {
+  window.__sync = syncService
 }

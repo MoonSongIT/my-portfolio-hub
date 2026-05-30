@@ -4,8 +4,8 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { migrateFromLegacy } from './utils/stockMasterMigrate'
-import { migrateLocalUserData } from './utils/migrateLocalUser'
 import { checkIsAdmin } from './utils/stockMasterServerApi'
+import { migrateLocalIdsIfNeeded } from './utils/migrateLocalIds'
 import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
@@ -99,15 +99,18 @@ function App() {
       // 관리자 권한 확인
       if (session?.user?.id) {
         checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
-        // 기존 로컬 userId 데이터를 Supabase userId로 자동 재할당 (최초 1회)
-        const migrated = await migrateLocalUserData(session.user.id)
-        if (migrated) {
-          // 마이그레이션 완료 — 데이터 재로드
-          const userId = session.user.id
-          useJournalStore.getState().loadFromDB(userId)
-          useCashFlowStore.getState().loadFromDB(userId)
-          useDailyPnlStore.getState().loadFromDB(userId)
+        // M-2: 기존 user-XXXX → Supabase UUID 교정 (1회성, await 블로킹)
+        const migrated = await migrateLocalIdsIfNeeded(session.user.id, session.user.email)
+        if (migrated > 0) {
+          // 교정 완료 → IndexedDB 재로드
+          const uid = session.user.id
+          useJournalStore.getState().loadFromDB(uid)
+          useCashFlowStore.getState().loadFromDB(uid)
+          useDailyPnlStore.getState().loadFromDB(uid)
         }
+        // M-3: localStorage 계좌 → IDB 복사 (syncService 업로드 대상)
+        const { useAccountStore } = await import('./store/accountStore')
+        await useAccountStore.getState().syncToIDB()
       }
     })
 

@@ -133,6 +133,24 @@ db.version(11).stores({
   await tx.calendarEvents.toCollection().modify({ syncVersion: 0, syncedAt: null, deletedAt: null })
 })
 
+// v12: 동기화 구조개선
+// - userEmail 인덱스 추가 (PK 변경 없음 — Dexie 제약)
+// - userAccounts, watchlist 테이블 신규 추가 (처음부터 UUID PK)
+// ※ calendarEvents/reports PK(++id) 는 변경 불가 → serverId 필드로 서버 UUID 별도 관리
+db.version(12).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId, userEmail, syncVersion',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, userEmail, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId, userEmail, syncVersion',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, userEmail, date, category, ticker, source, syncVersion',
+  userAccounts:   '&id, userId, userEmail',
+  watchlist:      '&id, userId, userEmail, ticker',
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
