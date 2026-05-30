@@ -234,7 +234,7 @@ export const useJournalStore = create(
       },
 
       addEntry: (entry) => {
-        const userId = useAuthStore.getState().currentUser?.id
+        const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
         const newEntry = {
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
@@ -243,6 +243,7 @@ export const useJournalStore = create(
           memo: '',
           linkedCashFlowId: null,
           userId,
+          userEmail: userEmail || '',
           ...entry,
         }
 
@@ -604,7 +605,7 @@ export const useJournalStore = create(
 
       // 복수 엔트리 일괄 추가 (HTS import용, 현금흐름 자동 연동 제외)
       addEntriesBulk: (entries) => {
-        const userId = useAuthStore.getState().currentUser?.id
+        const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
         const now = new Date().toISOString()
 
         const newEntries = entries
@@ -616,6 +617,7 @@ export const useJournalStore = create(
             memo: '',
             linkedCashFlowId: null,
             userId,
+            userEmail: userEmail || '',
             source: 'eugene-hts',
             importedAt: now,
             ...entry,
