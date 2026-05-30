@@ -108,6 +108,9 @@ function App() {
           useCashFlowStore.getState().loadFromDB(uid)
           useDailyPnlStore.getState().loadFromDB(uid)
         }
+        // M-3: localStorage 계좌 → IDB 복사 (syncService 업로드 대상)
+        const { useAccountStore } = await import('./store/accountStore')
+        await useAccountStore.getState().syncToIDB()
       }
     })
 

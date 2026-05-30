@@ -1,21 +1,26 @@
-// POST /api/sync/upload — 로컬 변경사항을 서버에 업로드 (충돌 감지 포함)
+// POST /api/sync/upload — 로컬 레코드를 서버에 upsert (data 래핑 없음)
 import { createClient } from '@supabase/supabase-js'
 import { setCors, handlePreflight } from '../_cors.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY  // 서버 전용 키 (클라이언트 노출 금지)
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// 로컬 Dexie 테이블명 → 서버 PostgreSQL 테이블명
-// aiCredentials 제외 — 보안 필수
+// Dexie 테이블명 → PostgreSQL 테이블명
 const TABLE_MAP = {
+  userAccounts:   'user_accounts',
   transactions:   'transactions',
   cashFlows:      'cash_flows',
-  calendarEvents: 'calendar_events',
-  accounts:       'accounts',
   watchlist:      'watchlist',
+  calendarEvents: 'calendar_events',
+  reports:        'reports',
 }
+
+// camelCase → snake_case
+const toSnake = key => key.replace(/([A-Z])/g, '_$1').toLowerCase()
+const recordToServer = record =>
+  Object.fromEntries(Object.entries(record).map(([k, v]) => [toSnake(k), v]))
 
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return
@@ -28,51 +33,40 @@ export default async function handler(req, res) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
 
-  // syncService는 { table, records } 형태로 전송
   const { table, records } = req.body
   const pgTable = TABLE_MAP[table]
   if (!pgTable) return res.status(400).json({ error: `Unknown table: ${table}` })
   if (!Array.isArray(records) || records.length === 0) {
-    return res.status(400).json({ error: 'records must be a non-empty array' })
+    return res.status(200).json({ uploaded: [], failed: [] })
   }
 
-  const conflicts = []
   const uploaded = []
+  const failed = []
 
   for (const record of records) {
-    // 서버 현재 버전 조회 — 충돌 감지
-    const { data: existing } = await supabase
-      .from(pgTable)
-      .select('id, sync_version')
-      .eq('id', String(record.id))
-      .single()
+    try {
+      // camelCase → snake_case 변환 + user_id/user_email 강제 덮어쓰기
+      const serverRecord = {
+        ...recordToServer(record),
+        user_id:      user.id,
+        user_email:   user.email,
+        sync_version: (record.syncVersion ?? 0) + 1,
+        synced_at:    new Date().toISOString(),
+      }
 
-    if (existing && existing.sync_version > (record.syncVersion ?? 0)) {
-      conflicts.push({
-        id: record.id,
-        serverVersion: existing.sync_version,
-        localVersion: record.syncVersion,
-      })
-      continue
+      const { error } = await supabase
+        .from(pgTable)
+        .upsert(serverRecord, { onConflict: 'id' })
+
+      if (error) {
+        failed.push({ id: record.id, error: error.message })
+      } else {
+        uploaded.push({ ...record, syncVersion: serverRecord.sync_version })
+      }
+    } catch (err) {
+      failed.push({ id: record.id, error: err.message })
     }
-
-    await supabase.from(pgTable).upsert({
-      id:           String(record.id),
-      user_id:      user.id,
-      data:         record,
-      sync_version: (record.syncVersion ?? 0) + 1,
-      synced_at:    new Date().toISOString(),
-      deleted_at:   record.deletedAt ?? null,
-    })
-    uploaded.push({ ...record, syncVersion: (record.syncVersion ?? 0) + 1 })
   }
 
-  // 글로벌 버전 갱신
-  await supabase.from('user_sync_meta').upsert({
-    user_id:        user.id,
-    global_version: Date.now(),
-    last_synced_at: new Date().toISOString(),
-  })
-
-  res.status(200).json({ uploaded, conflicts })
+  res.status(200).json({ uploaded, failed })
 }

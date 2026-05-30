@@ -134,46 +134,21 @@ db.version(11).stores({
 })
 
 // v12: 동기화 구조개선
-// - calendarEvents PK: ++id(정수) → &id(UUID)
-// - reports PK: ++id(정수) → &id(UUID)
-// - 동기화 테이블에 userEmail 인덱스 추가
-// - userAccounts, watchlist 테이블 신규 추가
+// - userEmail 인덱스 추가 (PK 변경 없음 — Dexie 제약)
+// - userAccounts, watchlist 테이블 신규 추가 (처음부터 UUID PK)
+// ※ calendarEvents/reports PK(++id) 는 변경 불가 → serverId 필드로 서버 UUID 별도 관리
 db.version(12).stores({
   transactions:   '&id, ticker, action, date, accountId, userId, userEmail, syncVersion',
   priceHistory:   '++id, ticker, date',
-  reports:        '&id, type, createdAt, userId, userEmail, [type+userId]',
+  reports:        '++id, type, createdAt, userId, userEmail, [type+userId]',
   cashFlows:      '&id, accountId, type, date, isAuto, userId, userEmail, syncVersion',
   dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
   alertHistory:   '++id, ticker, type, triggeredAt, isRead',
   chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
   aiCredentials:  '&provider',
-  calendarEvents: '&id, userId, userEmail, date, category, ticker, source, syncVersion',
+  calendarEvents: '++id, userId, userEmail, date, category, ticker, source, syncVersion',
   userAccounts:   '&id, userId, userEmail',
   watchlist:      '&id, userId, userEmail, ticker',
-})
-.upgrade(async (tx) => {
-  // calendarEvents: 정수 id → UUID 재할당
-  const events = await tx.calendarEvents.toArray()
-  if (events.length > 0) {
-    await tx.calendarEvents.clear()
-    await tx.calendarEvents.bulkPut(
-      events.map(e => ({
-        ...e,
-        id: typeof e.id === 'string' && e.id.includes('-') ? e.id : crypto.randomUUID(),
-      }))
-    )
-  }
-  // reports: 정수 id → UUID 재할당
-  const rpts = await tx.reports.toArray()
-  if (rpts.length > 0) {
-    await tx.reports.clear()
-    await tx.reports.bulkPut(
-      rpts.map(r => ({
-        ...r,
-        id: typeof r.id === 'string' && r.id.includes('-') ? r.id : crypto.randomUUID(),
-      }))
-    )
-  }
 })
 
 // ─── transactions CRUD ───
