@@ -15,7 +15,7 @@ import { BarChart2, Eye, EyeOff, Play } from 'lucide-react'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { login, register } = useAuthStore()
+  const { signIn, signUp } = useAuthStore()
   const { loadUserAccounts } = usePortfolioStore()
   const { loadUserWatchlist } = useWatchlistStore()
   const { loadFromDB: loadJournal, clearEntries } = useJournalStore()
@@ -56,47 +56,46 @@ export default function Login() {
     if (!password) { setError('비밀번호를 입력하세요'); return }
 
     setLoading(true)
+    setError('')
 
-    // 1) Supabase 로그인 먼저 시도
     try {
-      const data = await authService.signInWithEmail(email.trim(), password)
-      const session = data?.session
-      if (session) {
+      const result = await signIn(email.trim(), password)
+      if (!result.ok) {
+        setError(result.error || '이메일 또는 비밀번호가 올바르지 않습니다')
         setLoading(false)
-        useAuthStore.getState().setSupabaseSession(session)
-        afterLogin()
         return
       }
-    } catch {
-      // Supabase 미설정 또는 실패 → 로컬 로그인으로 폴백
+      setLoading(false)
+      afterLogin()
+    } catch (err) {
+      setError(err?.message || '로그인 중 오류가 발생했습니다')
+      setLoading(false)
     }
-
-    // 2) 로컬 로그인 폴백
-    const success = login(email.trim(), password)
-    setLoading(false)
-
-    if (!success) {
-      setError('이메일 또는 비밀번호가 올바르지 않습니다')
-      return
-    }
-    afterLogin()
   }
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!name.trim()) { setError('이름을 입력하세요'); return }
     if (!email.trim()) { setError('이메일을 입력하세요'); return }
     if (!password) { setError('비밀번호를 입력하세요'); return }
-    if (password.length < 4) { setError('비밀번호는 4자 이상이어야 합니다'); return }
+    if (password.length < 6) { setError('비밀번호는 6자 이상이어야 합니다'); return }
 
     setLoading(true)
-    const result = register(name.trim(), email.trim(), password)
-    setLoading(false)
+    setError('')
 
-    if (!result.ok) { setError(result.error); return }
-
-    // 가입 후 자동 로그인
-    login(email.trim(), password)
-    afterLogin()
+    try {
+      const result = await signUp(email.trim(), password, name.trim())
+      setLoading(false)
+      if (!result.ok) { setError('가입 중 오류가 발생했습니다'); return }
+      // 이메일 인증이 필요한 경우 session이 null일 수 있음
+      if (!result.session) {
+        setError('가입 확인 이메일을 확인해 주세요')
+        return
+      }
+      afterLogin()
+    } catch (err) {
+      setError(err?.message || '가입 중 오류가 발생했습니다')
+      setLoading(false)
+    }
   }
 
   const handleKeyDown = (e) => {
@@ -110,24 +109,10 @@ export default function Login() {
     setError('')
 
     try {
-      // 1. 데모 사용자 등록 (없으면 추가)
-      const { users } = useAuthStore.getState()
-      if (!users.find(u => u.email === DEMO_USER.email)) {
-        useAuthStore.setState({
-          users: [...users, {
-            id: DEMO_USER.id,
-            name: DEMO_USER.name,
-            email: DEMO_USER.email,
-            password: DEMO_USER.password,
-            createdAt: new Date('2026-02-16').toISOString(),
-          }],
-        })
-      }
-
-      // 2. 로그인
-      const success = login(DEMO_USER.email, DEMO_USER.password)
-      if (!success) {
-        setError('데모 로그인에 실패했습니다')
+      // Supabase 데모 계정 로그인
+      const result = await signIn(DEMO_USER.email, DEMO_USER.password)
+      if (!result.ok) {
+        setError('데모 계정을 찾을 수 없습니다. 관리자에게 문의하세요.')
         setLoading(false)
         return
       }

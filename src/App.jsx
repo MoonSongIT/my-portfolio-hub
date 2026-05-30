@@ -4,7 +4,6 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { migrateFromLegacy } from './utils/stockMasterMigrate'
-import { migrateLocalUserData } from './utils/migrateLocalUser'
 import { checkIsAdmin } from './utils/stockMasterServerApi'
 import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
@@ -99,15 +98,6 @@ function App() {
       // 관리자 권한 확인
       if (session?.user?.id) {
         checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
-        // 기존 로컬 userId 데이터를 Supabase userId로 자동 재할당 (최초 1회)
-        const migrated = await migrateLocalUserData(session.user.id)
-        if (migrated) {
-          // 마이그레이션 완료 — 데이터 재로드
-          const userId = session.user.id
-          useJournalStore.getState().loadFromDB(userId)
-          useCashFlowStore.getState().loadFromDB(userId)
-          useDailyPnlStore.getState().loadFromDB(userId)
-        }
       }
     })
 
