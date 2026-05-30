@@ -108,9 +108,14 @@ function App() {
           useCashFlowStore.getState().loadFromDB(uid)
           useDailyPnlStore.getState().loadFromDB(uid)
         }
-        // M-3: localStorage 계좌 → IDB 복사 (syncService 업로드 대상)
+        // M-3: IDB 계좌 로드 → UI 반영 (다운로드 후 필수)
         const { useAccountStore } = await import('./store/accountStore')
-        await useAccountStore.getState().syncToIDB()
+        await useAccountStore.getState().loadFromDB(session.user.id)
+        // IDB에 계좌가 없으면 localStorage → IDB 복사 (업로드 준비)
+        const idbCount = await (await import('./utils/db')).db.userAccounts.count()
+        if (idbCount === 0) {
+          await useAccountStore.getState().syncToIDB()
+        }
       }
     })
 

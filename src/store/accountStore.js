@@ -73,6 +73,22 @@ export const useAccountStore = create(
           : []
       }),
 
+      // IDB → Zustand 상태 로드 (다운로드 후 UI 반영)
+      loadFromDB: async (userId) => {
+        if (!userId) return
+        try {
+          const accounts = await db.userAccounts
+            .where('userId').equals(userId)
+            .filter(a => !a.deletedAt)
+            .toArray()
+          if (accounts.length > 0) {
+            set((state) => { state.accounts = accounts })
+          }
+        } catch (err) {
+          console.warn('[DB] accountStore.loadFromDB failed:', err)
+        }
+      },
+
       // localStorage 계좌를 IDB로 복사 (1회성, M-3 업로드 준비)
       syncToIDB: async () => {
         const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
