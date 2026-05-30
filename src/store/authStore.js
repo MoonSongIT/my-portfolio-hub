@@ -2,6 +2,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { authService } from '@/services/authService'
+import { supabase } from '@/lib/supabaseClient'
+
+// 로그인/세션 복원 시 profiles 행 자동 생성 (없으면 insert, 있으면 무시)
+async function ensureProfile(user) {
+  if (!supabase || !user?.id) return
+  await supabase.from('profiles').upsert(
+    { id: user.id, email: user.email, display_name: user.user_metadata?.full_name || user.email },
+    { onConflict: 'id', ignoreDuplicates: true }
+  )
+}
 
 export const useAuthStore = create(
   persist(
@@ -18,6 +28,7 @@ export const useAuthStore = create(
         const data = await authService.signUpWithEmail(email, password)
         const session = data?.session
         if (session) {
+          await ensureProfile(session.user)
           set({
             currentUser: {
               id: session.user.id,
@@ -37,6 +48,7 @@ export const useAuthStore = create(
         const data = await authService.signInWithEmail(email, password)
         const session = data?.session
         if (!session) return { ok: false, error: '로그인에 실패했습니다' }
+        await ensureProfile(session.user)
         set({
           currentUser: {
             id: session.user.id,
@@ -66,6 +78,7 @@ export const useAuthStore = create(
       restoreSession: async () => {
         const session = await authService.getSession()
         if (session?.user) {
+          await ensureProfile(session.user)
           set({
             currentUser: {
               id: session.user.id,
@@ -85,6 +98,7 @@ export const useAuthStore = create(
       // ── 하위 호환성 — App.jsx onAuthStateChange 콜백에서 사용 ──
       setSupabaseSession: (session) => {
         if (session?.user) {
+          ensureProfile(session.user)  // 비동기, 오류 무시
           set({
             currentUser: {
               id: session.user.id,
