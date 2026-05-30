@@ -22,6 +22,20 @@ const toSnake = key => key.replace(/([A-Z])/g, '_$1').toLowerCase()
 const recordToServer = record =>
   Object.fromEntries(Object.entries(record).map(([k, v]) => [toSnake(k), v]))
 
+// UUID 형식 검증 — 비표준 ID(demo-account-general 등)를 null로 변환
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const toUUID = val => (val && UUID_RE.test(String(val)) ? val : null)
+
+// UUID 타입인 FK 컬럼 목록 (테이블별)
+const UUID_FIELDS = {
+  transactions:   ['account_id', 'linked_cash_flow_id'],
+  cash_flows:     ['account_id', 'linked_journal_id'],
+  user_accounts:  [],
+  watchlist:      [],
+  calendar_events:[],
+  reports:        [],
+}
+
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return
   setCors(req, res)
@@ -52,6 +66,13 @@ export default async function handler(req, res) {
         user_email:   user.email,
         sync_version: (record.syncVersion ?? 0) + 1,
         synced_at:    new Date().toISOString(),
+      }
+
+      // 비표준 UUID 필드 → null 변환 (demo-account-general 등 방어)
+      for (const field of (UUID_FIELDS[pgTable] ?? [])) {
+        if (serverRecord[field] !== undefined) {
+          serverRecord[field] = toUUID(serverRecord[field])
+        }
       }
 
       const { error } = await supabase
