@@ -10,6 +10,7 @@ import { handleStockUpdate } from './server/stockUpdateHandler.js'
 import { handleStockMaster } from './server/stockMaster/index.js'
 import { handleAdminUsers } from './server/adminHandler.js'
 import { handleDartCalendarDividend, handleDartCalendarEarnings, handleFinnhubCalendarEarnings, handleFinnhubCalendarIpo } from './server/calendarHandler.js'
+import { handleSyncUpload, handleSyncDownload } from './server/syncHandler.js'
 
 export default defineConfig(({ mode }) => {
   // vitest 환경에서는 yahoo-finance2 임포트 스킵
@@ -157,6 +158,30 @@ export default defineConfig(({ mode }) => {
             await handleAdminUsers(req, res, env)
           } catch (err) {
             console.error('[Admin] 핸들러 예외:', err.message)
+            if (!res.writableEnded) {
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: err.message }))
+            }
+          }
+        })
+      },
+    },
+    // 동기화 API 미들웨어 (/api/sync/upload, /api/sync/download)
+    {
+      name: 'sync-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (!req.url?.startsWith('/api/sync')) return next()
+          try {
+            if (req.url.startsWith('/api/sync/upload')) {
+              await handleSyncUpload(req, res, env)
+            } else if (req.url.startsWith('/api/sync/download')) {
+              await handleSyncDownload(req, res, env)
+            } else {
+              next()
+            }
+          } catch (err) {
+            console.error('[Sync] 핸들러 예외:', err.message)
             if (!res.writableEnded) {
               res.writeHead(500, { 'Content-Type': 'application/json' })
               res.end(JSON.stringify({ error: err.message }))
