@@ -151,6 +151,35 @@ db.version(12).stores({
   watchlist:      '&id, userId, userEmail, ticker',
 })
 
+// v13: calendarEvents 기존 정수 id → UUID 교체 (서버 동기화 위해 필요)
+// userEmail 필드는 upload 시 JWT에서 서버가 강제 덮어쓰므로 로컬값 불필요
+db.version(13).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId, userEmail, syncVersion',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, userEmail, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId, userEmail, syncVersion',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, userEmail, date, category, ticker, source, syncVersion',
+  userAccounts:   '&id, userId, userEmail',
+  watchlist:      '&id, userId, userEmail, ticker',
+}).upgrade(async (tx) => {
+  const events = await tx.calendarEvents.toArray()
+  const intIdEvents = events.filter(e => typeof e.id === 'number')
+  if (intIdEvents.length === 0) return
+
+  await tx.calendarEvents.bulkDelete(intIdEvents.map(e => e.id))
+  await tx.calendarEvents.bulkAdd(
+    intIdEvents.map(e => ({
+      ...e,
+      id: crypto.randomUUID(),
+      syncedAt: null,
+    }))
+  )
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
