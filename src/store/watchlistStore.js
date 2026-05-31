@@ -170,7 +170,7 @@ export const useWatchlistStore = create(
     updateWatchlistMemo: (ticker, memo) => {
       set((state) => ({
         watchlist: state.watchlist.map(item =>
-          item.ticker === ticker ? { ...item, memo } : item
+          item.ticker === ticker ? { ...item, memo, syncedAt: null } : item
         ),
       }))
       const updated = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
@@ -181,7 +181,7 @@ export const useWatchlistStore = create(
     updateWatchlistGroups: (ticker, groupIds) => {
       set((state) => ({
         watchlist: state.watchlist.map(item =>
-          item.ticker === ticker ? { ...item, groupIds } : item
+          item.ticker === ticker ? { ...item, groupIds, syncedAt: null } : item
         ),
       }))
       const updated = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
@@ -193,7 +193,7 @@ export const useWatchlistStore = create(
       set((state) => ({
         watchlist: state.watchlist.map(item =>
           item.ticker === ticker
-            ? { ...item, targetPrice, stopLoss, entryPrice }
+            ? { ...item, targetPrice, stopLoss, entryPrice, syncedAt: null }
             : item
         ),
       }))
