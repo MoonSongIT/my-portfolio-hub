@@ -314,17 +314,7 @@ export const useWatchlistStore = create(
     name: 'watchlist-storage',
     version: 7,
     migrate: (persisted) => ({
-      watchlist: (persisted?.watchlist ?? []).map(item => ({
-        priceAtAdded: null,
-        groupIds: [],
-        targetPrice: null,
-        stopLoss: null,
-        entryPrice: null,
-        highWaterMark: null,
-        trailingDropPct: null,
-        trailingAlert: false,
-        ...item,
-      })),
+      watchlist: [],  // watchlist는 IDB가 정식 저장소 — localStorage에서 복원하지 않음
       alerts: (persisted?.alerts ?? []).map(a => ({
         paused: false,
         ...a,
@@ -332,6 +322,13 @@ export const useWatchlistStore = create(
       groups: persisted?.groups ?? [],
       alertHistory: persisted?.alertHistory ?? [],
       watchlistUserId: persisted?.watchlistUserId ?? null,
+    }),
+    // watchlist는 IDB(Dexie)가 정식 저장소이므로 localStorage에는 저장하지 않음
+    partialize: (state) => ({
+      alerts: state.alerts,
+      groups: state.groups,
+      alertHistory: state.alertHistory,
+      watchlistUserId: state.watchlistUserId,
     }),
   })
 )

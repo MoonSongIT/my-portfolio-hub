@@ -116,14 +116,9 @@ function App() {
         if (idbCount === 0) {
           await useAccountStore.getState().syncToIDB()
         }
-        // M-6: IDB 관심종목 로드 → UI 반영
+        // M-6: IDB 관심종목 로드 → UI 반영 (IDB가 정식 저장소, localStorage 미사용)
         const { useWatchlistStore } = await import('./store/watchlistStore')
         await useWatchlistStore.getState().loadFromDB(session.user.id)
-        // IDB에 관심종목이 없으면 localStorage → IDB 복사 (업로드 준비)
-        const watchlistIdbCount = await (await import('./utils/db')).db.watchlist.count()
-        if (watchlistIdbCount === 0) {
-          await useWatchlistStore.getState().syncToIDB()
-        }
       }
     })
 
