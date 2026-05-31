@@ -61,7 +61,7 @@ const ALLOWED_COLUMNS = {
   ],
   calendar_events: [
     'id','user_id','user_email','date','title','category','ticker','source',
-    'description','impact','extra','sync_version','synced_at','deleted_at',
+    'description','memo','impact','extra','sync_version','synced_at','deleted_at',
     'created_at',
   ],
   reports: [
