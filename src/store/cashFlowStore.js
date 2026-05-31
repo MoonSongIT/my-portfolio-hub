@@ -44,7 +44,7 @@ export const useCashFlowStore = create(
 
       // 수동 입출금 추가
       addCashFlow: (flow) => {
-        const userId = useAuthStore.getState().currentUser?.id
+        const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
         // 카테고리 미지정 시 type 기반 기본값 적용
         const defaultCategory = flow.type === 'withdrawal' ? 'investment_out' : 'investment_in'
         const newFlow = {
@@ -53,6 +53,7 @@ export const useCashFlowStore = create(
           isAuto: false,
           memo: '',
           userId,
+          userEmail: userEmail || '',
           category: defaultCategory,
           ...flow,
         }
@@ -65,13 +66,14 @@ export const useCashFlowStore = create(
 
       // 매매 연동 자동 입출금 추가 (journalStore에서 호출)
       addAutoFlow: (flow) => {
-        const userId = useAuthStore.getState().currentUser?.id
+        const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
         const newFlow = {
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           isAuto: true,
           memo: '',
           userId,
+          userEmail: userEmail || '',
           ...flow,
         }
         const syncedFlow = bumpSyncVersion(newFlow)
