@@ -312,7 +312,7 @@ export const useWatchlistStore = create(
   }),
   {
     name: 'watchlist-storage',
-    version: 7,
+    version: 8,
     migrate: (persisted) => ({
       watchlist: [],  // watchlist는 IDB가 정식 저장소 — localStorage에서 복원하지 않음
       alerts: (persisted?.alerts ?? []).map(a => ({
