@@ -166,27 +166,39 @@ export const useWatchlistStore = create(
     clearWatchlist: () => set({ watchlist: [], alerts: [] }),
 
     // 관심종목 메모 업데이트
-    updateWatchlistMemo: (ticker, memo) => set((state) => ({
-      watchlist: state.watchlist.map(item =>
-        item.ticker === ticker ? { ...item, memo } : item
-      ),
-    })),
+    updateWatchlistMemo: (ticker, memo) => {
+      set((state) => ({
+        watchlist: state.watchlist.map(item =>
+          item.ticker === ticker ? { ...item, memo } : item
+        ),
+      }))
+      const updated = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
+      if (updated) putWatchlistItem(updated).catch(err => console.warn('[DB] updateWatchlistMemo IDB failed:', err))
+    },
 
     // 관심종목 태그 업데이트
-    updateWatchlistGroups: (ticker, groupIds) => set((state) => ({
-      watchlist: state.watchlist.map(item =>
-        item.ticker === ticker ? { ...item, groupIds } : item
-      ),
-    })),
+    updateWatchlistGroups: (ticker, groupIds) => {
+      set((state) => ({
+        watchlist: state.watchlist.map(item =>
+          item.ticker === ticker ? { ...item, groupIds } : item
+        ),
+      }))
+      const updated = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
+      if (updated) putWatchlistItem(updated).catch(err => console.warn('[DB] updateWatchlistGroups IDB failed:', err))
+    },
 
     // 목표가·손절가·매입가 업데이트 (알림과 독립)
-    updateWatchlistTargets: (ticker, { targetPrice, stopLoss, entryPrice }) => set((state) => ({
-      watchlist: state.watchlist.map(item =>
-        item.ticker === ticker
-          ? { ...item, targetPrice, stopLoss, entryPrice }
-          : item
-      ),
-    })),
+    updateWatchlistTargets: (ticker, { targetPrice, stopLoss, entryPrice }) => {
+      set((state) => ({
+        watchlist: state.watchlist.map(item =>
+          item.ticker === ticker
+            ? { ...item, targetPrice, stopLoss, entryPrice }
+            : item
+        ),
+      }))
+      const updated = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
+      if (updated) putWatchlistItem(updated).catch(err => console.warn('[DB] updateWatchlistTargets IDB failed:', err))
+    },
 
     // 개별 종목 고점 낙폭 모니터링 % 설정 (null = 설정 기본값으로 복원)
     updateTrailingDropPct: (ticker, pct) => set((state) => ({
