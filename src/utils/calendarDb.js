@@ -2,6 +2,7 @@
 
 import { db, bumpSyncVersion } from './db'
 import { useSyncStore } from '../store/syncStore'
+import { useAuthStore } from '../store/authStore'
 
 export async function getEventsByMonth(userId, year, month) {
   const start = `${year}-${String(month).padStart(2, '0')}-01`
@@ -29,9 +30,12 @@ export async function getEventsByRange(userId, startDate, endDate) {
 }
 
 export async function addEvent(userId, eventData) {
+  const { currentUser } = useAuthStore.getState()
   const record = bumpSyncVersion({
     ...eventData,
+    id: eventData.id || crypto.randomUUID(),
     userId,
+    userEmail: currentUser?.email ?? '',
     createdAt: new Date().toISOString(),
   })
   const result = await db.calendarEvents.add(record)
