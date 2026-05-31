@@ -6,6 +6,7 @@ import { getByTicker } from '../utils/stockMasterDb'
 import { useSettingsStore } from './settingsStore'
 import { putWatchlistItem, bulkPutWatchlist, softDeleteWatchlistItem, getWatchlistByUser } from '../utils/db'
 import { useAuthStore } from './authStore'
+import { saveGroupsToServer } from '../utils/groupsApi'
 
 export const useWatchlistStore = create(
   persist((set, get) => ({
@@ -233,29 +234,38 @@ export const useWatchlistStore = create(
 
     // ─── 태그(그룹) CRUD ───
 
-    addGroup: (name, color) => set((state) => {
-      if (state.groups.length >= 10) return state
-      return {
-        groups: [...state.groups, {
-          id: crypto.randomUUID(),
-          name,
-          color,
-          createdAt: new Date().toISOString(),
-        }],
-      }
-    }),
+    addGroup: (name, color) => {
+      set((state) => {
+        if (state.groups.length >= 10) return state
+        return {
+          groups: [...state.groups, {
+            id: crypto.randomUUID(),
+            name,
+            color,
+            createdAt: new Date().toISOString(),
+          }],
+        }
+      })
+      saveGroupsToServer(useWatchlistStore.getState().groups).catch(() => {})
+    },
 
-    renameGroup: (id, name) => set((state) => ({
-      groups: state.groups.map(g => g.id === id ? { ...g, name } : g),
-    })),
+    renameGroup: (id, name) => {
+      set((state) => ({
+        groups: state.groups.map(g => g.id === id ? { ...g, name } : g),
+      }))
+      saveGroupsToServer(useWatchlistStore.getState().groups).catch(() => {})
+    },
 
-    removeGroup: (id) => set((state) => ({
-      groups: state.groups.filter(g => g.id !== id),
-      watchlist: state.watchlist.map(item => ({
-        ...item,
-        groupIds: (item.groupIds ?? []).filter(gid => gid !== id),
-      })),
-    })),
+    removeGroup: (id) => {
+      set((state) => ({
+        groups: state.groups.filter(g => g.id !== id),
+        watchlist: state.watchlist.map(item => ({
+          ...item,
+          groupIds: (item.groupIds ?? []).filter(gid => gid !== id),
+        })),
+      }))
+      saveGroupsToServer(useWatchlistStore.getState().groups).catch(() => {})
+    },
 
     // ─── 알림 CRUD ───
 
