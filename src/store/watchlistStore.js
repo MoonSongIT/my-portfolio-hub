@@ -128,23 +128,38 @@ export const useWatchlistStore = create(
       }
     },
 
-    // localStorage persist 데이터를 IDB로 1회 복사 (M-6 업로드 준비)
+    // localStorage persist 데이터를 IDB로 복사 (멱등 — 트랜잭션으로 동시 호출 방지)
     syncToIDB: async () => {
       const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
       if (!userId) return
       const { watchlist } = useWatchlistStore.getState()
       const items = watchlist.filter(w => w.userId === userId || !w.userId)
       if (items.length === 0) return
-      const toSave = items.map(w => ({
-        ...w,
-        id: w.id || crypto.randomUUID(),
-        userId,
-        userEmail: w.userEmail || userEmail || '',
-        syncVersion: w.syncVersion ?? 0,
-        syncedAt: w.syncedAt ?? null,
-        deletedAt: w.deletedAt ?? null,
-      }))
-      await bulkPutWatchlist(toSave)
+
+      // ticker 중복 제거
+      const byTicker = new Map()
+      items.forEach(w => byTicker.set(w.ticker, w))
+      const unique = [...byTicker.values()]
+
+      const { db: idb } = await import('../utils/db')
+      // delete + insert를 하나의 트랜잭션으로 묶어 동시 호출 시 중복 삽입 방지
+      await idb.transaction('rw', idb.watchlist, async () => {
+        const existing = await idb.watchlist.where('userId').equals(userId).toArray()
+        const existingIdByTicker = Object.fromEntries(existing.map(w => [w.ticker, w.id]))
+
+        const toSave = unique.map(w => ({
+          ...w,
+          id: existingIdByTicker[w.ticker] || w.id || crypto.randomUUID(),
+          userId,
+          userEmail: w.userEmail || userEmail || '',
+          syncVersion: w.syncVersion ?? 0,
+          syncedAt: w.syncedAt ?? null,
+          deletedAt: w.deletedAt ?? null,
+        }))
+
+        await idb.watchlist.where('userId').equals(userId).delete()
+        await idb.watchlist.bulkPut(toSave)
+      })
     },
 
     // 초기화 (로그아웃 시 호출)
@@ -297,19 +312,9 @@ export const useWatchlistStore = create(
   }),
   {
     name: 'watchlist-storage',
-    version: 7,
+    version: 8,
     migrate: (persisted) => ({
-      watchlist: (persisted?.watchlist ?? []).map(item => ({
-        priceAtAdded: null,
-        groupIds: [],
-        targetPrice: null,
-        stopLoss: null,
-        entryPrice: null,
-        highWaterMark: null,
-        trailingDropPct: null,
-        trailingAlert: false,
-        ...item,
-      })),
+      watchlist: [],  // watchlist는 IDB가 정식 저장소 — localStorage에서 복원하지 않음
       alerts: (persisted?.alerts ?? []).map(a => ({
         paused: false,
         ...a,
@@ -317,6 +322,13 @@ export const useWatchlistStore = create(
       groups: persisted?.groups ?? [],
       alertHistory: persisted?.alertHistory ?? [],
       watchlistUserId: persisted?.watchlistUserId ?? null,
+    }),
+    // watchlist는 IDB(Dexie)가 정식 저장소이므로 localStorage에는 저장하지 않음
+    partialize: (state) => ({
+      alerts: state.alerts,
+      groups: state.groups,
+      alertHistory: state.alertHistory,
+      watchlistUserId: state.watchlistUserId,
     }),
   })
 )

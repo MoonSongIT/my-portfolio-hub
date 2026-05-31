@@ -432,19 +432,6 @@ export const useJournalStore = create(
 
           set((state) => { state.entries = migrated })
 
-          // 매수 이력이 있는 종목을 관심종목에 동기화 (중복 방지는 watchlistStore에서 처리)
-          const addToWatchlist = useWatchlistStore.getState().addToWatchlist
-          const seen = new Set()
-          for (const e of dbEntries) {
-            if (e.action === 'buy' && e.ticker && !seen.has(e.ticker)) {
-              seen.add(e.ticker)
-              addToWatchlist({
-                ticker: e.ticker,
-                name: e.name || e.ticker,
-                market: e.market || 'KRX',
-              })
-            }
-          }
         } catch (err) {
           console.warn('[DB] loadFromDB failed, using localStorage:', err)
         }
