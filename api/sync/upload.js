@@ -36,6 +36,47 @@ const UUID_FIELDS = {
   reports:        [],
 }
 
+// 테이블별 허용 컬럼 — Supabase 스키마와 정확히 일치시켜 unknown column 오류 방지
+const ALLOWED_COLUMNS = {
+  user_accounts: [
+    'id','user_id','user_email','name','broker','type','currency',
+    'initial_balance','memo','sync_version','synced_at','deleted_at',
+    'created_at','updated_at',
+  ],
+  transactions: [
+    'id','user_id','user_email','account_id','account_name','ticker','name',
+    'action','date','price','quantity','fee','pnl','psychology','memo',
+    'market','sector','source','linked_cash_flow_id','external_id',
+    'sync_version','synced_at','deleted_at','created_at','imported_at',
+  ],
+  cash_flows: [
+    'id','user_id','user_email','account_id','account_name','type','category',
+    'amount','currency','date','memo','is_auto','linked_journal_id',
+    'sync_version','synced_at','deleted_at','created_at',
+  ],
+  watchlist: [
+    'id','user_id','user_email','ticker','name','market','added_at',
+    'price_at_added','target_price','stop_loss','entry_price','group_ids',
+    'trailing_alert','sync_version','synced_at','deleted_at',
+  ],
+  calendar_events: [
+    'id','user_id','user_email','date','title','category','ticker','source',
+    'description','impact','extra','sync_version','synced_at','deleted_at',
+    'created_at',
+  ],
+  reports: [
+    'id','user_id','user_email','type','data','sync_version','synced_at',
+    'deleted_at','created_at',
+  ],
+}
+
+// 허용된 컬럼만 남기고 나머지 제거
+const filterColumns = (record, pgTable) => {
+  const allowed = ALLOWED_COLUMNS[pgTable]
+  if (!allowed) return record
+  return Object.fromEntries(Object.entries(record).filter(([k]) => allowed.includes(k)))
+}
+
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return
   setCors(req, res)
@@ -60,7 +101,7 @@ export default async function handler(req, res) {
   for (const record of records) {
     try {
       // camelCase → snake_case 변환 + user_id/user_email 강제 덮어쓰기
-      const serverRecord = {
+      const converted = {
         ...recordToServer(record),
         user_id:      user.id,
         user_email:   user.email,
@@ -70,10 +111,13 @@ export default async function handler(req, res) {
 
       // 비표준 UUID 필드 → null 변환 (demo-account-general 등 방어)
       for (const field of (UUID_FIELDS[pgTable] ?? [])) {
-        if (serverRecord[field] !== undefined) {
-          serverRecord[field] = toUUID(serverRecord[field])
+        if (converted[field] !== undefined) {
+          converted[field] = toUUID(converted[field])
         }
       }
+
+      // Supabase 스키마에 없는 컬럼 제거 (unknown column 오류 방지)
+      const serverRecord = filterColumns(converted, pgTable)
 
       const { error } = await supabase
         .from(pgTable)
