@@ -436,3 +436,24 @@ export async function getAllCalendarEvents() {
 export async function getCalendarEventsByUser(userId) {
   return db.calendarEvents.where('userId').equals(userId).toArray()
 }
+
+// ─── watchlist CRUD ───
+
+export async function putWatchlistItem(item) {
+  return db.watchlist.put(item)
+}
+
+export async function bulkPutWatchlist(items) {
+  return db.watchlist.bulkPut(items)
+}
+
+export async function softDeleteWatchlistItem(id) {
+  return db.watchlist.update(id, { deletedAt: new Date().toISOString(), syncedAt: null })
+}
+
+export async function getWatchlistByUser(userId) {
+  return db.watchlist
+    .where('userId').equals(userId)
+    .filter(w => !w.deletedAt)
+    .toArray()
+}

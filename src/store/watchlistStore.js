@@ -4,6 +4,8 @@ import { persist } from 'zustand/middleware'
 import { sampleWatchlistByUser } from '../data/sampleWatchlist'
 import { getByTicker } from '../utils/stockMasterDb'
 import { useSettingsStore } from './settingsStore'
+import { putWatchlistItem, bulkPutWatchlist, softDeleteWatchlistItem, getWatchlistByUser } from '../utils/db'
+import { useAuthStore } from './authStore'
 
 export const useWatchlistStore = create(
   persist((set, get) => ({
@@ -36,7 +38,8 @@ export const useWatchlistStore = create(
     },
 
     // 관심종목 추가 (중복 방지, priceAtAdded 스냅샷 + 설정 기반 기본값 적용)
-    addToWatchlist: (item) => set((state) => {
+    addToWatchlist: (item) => {
+      const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
       const { watchlistDefaults } = useSettingsStore.getState()
       const base = item.currentPrice > 0 ? item.currentPrice : null
       const targetPrice = item.targetPrice ?? (
@@ -45,21 +48,30 @@ export const useWatchlistStore = create(
       const stopLoss = item.stopLoss ?? (
         base ? Math.round(base * (1 - watchlistDefaults.stopLossPct / 100)) : null
       )
-      return {
-        watchlist: [...state.watchlist, {
-          ...item,
-          addedAt: new Date().toISOString(),
-          priceAtAdded: item.currentPrice ?? null,
-          groupIds: item.groupIds ?? [],
-          targetPrice,
-          stopLoss,
-          entryPrice: item.entryPrice ?? null,
-          highWaterMark: null,
-          trailingDropPct: null,
-          trailingAlert: false,
-        }].filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
+      const newItem = {
+        id: item.id || crypto.randomUUID(),
+        ...item,
+        userId,
+        userEmail: userEmail || '',
+        addedAt: new Date().toISOString(),
+        priceAtAdded: item.currentPrice ?? null,
+        groupIds: item.groupIds ?? [],
+        targetPrice,
+        stopLoss,
+        entryPrice: item.entryPrice ?? null,
+        highWaterMark: null,
+        trailingDropPct: null,
+        trailingAlert: false,
+        syncVersion: 0,
+        syncedAt: null,
+        deletedAt: null,
       }
-    }),
+      set((state) => ({
+        watchlist: [...state.watchlist, newItem]
+          .filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
+      }))
+      putWatchlistItem(newItem).catch(err => console.warn('[DB] addToWatchlist IDB failed:', err))
+    },
 
     /**
      * 마스터 DB 검증 후 관심종목 추가
@@ -92,10 +104,48 @@ export const useWatchlistStore = create(
     },
 
     // 관심종목 삭제 (연결 알림도 함께 삭제)
-    removeFromWatchlist: (ticker) => set((state) => ({
-      watchlist: state.watchlist.filter(item => item.ticker !== ticker),
-      alerts: state.alerts.filter(a => a.ticker !== ticker),
-    })),
+    removeFromWatchlist: (ticker) => {
+      const item = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
+      set((state) => ({
+        watchlist: state.watchlist.filter(w => w.ticker !== ticker),
+        alerts: state.alerts.filter(a => a.ticker !== ticker),
+      }))
+      if (item?.id) {
+        softDeleteWatchlistItem(item.id).catch(err => console.warn('[DB] removeFromWatchlist IDB failed:', err))
+      }
+    },
+
+    // IDB → Zustand 상태 로드 (다운로드 후 UI 반영)
+    loadFromDB: async (userId) => {
+      if (!userId) return
+      try {
+        const items = await getWatchlistByUser(userId)
+        if (items.length > 0) {
+          set((state) => ({ watchlist: items, watchlistUserId: userId }))
+        }
+      } catch (err) {
+        console.warn('[DB] watchlistStore.loadFromDB failed:', err)
+      }
+    },
+
+    // localStorage persist 데이터를 IDB로 1회 복사 (M-6 업로드 준비)
+    syncToIDB: async () => {
+      const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
+      if (!userId) return
+      const { watchlist } = useWatchlistStore.getState()
+      const items = watchlist.filter(w => w.userId === userId || !w.userId)
+      if (items.length === 0) return
+      const toSave = items.map(w => ({
+        ...w,
+        id: w.id || crypto.randomUUID(),
+        userId,
+        userEmail: w.userEmail || userEmail || '',
+        syncVersion: w.syncVersion ?? 0,
+        syncedAt: w.syncedAt ?? null,
+        deletedAt: w.deletedAt ?? null,
+      }))
+      await bulkPutWatchlist(toSave)
+    },
 
     // 초기화 (로그아웃 시 호출)
     clearWatchlist: () => set({ watchlist: [], alerts: [] }),
