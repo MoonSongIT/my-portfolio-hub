@@ -119,6 +119,12 @@ function App() {
         // M-6: IDB 관심종목 로드 → UI 반영 (IDB가 정식 저장소, localStorage 미사용)
         const { useWatchlistStore } = await import('./store/watchlistStore')
         await useWatchlistStore.getState().loadFromDB(session.user.id)
+        // M-6: 서버에서 태그 목록 로드 (없으면 localStorage 유지)
+        const { loadGroupsFromServer } = await import('./utils/groupsApi')
+        const serverGroups = await loadGroupsFromServer()
+        if (serverGroups && serverGroups.length > 0) {
+          useWatchlistStore.setState({ groups: serverGroups })
+        }
       }
     })
 
