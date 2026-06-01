@@ -171,14 +171,22 @@ export async function handleSyncDownload(req, res, env) {
 
   const url = new URL(req.url, 'http://localhost')
   const table = url.searchParams.get('table')
+  const since = url.searchParams.get('since')   // 증분 다운로드용 타임스탬프
   const pgTable = TABLE_MAP[table]
   if (!pgTable) return json(400, { error: `Unknown table: ${table}` })
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(pgTable)
     .select('*')
     .eq('user_id', user.id)
     .is('deleted_at', null)
+
+  // 증분 다운로드: since 이후 변경된 레코드만 반환
+  if (since) {
+    query = query.gte('updated_at', since)
+  }
+
+  const { data, error } = await query
 
   if (error) return json(500, { error: error.message })
 

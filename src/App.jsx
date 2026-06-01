@@ -126,8 +126,9 @@ function App() {
         }
         // S-2: 로그인 후 증분 다운로드 — lastSyncedAt 기준으로 변경분만 받음
         const { lastSyncedAt, setPendingChanges } = useSyncStore.getState()
+        // 마진 30초 — 클라이언트/서버 시간차 보정용 (5분은 과도, 매번 전체 재다운로드 유발)
         const since = lastSyncedAt
-          ? new Date(new Date(lastSyncedAt).getTime() - 5 * 60 * 1000).toISOString()
+          ? new Date(new Date(lastSyncedAt).getTime() - 30 * 1000).toISOString()
           : null
 
         if (!since) {
