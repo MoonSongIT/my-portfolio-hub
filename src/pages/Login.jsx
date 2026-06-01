@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { authService } from '../services/authService'
+import { syncService } from '../services/syncService'
 import { usePortfolioStore } from '../store/portfolioStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { useJournalStore } from '../store/journalStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
 import { useDailyPnlStore } from '../store/dailyPnlStore'
+import { db } from '../utils/db'
 import { DEMO_USER, seedDemoData } from '../utils/demoData'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -37,7 +39,7 @@ export default function Login() {
 
   const clearError = () => setError('')
 
-  const afterLogin = () => {
+  const afterLogin = async () => {
     const userId = useAuthStore.getState().currentUser.id
     // 이전 사용자 데이터 초기화 후 현재 사용자 데이터 로드
     clearEntries()
@@ -49,6 +51,13 @@ export default function Login() {
     loadCashFlows(userId)
     loadDailyPnl(userId)
     navigate('/')
+    // 새 기기 감지 — IDB에 거래 내역이 없으면 서버에서 자동 다운로드
+    const txCount = await db.transactions.count()
+    if (txCount === 0) {
+      syncService.downloadAndReload(userId).catch(err =>
+        console.warn('[Sync] 로그인 후 자동 다운로드 실패:', err)
+      )
+    }
   }
 
   const handleLogin = async () => {
