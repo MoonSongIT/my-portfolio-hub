@@ -1,7 +1,7 @@
 // 이탈 가드 — <Link> 클릭 인터셉트로 미동기화 레코드 있을 때 PendingUploadModal 표시
 // (BrowserRouter 환경: useBlocker 미지원 → document capture 클릭 인터셉터로 대체)
 // 주의: e.preventDefault()는 반드시 동기 구간에서 호출해야 브라우저가 취소함
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react' // useRef: locationRef, pendingNavRef
 import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { syncService } from '@/services/syncService'
@@ -21,29 +21,19 @@ export function usePendingSync() {
   const [pendingCount, setPendingCount] = useState(0)
   const pendingNavRef = useRef(null)
 
-  const syncEnabled = useSyncStore(s => s.syncEnabled)
-  const isLoggedIn = useAuthStore(s => s.isLoggedIn)
-  // Zustand에서 동기로 읽는 pendingChanges를 ref에 유지 — 클릭 핸들러 동기 구간에서 사용
-  const pendingChanges = useSyncStore(s => s.pendingChanges)
-  const pendingChangesRef = useRef(pendingChanges)
-  useEffect(() => { pendingChangesRef.current = pendingChanges }, [pendingChanges])
-
-  const syncEnabledRef = useRef(syncEnabled)
-  useEffect(() => { syncEnabledRef.current = syncEnabled }, [syncEnabled])
-
-  const isLoggedInRef = useRef(isLoggedIn)
-  useEffect(() => { isLoggedInRef.current = isLoggedIn }, [isLoggedIn])
-
-  const locationRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+  const locationRef = useRef(location.pathname)
   useEffect(() => { locationRef.current = location.pathname }, [location.pathname])
 
   useEffect(() => {
     const handleClick = (e) => {
-      if (!syncEnabledRef.current || !isLoggedInRef.current) return
-      // pendingChanges === 0 이면 차단 불필요 — 동기 체크
-      if (pendingChangesRef.current === 0) return
+      // getState()로 Zustand 최신값 직접 읽기 — useEffect ref 경유 시 React 렌더 지연으로
+      // 업로드 직후 ref가 갱신되기 전에 클릭이 들어오면 모달 재표시 오탐 발생하는 문제 해결
+      const { syncEnabled, pendingChanges } = useSyncStore.getState()
+      const { isLoggedIn } = useAuthStore.getState()
+      if (!syncEnabled || !isLoggedIn) return
+      if (pendingChanges === 0) return
 
       // React Router <Link>는 <a href> 로 렌더링됨
       const anchor = e.target.closest('a[href]')
