@@ -25,6 +25,9 @@ import ProtectedRoute from './components/common/ProtectedRoute'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import AutoSnapshotDialog from './components/common/AutoSnapshotDialog'
 import { useAutoSnapshot } from './hooks/useAutoSnapshot'
+import { usePendingSync } from './hooks/usePendingSync'
+import { useBeforeUnloadSync } from './hooks/useBeforeUnloadSync'
+import PendingUploadModal from './components/sync/PendingUploadModal'
 
 // 페이지 컴포넌트 lazy 로딩 (코드 스플리팅)
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -54,6 +57,8 @@ function App() {
   const isLoggedIn = useAuthStore(s => s.isLoggedIn)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { dialogOpen, countdown, handleConfirm, handleDismiss } = useAutoSnapshot()
+  // 브라우저 탭 닫기 / 새로고침 이탈 시 미동기화 경고
+  useBeforeUnloadSync()
 
   // PWA 서비스 워커 등록
   const {
@@ -117,13 +122,32 @@ function App() {
         if (idbCount === 0) {
           await useAccountStore.getState().syncToIDB()
         }
-        // 새 기기 감지 — transactions가 없으면 서버에서 자동 다운로드 + 재로드
-        const txCount = await idb.transactions.count()
-        if (txCount === 0) {
-          syncService.downloadAndReload(session.user.id).catch(err =>
-            console.warn('[Sync] 자동 다운로드 실패:', err)
-          )
+        // S-2: 로그인 후 증분 다운로드 — lastSyncedAt 기준으로 변경분만 받음
+        const { lastSyncedAt, setPendingChanges } = useSyncStore.getState()
+        const since = lastSyncedAt
+          ? new Date(new Date(lastSyncedAt).getTime() - 5 * 60 * 1000).toISOString()
+          : null
+
+        if (!since) {
+          // 최초 기기 — 전체 다운로드
+          syncService.downloadAndReload(session.user.id)
+            .then(({ total }) => {
+              if (total > 0) toast.success(`서버에서 ${total}개 항목을 받아왔습니다.`)
+            })
+            .catch(err => console.warn('[Sync] 자동 다운로드 실패:', err))
+        } else {
+          // 기존 기기 재로그인 — 증분 다운로드
+          syncService.downloadDeltaAndReload(session.user.id, since)
+            .then(({ total }) => {
+              if (total > 0) toast.info(`서버에서 ${total}개 변경사항을 받아왔습니다.`)
+            })
+            .catch(err => console.warn('[Sync] 증분 다운로드 실패:', err))
         }
+
+        // S-1: pendingChanges 초기화 — IDB 실제 스캔 결과로 설정
+        syncService.countPendingRecords()
+          .then(count => setPendingChanges(count))
+          .catch(() => {})
         // M-6: IDB 관심종목 로드 → UI 반영 (IDB가 정식 저장소, localStorage 미사용)
         const { useWatchlistStore } = await import('./store/watchlistStore')
         await useWatchlistStore.getState().loadFromDB(session.user.id)
@@ -262,6 +286,25 @@ function App() {
           </button>
         </div>
       )}
+      {/* S-1: 이탈 가드 — useBlocker는 Router 내부에서만 사용 가능 */}
+      <RouterContent sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} updateServiceWorker={updateServiceWorker} />
+    </BrowserRouter>
+  )
+}
+
+// Router 컨텍스트 내부에서 useBlocker(usePendingSync)를 사용하기 위한 내부 컴포넌트
+function RouterContent({ sidebarOpen, setSidebarOpen }) {
+  const { modalOpen, pendingCount, handleUploaded, handleLeave, handleCancel } = usePendingSync()
+
+  return (
+    <>
+      <PendingUploadModal
+        open={modalOpen}
+        pendingCount={pendingCount}
+        onUploaded={handleUploaded}
+        onLeave={handleLeave}
+        onCancel={handleCancel}
+      />
       <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950"><LoadingSpinner /></div>}>
         <Routes>
           {/* 로그인 페이지 (레이아웃 없음) */}
@@ -310,7 +353,7 @@ function App() {
           />
         </Routes>
       </Suspense>
-    </BrowserRouter>
+    </>
   )
 }
 
