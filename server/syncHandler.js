@@ -181,9 +181,12 @@ export async function handleSyncDownload(req, res, env) {
     .eq('user_id', user.id)
     .is('deleted_at', null)
 
-  // 증분 다운로드: since 이후 변경된 레코드만 반환
+  // 증분 다운로드: since 이후 업로드된 레코드만 반환
+  // updated_at 대신 synced_at 사용 — upload 핸들러가 now()로 명시 세팅,
+  // lastSyncedAt은 upload 완료 후 찍히므로 synced_at < lastSyncedAt 항상 보장
+  // gt (strict) 사용 — 같은 밀리초 경계값 재다운로드 방지
   if (since) {
-    query = query.gte('updated_at', since)
+    query = query.gt('synced_at', since)
   }
 
   const { data, error } = await query

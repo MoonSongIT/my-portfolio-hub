@@ -43,9 +43,9 @@ export default async function handler(req, res) {
     .eq('user_id', user.id)
     .is('deleted_at', null)
 
-  // 증분 다운로드: since 이후 변경된 레코드만 반환
+  // 증분 다운로드: since 이후 업로드된 레코드만 반환 (synced_at 기준, strict gt)
   if (since) {
-    query = query.gte('updated_at', since)
+    query = query.gt('synced_at', since)
   }
 
   const { data, error } = await query
