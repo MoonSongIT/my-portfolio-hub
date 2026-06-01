@@ -16,7 +16,7 @@ export function useSyncStatus() {
   const triggerSync = useCallback(async () => {
     if (!isSupabaseUser || !syncEnabled) return
     try {
-      await syncService.uploadPending()
+      await syncService.uploadAll()
     } catch (err) {
       console.error('[Sync] 동기화 실패:', err)
     }
