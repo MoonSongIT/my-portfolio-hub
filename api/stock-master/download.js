@@ -37,7 +37,8 @@ export default async function handler(req, res) {
 
   const { exchange } = req.query
 
-  let query = supabase.from('stock_master').select('*')
+  // range(0, 49999)로 Supabase 기본 1,000행 제한 우회
+  let query = supabase.from('stock_master').select('*').range(0, 49999)
   if (exchange) query = query.eq('exchange', exchange)
 
   const { data, error } = await query

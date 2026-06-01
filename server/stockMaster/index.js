@@ -289,24 +289,32 @@ export async function handleStockMaster(req, res) {
   // ── /api/stock-master/meta ───────────────────────────────────────────────
   if (rawUrl.startsWith('/api/stock-master/meta')) {
     const sb = getSupabase()
-    const { data: rows, error } = await sb.from('stock_master').select('exchange')
-    if (error) {
+    const EXCHANGES = ['KOSPI', 'KOSDAQ', 'NXT', 'KRX_ETF', 'NYSE', 'NASDAQ', 'US_ETF']
+    // 전체 카운트 + 거래소별 카운트를 count 쿼리로 처리 (1,000행 제한 우회)
+    const [totalResult, ...exResults] = await Promise.all([
+      sb.from('stock_master').select('*', { count: 'exact', head: true }),
+      ...EXCHANGES.map(ex =>
+        sb.from('stock_master').select('*', { count: 'exact', head: true }).eq('exchange', ex)
+      ),
+    ])
+    if (totalResult.error) {
       res.writeHead(500, { 'Content-Type': 'application/json' })
-      return res.end(JSON.stringify({ error: error.message }))
+      return res.end(JSON.stringify({ error: totalResult.error.message }))
     }
     const byExchange = {}
-    for (const r of rows ?? []) byExchange[r.exchange] = (byExchange[r.exchange] || 0) + 1
+    EXCHANGES.forEach((ex, i) => { if (exResults[i].count) byExchange[ex] = exResults[i].count })
     const { data: latest } = await sb.from('stock_master').select('uploaded_at')
       .order('uploaded_at', { ascending: false }).limit(1).single()
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    return res.end(JSON.stringify({ total: rows?.length ?? 0, byExchange, uploadedAt: latest?.uploaded_at ?? null }))
+    return res.end(JSON.stringify({ total: totalResult.count ?? 0, byExchange, uploadedAt: latest?.uploaded_at ?? null }))
   }
 
   // ── /api/stock-master/download ───────────────────────────────────────────
   if (rawUrl.startsWith('/api/stock-master/download')) {
     const exchange = urlObj.searchParams.get('exchange')
     const sb = getSupabase()
-    let query = sb.from('stock_master').select('*')
+    // range(0, 49999)로 Supabase 기본 1,000행 제한 우회
+    let query = sb.from('stock_master').select('*').range(0, 49999)
     if (exchange) query = query.eq('exchange', exchange)
     const { data, error } = await query
     if (error) {
