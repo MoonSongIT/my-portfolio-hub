@@ -47,7 +47,9 @@ const ImportHts = lazy(() => import('./pages/ImportHts'))
 const MarketCalendar = lazy(() => import('./pages/MarketCalendar'))
 
 function App() {
-  const { theme, enableSync, disableSync, syncEnabled } = useSettingsStore()
+  const { theme, enableSync, disableSync } = useSettingsStore()
+  // 자동 업로드 인터벌은 syncStore.syncEnabled(사용자 설정 토글)를 기준으로 판단
+  const syncEnabled = useSyncStore(s => s.syncEnabled)
   const syncInterval = useSyncStore(s => s.syncInterval)
   const refreshCounts = useStockMasterStore(s => s.refreshCounts)
   const { loadFromDB } = useJournalStore()
