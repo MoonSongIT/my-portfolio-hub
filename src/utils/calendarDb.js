@@ -9,7 +9,7 @@ export async function getEventsByMonth(userId, year, month) {
   const end   = `${year}-${String(month).padStart(2, '0')}-31`
   return db.calendarEvents
     .where('userId').equals(userId)
-    .and(e => e.date >= start && e.date <= end)
+    .and(e => e.date >= start && e.date <= end && !e.deletedAt)
     .toArray()
 }
 
@@ -18,14 +18,14 @@ export async function getEventsByYear(userId, year) {
   const end   = `${year}-12-31`
   return db.calendarEvents
     .where('userId').equals(userId)
-    .and(e => e.date >= start && e.date <= end)
+    .and(e => e.date >= start && e.date <= end && !e.deletedAt)
     .toArray()
 }
 
 export async function getEventsByRange(userId, startDate, endDate) {
   return db.calendarEvents
     .where('userId').equals(userId)
-    .and(e => e.date >= startDate && e.date <= endDate)
+    .and(e => e.date >= startDate && e.date <= endDate && !e.deletedAt)
     .toArray()
 }
 
