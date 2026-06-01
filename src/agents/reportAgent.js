@@ -1,5 +1,6 @@
 // 성과 추적 & 리포트 에이전트 — ReportAgent
 import { saveReport } from '../utils/db'
+import { useSyncStore } from '../store/syncStore'
 
 /**
  * ReportAgent 시스템 프롬프트
@@ -175,13 +176,15 @@ export async function saveScheduledReport(type, content, userId) {
     ? `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${getWeekNumber(now)}주차 주간 리포트`
     : `${now.getFullYear()}년 ${now.getMonth() + 1}월 월간 리포트`
 
-  return saveReport({
+  const id = await saveReport({
     type,
     title,
-    content,
+    data: content,
     userId,
     generatedAt: now.toISOString(),
   })
+  useSyncStore.getState().incrementPending()
+  return id
 }
 
 /**
