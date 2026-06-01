@@ -6,20 +6,23 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+const EXCHANGES = ['KOSPI', 'KOSDAQ', 'NXT', 'KRX_ETF', 'NYSE', 'NASDAQ', 'US_ETF']
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end()
 
-  // exchange 컬럼만 조회해 JS 집계 (PostgREST group-by 복잡도 우회)
-  const { data: rows, error } = await supabase
-    .from('stock_master')
-    .select('exchange')
+  // count 쿼리로 집계 — select('exchange') 방식은 Supabase 1,000행 제한에 걸림
+  const [totalResult, ...exResults] = await Promise.all([
+    supabase.from('stock_master').select('*', { count: 'exact', head: true }),
+    ...EXCHANGES.map(ex =>
+      supabase.from('stock_master').select('*', { count: 'exact', head: true }).eq('exchange', ex)
+    ),
+  ])
 
-  if (error) return res.status(500).json({ error: error.message })
+  if (totalResult.error) return res.status(500).json({ error: totalResult.error.message })
 
   const byExchange = {}
-  for (const r of rows ?? []) {
-    byExchange[r.exchange] = (byExchange[r.exchange] || 0) + 1
-  }
+  EXCHANGES.forEach((ex, i) => { if (exResults[i].count) byExchange[ex] = exResults[i].count })
 
   // 마지막 업로드 시각
   const { data: latest } = await supabase
@@ -30,7 +33,7 @@ export default async function handler(req, res) {
     .single()
 
   res.status(200).json({
-    total:      rows?.length ?? 0,
+    total:      totalResult.count ?? 0,
     byExchange,
     uploadedAt: latest?.uploaded_at ?? null,
   })
