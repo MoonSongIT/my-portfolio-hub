@@ -33,15 +33,22 @@ export default async function handler(req, res) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
 
-  const { table } = req.query
+  const { table, since } = req.query
   const pgTable = TABLE_MAP[table]
   if (!pgTable) return res.status(400).json({ error: `Unknown table: ${table}` })
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(pgTable)
     .select('*')
     .eq('user_id', user.id)
     .is('deleted_at', null)
+
+  // 증분 다운로드: since 이후 업로드된 레코드만 반환 (synced_at 기준, strict gt)
+  if (since) {
+    query = query.gt('synced_at', since)
+  }
+
+  const { data, error } = await query
 
   if (error) return res.status(500).json({ error: error.message })
 
