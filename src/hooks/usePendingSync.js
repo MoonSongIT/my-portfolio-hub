@@ -1,6 +1,7 @@
-// React Router 이탈 가드 — 미동기화 레코드가 있으면 PendingUploadModal 표시
-import { useState, useCallback, useEffect } from 'react'
-import { useBlocker } from 'react-router-dom'
+// 이탈 가드 — <Link> 클릭 인터셉트로 미동기화 레코드 있을 때 PendingUploadModal 표시
+// (BrowserRouter 환경: useBlocker 미지원 → document capture 클릭 인터셉터로 대체)
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { syncService } from '@/services/syncService'
 import { useSyncStore } from '@/store/syncStore'
@@ -15,45 +16,61 @@ import { useAuthStore } from '@/store/authStore'
  *  - handleCancel: () => void — 취소 콜백
  */
 export function usePendingSync() {
+  const [modalOpen, setModalOpen] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
+  const pendingNavRef = useRef(null)
+
   const syncEnabled = useSyncStore(s => s.syncEnabled)
   const isLoggedIn = useAuthStore(s => s.isLoggedIn)
+  const navigate = useNavigate()
+  const location = useLocation()
 
-  const shouldBlock = useCallback(async () => {
-    if (!syncEnabled || !isLoggedIn) return false
-    const count = await syncService.countPendingRecords()
-    if (count > 0) setPendingCount(count)
-    return count > 0
-  }, [syncEnabled, isLoggedIn])
-
-  // useBlocker: pathname 변경 시 이동 차단
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      currentLocation.pathname !== nextLocation.pathname
-  )
-
-  // blocked 상태 진입 시 실제 IDB 스캔
   useEffect(() => {
-    if (blocker.state !== 'blocked') return
-    shouldBlock().then((block) => {
-      if (!block) blocker.proceed()
-    })
-  }, [blocker.state]) // eslint-disable-line react-hooks/exhaustive-deps
+    const handleClick = async (e) => {
+      if (!syncEnabled || !isLoggedIn) return
 
-  const modalOpen = blocker.state === 'blocked' && pendingCount > 0
+      // React Router <Link>는 <a href> 로 렌더링됨
+      const anchor = e.target.closest('a[href]')
+      if (!anchor) return
+
+      const href = anchor.getAttribute('href')
+      // 외부 링크 / 같은 경로 무시
+      if (!href || href.startsWith('http') || href.startsWith('//') || href.startsWith('mailto:')) return
+      if (href === location.pathname) return
+
+      const count = await syncService.countPendingRecords()
+      if (count === 0) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      setPendingCount(count)
+      pendingNavRef.current = href
+      setModalOpen(true)
+    }
+
+    document.addEventListener('click', handleClick, true) // capture phase
+    return () => document.removeEventListener('click', handleClick, true)
+  }, [syncEnabled, isLoggedIn, location.pathname])
 
   function handleUploaded() {
     toast.success(`${pendingCount}개 항목이 서버에 저장되었습니다.`)
-    blocker.proceed?.()
+    setModalOpen(false)
+    const target = pendingNavRef.current
+    pendingNavRef.current = null
+    if (target) navigate(target)
   }
 
   function handleLeave() {
-    blocker.proceed?.()
+    setModalOpen(false)
+    const target = pendingNavRef.current
+    pendingNavRef.current = null
+    if (target) navigate(target)
   }
 
   function handleCancel() {
+    setModalOpen(false)
+    pendingNavRef.current = null
     setPendingCount(0)
-    blocker.reset?.()
   }
 
   return { modalOpen, pendingCount, handleUploaded, handleLeave, handleCancel }
