@@ -26,6 +26,7 @@ export const useSyncStore = create(
 
       incrementPending: () => set((s) => ({ pendingChanges: s.pendingChanges + 1 })),
       resetPending: () => set({ pendingChanges: 0 }),
+      setPendingChanges: (n) => set({ pendingChanges: n }),
 
       addConflict: (conflict) =>
         set((s) => ({ conflicts: [...s.conflicts, conflict] })),
