@@ -101,7 +101,11 @@ function App() {
 
   // Supabase 세션 복구 + 세션 변경 구독 (Supabase 미설정 시 무시)
   useEffect(() => {
+    // React StrictMode 이중 실행 방지 — cleanup에서 cancelled=true 로 설정
+    let cancelled = false
+
     authService.getSession().then(async (session) => {
+      if (cancelled) return
       useAuthStore.getState().setSupabaseSession(session)
       // 관리자 권한 확인
       if (session?.user?.id) {
@@ -125,15 +129,17 @@ function App() {
           await useAccountStore.getState().syncToIDB()
         }
         // S-2: 로그인 후 증분 다운로드 — lastSyncedAt 기준으로 변경분만 받음
+        if (cancelled) return // 비동기 대기 후 재확인
         const { lastSyncedAt, setPendingChanges } = useSyncStore.getState()
-        // 마진 0 — lastSyncedAt은 업로드 완료 *후* 찍히는 시각이므로
-        // 업로드된 레코드의 updated_at < lastSyncedAt 이 보장됨 → 재다운로드 없음
+        // since = lastSyncedAt (마진 0) — upload 완료 후 찍히는 시각이므로
+        // 업로드된 레코드의 synced_at < lastSyncedAt 보장 → 재다운로드 없음
         const since = lastSyncedAt ?? null
 
         if (!since) {
           // 최초 기기 — 전체 다운로드
           syncService.downloadAndReload(session.user.id)
             .then(({ total }) => {
+              if (cancelled) return
               if (total > 0) toast.success(`서버에서 ${total}개 항목을 받아왔습니다.`)
             })
             .catch(err => console.warn('[Sync] 자동 다운로드 실패:', err))
@@ -141,6 +147,7 @@ function App() {
           // 기존 기기 재로그인 — 증분 다운로드
           syncService.downloadDeltaAndReload(session.user.id, since)
             .then(({ total }) => {
+              if (cancelled) return
               if (total > 0) toast.info(`서버에서 ${total}개 변경사항을 받아왔습니다.`)
             })
             .catch(err => console.warn('[Sync] 증분 다운로드 실패:', err))
@@ -148,7 +155,7 @@ function App() {
 
         // S-1: pendingChanges 초기화 — IDB 실제 스캔 결과로 설정
         syncService.countPendingRecords()
-          .then(count => setPendingChanges(count))
+          .then(count => { if (!cancelled) setPendingChanges(count) })
           .catch(() => {})
         // M-6: IDB 관심종목 로드 → UI 반영 (IDB가 정식 저장소, localStorage 미사용)
         const { useWatchlistStore } = await import('./store/watchlistStore')
@@ -173,7 +180,10 @@ function App() {
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 로컬 로그인 후 Supabase 세션 자동 복원 (로그아웃 → 재로그인 시 관리자 권한 복원)
