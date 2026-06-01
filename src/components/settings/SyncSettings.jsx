@@ -1,4 +1,4 @@
-// 동기화 설정 패널 — 자동동기화 ON/OFF, 주기 선택
+// 동기화 설정 패널 — 자동동기화 ON/OFF, 주기 선택, 수동 업로드/다운로드
 import { useSyncStore } from '@/store/syncStore'
 import { syncService } from '@/services/syncService'
 import { useAuthStore } from '@/store/authStore'
@@ -12,6 +12,7 @@ const INTERVAL_OPTIONS = [
 
 export default function SyncSettings() {
   const isSupabaseUser = useAuthStore((s) => s.isSupabaseUser)
+  const userId = useAuthStore((s) => s.currentUser?.id)
   const {
     syncEnabled, autoSync, syncInterval, syncStatus, lastSyncedAt, pendingChanges,
     enableSync, disableSync, setAutoSync, setSyncInterval,
@@ -27,7 +28,15 @@ export default function SyncSettings() {
 
   const handleManualSync = async () => {
     try {
-      await syncService.uploadPending()
+      await syncService.uploadAll()
+    } catch {
+      // syncStore의 setSyncStatus('error')가 자동 처리
+    }
+  }
+
+  const handleManualDownload = async () => {
+    try {
+      await syncService.downloadAndReload(userId)
     } catch {
       // syncStore의 setSyncStatus('error')가 자동 처리
     }
@@ -100,7 +109,7 @@ export default function SyncSettings() {
           )}
 
           {/* 상태 + 수동 동기화 */}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700 space-y-2">
             <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
               <p>마지막 동기화: {lastSyncLabel}</p>
               {pendingChanges > 0 && (
@@ -110,13 +119,22 @@ export default function SyncSettings() {
                 <p className="text-red-500">동기화 오류가 발생했습니다.</p>
               )}
             </div>
-            <button
-              onClick={handleManualSync}
-              disabled={syncStatus === 'syncing'}
-              className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {syncStatus === 'syncing' ? '동기화 중...' : '지금 동기화'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleManualSync}
+                disabled={syncStatus === 'syncing'}
+                className="flex-1 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {syncStatus === 'syncing' ? '동기화 중...' : '↑ 업로드'}
+              </button>
+              <button
+                onClick={handleManualDownload}
+                disabled={syncStatus === 'syncing'}
+                className="flex-1 px-3 py-1.5 text-sm rounded-lg bg-gray-600 text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {syncStatus === 'syncing' ? '동기화 중...' : '↓ 서버에서 가져오기'}
+              </button>
+            </div>
           </div>
         </>
       )}

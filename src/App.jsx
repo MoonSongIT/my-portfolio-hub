@@ -112,9 +112,17 @@ function App() {
         const { useAccountStore } = await import('./store/accountStore')
         await useAccountStore.getState().loadFromDB(session.user.id)
         // IDB에 계좌가 없으면 localStorage → IDB 복사 (업로드 준비)
-        const idbCount = await (await import('./utils/db')).db.userAccounts.count()
+        const { db: idb } = await import('./utils/db')
+        const idbCount = await idb.userAccounts.count()
         if (idbCount === 0) {
           await useAccountStore.getState().syncToIDB()
+        }
+        // 새 기기 감지 — transactions가 없으면 서버에서 자동 다운로드 + 재로드
+        const txCount = await idb.transactions.count()
+        if (txCount === 0) {
+          syncService.downloadAndReload(session.user.id).catch(err =>
+            console.warn('[Sync] 자동 다운로드 실패:', err)
+          )
         }
         // M-6: IDB 관심종목 로드 → UI 반영 (IDB가 정식 저장소, localStorage 미사용)
         const { useWatchlistStore } = await import('./store/watchlistStore')
@@ -222,7 +230,7 @@ function App() {
     const ms = INTERVALS[syncInterval]
     if (!ms) return // 'realtime' or 'manual' — 인터벌 미등록
     const id = setInterval(() => {
-      syncService.uploadPending().catch(err => console.warn('[Sync] 자동 동기화 실패:', err))
+      syncService.uploadAll().catch(err => console.warn('[Sync] 자동 동기화 실패:', err))
     }, ms)
     return () => clearInterval(id)
   }, [syncEnabled, syncInterval])

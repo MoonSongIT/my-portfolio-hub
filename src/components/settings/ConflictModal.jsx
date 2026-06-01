@@ -1,6 +1,7 @@
 // 동기화 충돌 해결 모달 — 서버/로컬 버전 선택 UI
 import { useSyncStore } from '@/store/syncStore'
 import { syncService } from '@/services/syncService'
+import { useAuthStore } from '@/store/authStore'
 import { Button } from '../ui/button'
 
 const TABLE_LABELS = {
@@ -16,12 +17,14 @@ export default function ConflictModal() {
 
   if (conflicts.length === 0) return null
 
+  const userId = useAuthStore((s) => s.currentUser?.id)
+
   const conflict = conflicts[0]
   const tableLabel = TABLE_LABELS[conflict.table] ?? conflict.table
 
   const handleKeepServer = async () => {
     try {
-      await syncService.downloadFromServer(lastSyncedAt)
+      await syncService.downloadAndReload(userId)
     } finally {
       clearConflicts()
     }
@@ -29,7 +32,7 @@ export default function ConflictModal() {
 
   const handleKeepLocal = async () => {
     try {
-      await syncService.uploadPending()
+      await syncService.uploadAll()
     } finally {
       clearConflicts()
     }

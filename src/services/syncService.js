@@ -124,6 +124,38 @@ export const syncService = {
       throw err
     }
   },
+
+  /**
+   * 전체 다운로드 후 Zustand 스토어 재로드
+   * 새 기기 / 충돌 해결 시 IDB → UI 반영까지 한 번에 처리
+   * @param {string} userId
+   */
+  async downloadAndReload(userId) {
+    await syncService.downloadAll()
+    if (!userId) return
+
+    const [
+      { useAccountStore },
+      { useJournalStore },
+      { useCashFlowStore },
+      { useWatchlistStore },
+      { useDailyPnlStore },
+    ] = await Promise.all([
+      import('@/store/accountStore'),
+      import('@/store/journalStore'),
+      import('@/store/cashFlowStore'),
+      import('@/store/watchlistStore'),
+      import('@/store/dailyPnlStore'),
+    ])
+
+    await Promise.all([
+      useAccountStore.getState().loadFromDB(userId),
+      useJournalStore.getState().loadFromDB(userId),
+      useCashFlowStore.getState().loadFromDB(userId),
+      useWatchlistStore.getState().loadFromDB(userId),
+      useDailyPnlStore.getState().loadFromDB(userId),
+    ])
+  },
 }
 
 // 개발 환경 전용 — 콘솔에서 window.__sync 으로 테스트
