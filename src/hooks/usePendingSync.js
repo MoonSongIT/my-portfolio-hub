@@ -1,5 +1,6 @@
 // 이탈 가드 — <Link> 클릭 인터셉트로 미동기화 레코드 있을 때 PendingUploadModal 표시
 // (BrowserRouter 환경: useBlocker 미지원 → document capture 클릭 인터셉터로 대체)
+// 주의: e.preventDefault()는 반드시 동기 구간에서 호출해야 브라우저가 취소함
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -22,12 +23,27 @@ export function usePendingSync() {
 
   const syncEnabled = useSyncStore(s => s.syncEnabled)
   const isLoggedIn = useAuthStore(s => s.isLoggedIn)
+  // Zustand에서 동기로 읽는 pendingChanges를 ref에 유지 — 클릭 핸들러 동기 구간에서 사용
+  const pendingChanges = useSyncStore(s => s.pendingChanges)
+  const pendingChangesRef = useRef(pendingChanges)
+  useEffect(() => { pendingChangesRef.current = pendingChanges }, [pendingChanges])
+
+  const syncEnabledRef = useRef(syncEnabled)
+  useEffect(() => { syncEnabledRef.current = syncEnabled }, [syncEnabled])
+
+  const isLoggedInRef = useRef(isLoggedIn)
+  useEffect(() => { isLoggedInRef.current = isLoggedIn }, [isLoggedIn])
+
+  const locationRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+  useEffect(() => { locationRef.current = location.pathname }, [location.pathname])
 
   useEffect(() => {
-    const handleClick = async (e) => {
-      if (!syncEnabled || !isLoggedIn) return
+    const handleClick = (e) => {
+      if (!syncEnabledRef.current || !isLoggedInRef.current) return
+      // pendingChanges === 0 이면 차단 불필요 — 동기 체크
+      if (pendingChangesRef.current === 0) return
 
       // React Router <Link>는 <a href> 로 렌더링됨
       const anchor = e.target.closest('a[href]')
@@ -36,21 +52,27 @@ export function usePendingSync() {
       const href = anchor.getAttribute('href')
       // 외부 링크 / 같은 경로 무시
       if (!href || href.startsWith('http') || href.startsWith('//') || href.startsWith('mailto:')) return
-      if (href === location.pathname) return
+      if (href === locationRef.current) return
 
-      const count = await syncService.countPendingRecords()
-      if (count === 0) return
-
+      // ← 동기 구간에서 즉시 이벤트 취소 (async 이후엔 브라우저가 무시)
       e.preventDefault()
       e.stopPropagation()
-      setPendingCount(count)
       pendingNavRef.current = href
-      setModalOpen(true)
+
+      // 정확한 건수는 비동기로 조회해 모달에 표시
+      syncService.countPendingRecords().then(count => {
+        if (count === 0) {
+          pendingNavRef.current = null
+          return
+        }
+        setPendingCount(count)
+        setModalOpen(true)
+      })
     }
 
     document.addEventListener('click', handleClick, true) // capture phase
     return () => document.removeEventListener('click', handleClick, true)
-  }, [syncEnabled, isLoggedIn, location.pathname])
+  }, []) // 의존성 없음 — 모든 최신 값은 ref로 접근
 
   function handleUploaded() {
     toast.success(`${pendingCount}개 항목이 서버에 저장되었습니다.`)
