@@ -8,7 +8,7 @@ import { ensureHistory } from '../../api/dailyPnlService'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
-import PsychologySelector from './PsychologySelector'
+import { getGroupedPsychology } from '../../utils/psychologyHelper'
 import AccountSelector from '../account/AccountSelector'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -21,6 +21,7 @@ const emptyRow = () => ({
   action: 'buy',
   price: '',
   quantity: '',
+  fee: '',
   psychology: '',
   memo: '',
   pnl: '',
@@ -39,6 +40,12 @@ export default function JournalBatchForm({ open, onClose }) {
   const [rows, setRows] = useState([emptyRow()])
   const [errors, setErrors] = useState({})
   const [activeSearchRow, setActiveSearchRow] = useState(null)
+
+  // 심리 카테고리 그룹 (콤보박스 optgroup용) — buy/sell 한 번만 계산
+  const psychGroups = useMemo(() => ({
+    buy: getGroupedPsychology('buy'),
+    sell: getGroupedPsychology('sell'),
+  }), [])
 
   // 폼 열릴 때 첫 번째 계좌 기본 선택
   useMemo(() => {
@@ -114,7 +121,7 @@ export default function JournalBatchForm({ open, onClose }) {
         price,
         quantity,
         amount: price * quantity,
-        fee: 0,
+        fee: row.fee !== '' ? Number(row.fee) : 0,
         psychology: row.psychology,
         memo: row.memo.trim(),
         pnl: row.pnl !== '' ? Number(row.pnl) : null,
@@ -217,7 +224,7 @@ export default function JournalBatchForm({ open, onClose }) {
                 {errors[`${i}_ticker`] && <p className="text-red-500 text-xs mt-0.5">{errors[`${i}_ticker`]}</p>}
               </div>
 
-              {/* 구분 + 가격 + 수량 */}
+              {/* 구분 + 가격 + 수량 + 수수료 */}
               <div className="grid grid-cols-4 gap-2">
                 <div className="flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
                   <button
@@ -258,29 +265,50 @@ export default function JournalBatchForm({ open, onClose }) {
                   />
                   {errors[`${i}_quantity`] && <p className="text-red-500 text-xs">{errors[`${i}_quantity`]}</p>}
                 </div>
+                <div>
+                  <Input
+                    type="number"
+                    value={row.fee}
+                    onChange={(e) => updateRow(row._id, 'fee', e.target.value)}
+                    placeholder="수수료"
+                    min="0"
+                    step="any"
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 심리 콤보박스 (+ 매도 시 실현손익) */}
+              <div className={row.action === 'sell' ? 'grid grid-cols-2 gap-2' : ''}>
+                <div>
+                  <select
+                    value={row.psychology}
+                    onChange={(e) => updateRow(row._id, 'psychology', e.target.value)}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">{row.action === 'buy' ? '매수' : '매도'} 심리 선택</option>
+                    {psychGroups[row.action].map((group) => (
+                      <optgroup key={group.groupKey} label={`${group.emoji} ${group.groupName}`}>
+                        {group.categories.map((cat) => (
+                          <option key={cat.value} value={cat.value}>{cat.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {errors[`${i}_psychology`] && <p className="text-red-500 text-xs mt-1">{errors[`${i}_psychology`]}</p>}
+                </div>
                 {row.action === 'sell' && (
                   <div>
                     <Input
                       type="number"
                       value={row.pnl}
                       onChange={(e) => updateRow(row._id, 'pnl', e.target.value)}
-                      placeholder="손익"
+                      placeholder="실현손익"
                       step="any"
                       className="text-sm"
                     />
                   </div>
                 )}
-              </div>
-
-              {/* 심리 카테고리 */}
-              <div>
-                <p className="text-xs text-gray-500 mb-1.5">{row.action === 'buy' ? '매수' : '매도'} 심리</p>
-                <PsychologySelector
-                  action={row.action}
-                  value={row.psychology}
-                  onChange={(v) => updateRow(row._id, 'psychology', v)}
-                />
-                {errors[`${i}_psychology`] && <p className="text-red-500 text-xs mt-1">{errors[`${i}_psychology`]}</p>}
               </div>
 
               {/* 메모 */}
