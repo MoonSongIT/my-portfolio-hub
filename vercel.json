@@ -8,9 +8,13 @@
     }
   },
   "rewrites": [
-    { "source": "/api/naver/:path*",     "destination": "/api/naver-proxy?q=:path*" },
-    { "source": "/api/yahoo-v10/:path*", "destination": "https://query2.finance.yahoo.com/:path*" },
-    { "source": "/api/yahoo/:path*",     "destination": "https://query1.finance.yahoo.com/:path*" },
-    { "source": "/((?!api/).*)",         "destination": "/index.html" }
+    { "source": "/api/naver/:path*",               "destination": "/api/naver-proxy?q=:path*" },
+    { "source": "/api/yahoo-v10/:path*",           "destination": "https://query2.finance.yahoo.com/:path*" },
+    { "source": "/api/yahoo/:path*",               "destination": "https://query1.finance.yahoo.com/:path*" },
+    { "source": "/api/dart/calendar/dividend",     "destination": "/api/calendar?type=dart-dividend" },
+    { "source": "/api/dart/calendar/earnings",     "destination": "/api/calendar?type=dart-earnings" },
+    { "source": "/api/finnhub/calendar/earnings",  "destination": "/api/calendar?type=finnhub-earnings" },
+    { "source": "/api/finnhub/calendar/ipo",       "destination": "/api/calendar?type=finnhub-ipo" },
+    { "source": "/((?!api/).*)",                   "destination": "/index.html" }
   ]
 }
