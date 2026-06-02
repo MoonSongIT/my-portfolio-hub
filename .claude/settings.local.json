@@ -56,7 +56,9 @@
       "Bash(npm test:*)",
       "Bash(ls \"C:\\\\Users\\\\dohay\\\\ClaudeWork\\\\my-portfolio-hub\\\\docs\"\" 2>/dev/null || echo \"docs folder not found \")",
       "Bash(pkill -f \"npm run dev\")",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(rm \"api/yahoo/[...path].js\")",
+      "Bash(rm \"api/yahoo-v10/[...path].js\")"
     ]
   }
 }
