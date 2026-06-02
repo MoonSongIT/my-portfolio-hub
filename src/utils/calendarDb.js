@@ -1,13 +1,15 @@
 // 증시 일정 이벤트 IndexedDB CRUD 헬퍼 (Dexie calendarEvents 테이블)
 
-import { db } from './db'
+import { db, bumpSyncVersion } from './db'
+import { useSyncStore } from '../store/syncStore'
+import { useAuthStore } from '../store/authStore'
 
 export async function getEventsByMonth(userId, year, month) {
   const start = `${year}-${String(month).padStart(2, '0')}-01`
   const end   = `${year}-${String(month).padStart(2, '0')}-31`
   return db.calendarEvents
     .where('userId').equals(userId)
-    .and(e => e.date >= start && e.date <= end)
+    .and(e => e.date >= start && e.date <= end && !e.deletedAt)
     .toArray()
 }
 
@@ -16,31 +18,46 @@ export async function getEventsByYear(userId, year) {
   const end   = `${year}-12-31`
   return db.calendarEvents
     .where('userId').equals(userId)
-    .and(e => e.date >= start && e.date <= end)
+    .and(e => e.date >= start && e.date <= end && !e.deletedAt)
     .toArray()
 }
 
 export async function getEventsByRange(userId, startDate, endDate) {
   return db.calendarEvents
     .where('userId').equals(userId)
-    .and(e => e.date >= startDate && e.date <= endDate)
+    .and(e => e.date >= startDate && e.date <= endDate && !e.deletedAt)
     .toArray()
 }
 
 export async function addEvent(userId, eventData) {
-  return db.calendarEvents.add({
+  const { currentUser } = useAuthStore.getState()
+  const record = bumpSyncVersion({
     ...eventData,
+    id: eventData.id || crypto.randomUUID(),
     userId,
+    userEmail: currentUser?.email ?? '',
     createdAt: new Date().toISOString(),
   })
+  const result = await db.calendarEvents.add(record)
+  useSyncStore.getState().incrementPending()
+  return result
 }
 
 export async function updateEvent(id, eventData) {
-  return db.calendarEvents.update(id, eventData)
+  const syncUpdates = bumpSyncVersion(eventData)
+  const result = await db.calendarEvents.update(id, syncUpdates)
+  useSyncStore.getState().incrementPending()
+  return result
 }
 
 export async function deleteEvent(id) {
-  return db.calendarEvents.delete(id)
+  const softDelete = bumpSyncVersion({ deletedAt: new Date().toISOString() })
+  try {
+    await db.calendarEvents.update(id, softDelete)
+  } catch {
+    await db.calendarEvents.delete(id)
+  }
+  useSyncStore.getState().incrementPending()
 }
 
 export async function clearAllEvents(userId) {

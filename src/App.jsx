@@ -4,8 +4,8 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useSettingsStore } from './store/settingsStore'
 import { runMaintenanceIfNeeded } from './utils/dbMaintenance'
 import { migrateFromLegacy } from './utils/stockMasterMigrate'
-import { migrateLocalUserData } from './utils/migrateLocalUser'
 import { checkIsAdmin } from './utils/stockMasterServerApi'
+import { migrateLocalIdsIfNeeded } from './utils/migrateLocalIds'
 import { useStockMasterStore } from './store/stockMasterStore'
 import { useJournalStore } from './store/journalStore'
 import { useCashFlowStore } from './store/cashFlowStore'
@@ -13,6 +13,8 @@ import { useDailyPnlStore } from './store/dailyPnlStore'
 import { useAuthStore } from './store/authStore'
 import useAiCredentialStore from './store/aiCredentialStore'
 import { authService } from './services/authService'
+import { syncService } from './services/syncService'
+import { useSyncStore } from './store/syncStore'
 import { getReportsByUser } from './utils/db'
 import { shouldGenerateWeeklyReport } from './agents/reportAgent'
 import { Toaster, toast } from 'sonner'
@@ -23,6 +25,9 @@ import ProtectedRoute from './components/common/ProtectedRoute'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import AutoSnapshotDialog from './components/common/AutoSnapshotDialog'
 import { useAutoSnapshot } from './hooks/useAutoSnapshot'
+import { usePendingSync } from './hooks/usePendingSync'
+import { useBeforeUnloadSync } from './hooks/useBeforeUnloadSync'
+import PendingUploadModal from './components/sync/PendingUploadModal'
 
 // 페이지 컴포넌트 lazy 로딩 (코드 스플리팅)
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -37,11 +42,15 @@ const CashFlow  = lazy(() => import('./pages/CashFlow'))
 const Settings  = lazy(() => import('./pages/Settings'))
 const Login     = lazy(() => import('./pages/Login'))
 const AuthCallback = lazy(() => import('./pages/AuthCallback'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const ImportHts = lazy(() => import('./pages/ImportHts'))
 const MarketCalendar = lazy(() => import('./pages/MarketCalendar'))
 
 function App() {
-  const { theme } = useSettingsStore()
+  const { theme, enableSync, disableSync } = useSettingsStore()
+  // 자동 업로드 인터벌은 syncStore.syncEnabled(사용자 설정 토글)를 기준으로 판단
+  const syncEnabled = useSyncStore(s => s.syncEnabled)
+  const syncInterval = useSyncStore(s => s.syncInterval)
   const refreshCounts = useStockMasterStore(s => s.refreshCounts)
   const { loadFromDB } = useJournalStore()
   const { loadFromDB: loadCashFlowsFromDB } = useCashFlowStore()
@@ -50,6 +59,8 @@ function App() {
   const isLoggedIn = useAuthStore(s => s.isLoggedIn)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { dialogOpen, countdown, handleConfirm, handleDismiss } = useAutoSnapshot()
+  // 브라우저 탭 닫기 / 새로고침 이탈 시 미동기화 경고
+  useBeforeUnloadSync()
 
   // PWA 서비스 워커 등록
   const {
@@ -90,19 +101,70 @@ function App() {
 
   // Supabase 세션 복구 + 세션 변경 구독 (Supabase 미설정 시 무시)
   useEffect(() => {
+    // React StrictMode 이중 실행 방지 — cleanup에서 cancelled=true 로 설정
+    let cancelled = false
+
     authService.getSession().then(async (session) => {
+      if (cancelled) return
       useAuthStore.getState().setSupabaseSession(session)
       // 관리자 권한 확인
       if (session?.user?.id) {
         checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
-        // 기존 로컬 userId 데이터를 Supabase userId로 자동 재할당 (최초 1회)
-        const migrated = await migrateLocalUserData(session.user.id)
-        if (migrated) {
-          // 마이그레이션 완료 — 데이터 재로드
-          const userId = session.user.id
-          useJournalStore.getState().loadFromDB(userId)
-          useCashFlowStore.getState().loadFromDB(userId)
-          useDailyPnlStore.getState().loadFromDB(userId)
+        // M-2: 기존 user-XXXX → Supabase UUID 교정 (1회성, await 블로킹)
+        const migrated = await migrateLocalIdsIfNeeded(session.user.id, session.user.email)
+        if (migrated > 0) {
+          // 교정 완료 → IndexedDB 재로드
+          const uid = session.user.id
+          useJournalStore.getState().loadFromDB(uid)
+          useCashFlowStore.getState().loadFromDB(uid)
+          useDailyPnlStore.getState().loadFromDB(uid)
+        }
+        // M-3: IDB 계좌 로드 → UI 반영 (다운로드 후 필수)
+        const { useAccountStore } = await import('./store/accountStore')
+        await useAccountStore.getState().loadFromDB(session.user.id)
+        // IDB에 계좌가 없으면 localStorage → IDB 복사 (업로드 준비)
+        const { db: idb } = await import('./utils/db')
+        const idbCount = await idb.userAccounts.count()
+        if (idbCount === 0) {
+          await useAccountStore.getState().syncToIDB()
+        }
+        // S-2: 로그인 후 증분 다운로드 — lastSyncedAt 기준으로 변경분만 받음
+        if (cancelled) return // 비동기 대기 후 재확인
+        const { lastSyncedAt, setPendingChanges } = useSyncStore.getState()
+        // since = lastSyncedAt (마진 0) — upload 완료 후 찍히는 시각이므로
+        // 업로드된 레코드의 synced_at < lastSyncedAt 보장 → 재다운로드 없음
+        const since = lastSyncedAt ?? null
+
+        if (!since) {
+          // 최초 기기 — 전체 다운로드
+          syncService.downloadAndReload(session.user.id)
+            .then(({ total }) => {
+              if (cancelled) return
+              if (total > 0) toast.success(`서버에서 ${total}개 항목을 받아왔습니다.`)
+            })
+            .catch(err => console.warn('[Sync] 자동 다운로드 실패:', err))
+        } else {
+          // 기존 기기 재로그인 — 증분 다운로드
+          syncService.downloadDeltaAndReload(session.user.id, since)
+            .then(({ total }) => {
+              if (cancelled) return
+              if (total > 0) toast.info(`서버에서 ${total}개 변경사항을 받아왔습니다.`)
+            })
+            .catch(err => console.warn('[Sync] 증분 다운로드 실패:', err))
+        }
+
+        // S-1: pendingChanges 초기화 — IDB 실제 스캔 결과로 설정
+        syncService.countPendingRecords()
+          .then(count => { if (!cancelled) setPendingChanges(count) })
+          .catch(() => {})
+        // M-6: IDB 관심종목 로드 → UI 반영 (IDB가 정식 저장소, localStorage 미사용)
+        const { useWatchlistStore } = await import('./store/watchlistStore')
+        await useWatchlistStore.getState().loadFromDB(session.user.id)
+        // M-6: 서버에서 태그 목록 로드 (없으면 localStorage 유지)
+        const { loadGroupsFromServer } = await import('./utils/groupsApi')
+        const serverGroups = await loadGroupsFromServer()
+        if (serverGroups && serverGroups.length > 0) {
+          useWatchlistStore.setState({ groups: serverGroups })
         }
       }
     })
@@ -111,12 +173,41 @@ function App() {
       useAuthStore.getState().setSupabaseSession(session)
       if (session?.user?.id) {
         checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
+        enableSync()
+
+        // S-2: INITIAL_SESSION / SIGNED_IN 시 다운로드 트리거
+        // getSession()은 마운트 직후 null을 반환하는 race condition이 있으므로
+        // onAuthStateChange가 세션 준비를 보장하는 시점에 다운로드를 실행
+        if (_event === 'INITIAL_SESSION' || _event === 'SIGNED_IN') {
+          if (cancelled) return
+          const { lastSyncedAt } = useSyncStore.getState()
+          const since = lastSyncedAt ?? null
+          if (!since) {
+            syncService.downloadAndReload(session.user.id)
+              .then(({ total }) => {
+                if (cancelled) return
+                if (total > 0) toast.success(`서버에서 ${total}개 항목을 받아왔습니다.`)
+              })
+              .catch(err => console.warn('[Sync] 자동 다운로드 실패:', err))
+          } else {
+            syncService.downloadDeltaAndReload(session.user.id, since)
+              .then(({ total }) => {
+                if (cancelled) return
+                if (total > 0) toast.info(`서버에서 ${total}개 변경사항을 받아왔습니다.`)
+              })
+              .catch(err => console.warn('[Sync] 증분 다운로드 실패:', err))
+          }
+        }
       } else {
         useAuthStore.getState().setIsAdmin(false)
+        disableSync()
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 로컬 로그인 후 Supabase 세션 자동 복원 (로그아웃 → 재로그인 시 관리자 권한 복원)
@@ -192,6 +283,18 @@ function App() {
     checkWeeklyReport()
   }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 자동 동기화 인터벌 (syncEnabled + syncInterval 설정에 따라)
+  useEffect(() => {
+    if (!syncEnabled) return
+    const INTERVALS = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000 }
+    const ms = INTERVALS[syncInterval]
+    if (!ms) return // 'realtime' or 'manual' — 인터벌 미등록
+    const id = setInterval(() => {
+      syncService.uploadAll().catch(err => console.warn('[Sync] 자동 동기화 실패:', err))
+    }, ms)
+    return () => clearInterval(id)
+  }, [syncEnabled, syncInterval])
+
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Toaster position="bottom-right" richColors closeButton />
@@ -219,6 +322,25 @@ function App() {
           </button>
         </div>
       )}
+      {/* S-1: 이탈 가드 — useBlocker는 Router 내부에서만 사용 가능 */}
+      <RouterContent sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} updateServiceWorker={updateServiceWorker} />
+    </BrowserRouter>
+  )
+}
+
+// Router 컨텍스트 내부에서 useBlocker(usePendingSync)를 사용하기 위한 내부 컴포넌트
+function RouterContent({ sidebarOpen, setSidebarOpen }) {
+  const { modalOpen, pendingCount, handleUploaded, handleLeave, handleCancel } = usePendingSync()
+
+  return (
+    <>
+      <PendingUploadModal
+        open={modalOpen}
+        pendingCount={pendingCount}
+        onUploaded={handleUploaded}
+        onLeave={handleLeave}
+        onCancel={handleCancel}
+      />
       <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950"><LoadingSpinner /></div>}>
         <Routes>
           {/* 로그인 페이지 (레이아웃 없음) */}
@@ -227,6 +349,9 @@ function App() {
           {/* OAuth 콜백 (보호 없음 — 인증 전 처리) */}
           <Route path="/api/auth/callback" element={<AuthCallback />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+
+          {/* 비밀번호 재설정 (보호 없음 — recovery 토큰으로 접근) */}
+          <Route path="/auth/reset-password" element={<ResetPassword />} />
 
           {/* 보호된 페이지 (Header + Sidebar 레이아웃) */}
           <Route
@@ -264,7 +389,7 @@ function App() {
           />
         </Routes>
       </Suspense>
-    </BrowserRouter>
+    </>
   )
 }
 

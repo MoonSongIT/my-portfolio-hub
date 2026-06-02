@@ -1,22 +1,85 @@
-// POST /api/sync/upload — 로컬 변경사항을 서버에 업로드 (충돌 감지 포함)
+// POST /api/sync/upload — 로컬 레코드를 서버에 upsert (data 래핑 없음)
 import { createClient } from '@supabase/supabase-js'
+import { setCors, handlePreflight } from '../_cors.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY  // 서버 전용 키 (클라이언트 노출 금지)
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// 로컬 Dexie 테이블명 → 서버 PostgreSQL 테이블명
-// aiCredentials 제외 — 보안 필수
+// Dexie 테이블명 → PostgreSQL 테이블명
 const TABLE_MAP = {
+  userAccounts:   'user_accounts',
   transactions:   'transactions',
   cashFlows:      'cash_flows',
-  calendarEvents: 'calendar_events',
-  accounts:       'accounts',
   watchlist:      'watchlist',
+  calendarEvents: 'calendar_events',
+  reports:        'reports',
+}
+
+// camelCase → snake_case
+const toSnake = key => key.replace(/([A-Z])/g, '_$1').toLowerCase()
+const recordToServer = record =>
+  Object.fromEntries(Object.entries(record).map(([k, v]) => [toSnake(k), v]))
+
+// UUID 형식 검증 — 비표준 ID(demo-account-general 등)를 null로 변환
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const toUUID = val => (val && UUID_RE.test(String(val)) ? val : null)
+
+// UUID 타입인 FK 컬럼 목록 (테이블별)
+const UUID_FIELDS = {
+  transactions:   ['account_id', 'linked_cash_flow_id'],
+  cash_flows:     ['account_id', 'linked_journal_id'],
+  user_accounts:  [],
+  watchlist:      [],
+  calendar_events:[],
+  reports:        [],
+}
+
+// 테이블별 허용 컬럼 — Supabase 스키마와 정확히 일치시켜 unknown column 오류 방지
+const ALLOWED_COLUMNS = {
+  user_accounts: [
+    'id','user_id','user_email','name','broker','type','currency',
+    'initial_balance','memo','sync_version','synced_at','deleted_at',
+    'created_at','updated_at',
+  ],
+  transactions: [
+    'id','user_id','user_email','account_id','account_name','ticker','name',
+    'action','date','price','quantity','fee','pnl','psychology','memo',
+    'market','sector','source','linked_cash_flow_id','external_id',
+    'sync_version','synced_at','deleted_at','created_at','imported_at',
+  ],
+  cash_flows: [
+    'id','user_id','user_email','account_id','account_name','type','category',
+    'amount','currency','date','memo','is_auto','linked_journal_id',
+    'sync_version','synced_at','deleted_at','created_at',
+  ],
+  watchlist: [
+    'id','user_id','user_email','ticker','name','market','added_at',
+    'price_at_added','target_price','stop_loss','entry_price','group_ids',
+    'trailing_alert','sync_version','synced_at','deleted_at',
+  ],
+  calendar_events: [
+    'id','user_id','user_email','date','title','category','ticker','source',
+    'description','memo','impact','extra','sync_version','synced_at','deleted_at',
+    'created_at',
+  ],
+  reports: [
+    'id','user_id','user_email','type','data','sync_version','synced_at',
+    'deleted_at','created_at',
+  ],
+}
+
+// 허용된 컬럼만 남기고 나머지 제거
+const filterColumns = (record, pgTable) => {
+  const allowed = ALLOWED_COLUMNS[pgTable]
+  if (!allowed) return record
+  return Object.fromEntries(Object.entries(record).filter(([k]) => allowed.includes(k)))
 }
 
 export default async function handler(req, res) {
+  if (handlePreflight(req, res)) return
+  setCors(req, res)
   if (req.method !== 'POST') return res.status(405).end()
 
   const token = req.headers.authorization?.replace('Bearer ', '')
@@ -25,52 +88,50 @@ export default async function handler(req, res) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
 
-  const { records } = req.body
+  const { table, records } = req.body
+  const pgTable = TABLE_MAP[table]
+  if (!pgTable) return res.status(400).json({ error: `Unknown table: ${table}` })
   if (!Array.isArray(records) || records.length === 0) {
-    return res.status(400).json({ error: 'records must be a non-empty array' })
+    return res.status(200).json({ uploaded: [], failed: [] })
   }
 
-  const conflicts = []
-  const upserted = []
+  const uploaded = []
+  const failed = []
 
   for (const record of records) {
-    const pgTable = TABLE_MAP[record.table]
-    if (!pgTable) continue
+    try {
+      // camelCase → snake_case 변환 + user_id/user_email 강제 덮어쓰기
+      const converted = {
+        ...recordToServer(record),
+        user_id:      user.id,
+        user_email:   user.email,
+        sync_version: (record.syncVersion ?? 0) + 1,
+        synced_at:    new Date().toISOString(),
+      }
 
-    // 서버 현재 버전 조회 — 충돌 감지
-    const { data: existing } = await supabase
-      .from(pgTable)
-      .select('id, sync_version')
-      .eq('id', String(record.id))
-      .single()
+      // 비표준 UUID 필드 → null 변환 (demo-account-general 등 방어)
+      for (const field of (UUID_FIELDS[pgTable] ?? [])) {
+        if (converted[field] !== undefined) {
+          converted[field] = toUUID(converted[field])
+        }
+      }
 
-    if (existing && existing.sync_version > record.syncVersion) {
-      conflicts.push({
-        id: record.id,
-        table: record.table,
-        serverVersion: existing.sync_version,
-        localVersion: record.syncVersion,
-      })
-      continue
+      // Supabase 스키마에 없는 컬럼 제거 (unknown column 오류 방지)
+      const serverRecord = filterColumns(converted, pgTable)
+
+      const { error } = await supabase
+        .from(pgTable)
+        .upsert(serverRecord, { onConflict: 'id' })
+
+      if (error) {
+        failed.push({ id: record.id, error: error.message })
+      } else {
+        uploaded.push({ ...record, syncVersion: serverRecord.sync_version })
+      }
+    } catch (err) {
+      failed.push({ id: record.id, error: err.message })
     }
-
-    await supabase.from(pgTable).upsert({
-      id:           String(record.id),
-      user_id:      user.id,
-      data:         record.data,
-      sync_version: record.syncVersion,
-      synced_at:    new Date().toISOString(),
-      deleted_at:   record.deletedAt ?? null,
-    })
-    upserted.push(record.id)
   }
 
-  // 글로벌 버전 갱신
-  await supabase.from('user_sync_meta').upsert({
-    user_id:        user.id,
-    global_version: Date.now(),
-    last_synced_at: new Date().toISOString(),
-  })
-
-  res.status(200).json({ upserted, conflicts })
+  res.status(200).json({ uploaded, failed })
 }

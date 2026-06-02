@@ -1,86 +1,147 @@
-// 인증 상태 관리 — 로컬 auth 유지 + Supabase 계정 통합
+// Supabase UUID 단일 체계 인증 스토어 — 로컬 user-XXXX 시스템 제거
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { authService } from '@/services/authService'
+import { supabase } from '@/lib/supabaseClient'
+
+// 로그인/세션 복원 시 profiles 행 자동 생성 (없으면 insert, 있으면 무시)
+async function ensureProfile(user) {
+  if (!supabase || !user?.id) return
+  await supabase.from('profiles').upsert(
+    { id: user.id, email: user.email, display_name: user.user_metadata?.full_name || user.email },
+    { onConflict: 'id', ignoreDuplicates: true }
+  )
+}
 
 export const useAuthStore = create(
   persist(
-    (set, get) => ({
-      // ── 기존 로컬 auth (변경 없음) ──
-      currentUser: null,  // { id, name, email }
+    (set) => ({
+      // 현재 로그인 사용자 (Supabase UUID 기반)
+      currentUser: null,  // { id (UUID), email, name }
       isLoggedIn: false,
-      users: [],          // [{ id, name, email, password }]
-
-      // ── Supabase 계정 (신규) ──
-      isSupabaseUser: false,
       supabaseSession: null,
-      isAdmin: false,         // persist 하지 않음 — 로그인마다 서버에서 재검증
+      isSupabaseUser: false,  // 하위 호환성 유지
+      isAdmin: false,
 
-      // 회원가입
-      register: (name, email, password) => {
-        const { users } = get()
-        if (users.some((u) => u.email === email)) return { ok: false, error: '이미 등록된 이메일입니다' }
-
-        const newUser = {
-          id: `user-${crypto.randomUUID().slice(0, 8)}`,
-          name,
-          email,
-          password,
-          createdAt: new Date().toISOString(),
-        }
-        set({ users: [...users, newUser] })
-        return { ok: true, user: newUser }
-      },
-
-      // 이메일 + 비밀번호로 로그인 (로컬 전용)
-      login: (email, password) => {
-        const { users } = get()
-        const user = users.find(
-          (u) => u.email === email && u.password === password
-        )
-        if (!user) return false
-        set({
-          currentUser: { id: user.id, name: user.name, email: user.email },
-          isLoggedIn: true,
-        })
-        return true
-      },
-
-      logout: async () => {
-        // Supabase 세션은 브라우저에 유지 — 재로그인 시 자동 복원됨
-        // 완전 연결 해제는 Settings의 '서버 계정 연결 해제' 버튼으로 처리
-        set({ currentUser: null, isLoggedIn: false, isSupabaseUser: false, supabaseSession: null, isAdmin: false })
-      },
-
-      setIsAdmin: (v) => set({ isAdmin: v }),
-
-      // ── Supabase 세션 동기화 ──
-      setSupabaseSession: (session) => {
+      // ── Supabase 가입 ──
+      signUp: async (email, password, name) => {
+        const data = await authService.signUpWithEmail(email, password)
+        const session = data?.session
         if (session) {
+          await ensureProfile(session.user)
           set({
-            isSupabaseUser: true,
+            currentUser: {
+              id: session.user.id,
+              email: session.user.email,
+              name: name || session.user.email,
+            },
             supabaseSession: session,
             isLoggedIn: true,
+            isSupabaseUser: true,
+          })
+        }
+        return { ok: true, session }
+      },
+
+      // ── Supabase 로그인 ──
+      signIn: async (email, password) => {
+        const data = await authService.signInWithEmail(email, password)
+        const session = data?.session
+        if (!session) return { ok: false, error: '로그인에 실패했습니다' }
+        await ensureProfile(session.user)
+        set({
+          currentUser: {
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.user_metadata?.full_name || session.user.email,
+          },
+          supabaseSession: session,
+          isLoggedIn: true,
+          isSupabaseUser: true,
+        })
+        return { ok: true, session }
+      },
+
+      // ── 로그아웃 ──
+      signOut: async () => {
+        await authService.signOut()
+        set({
+          currentUser: null,
+          isLoggedIn: false,
+          supabaseSession: null,
+          isSupabaseUser: false,
+          isAdmin: false,
+        })
+      },
+
+      // ── 세션 복원 (앱 시작 시) ──
+      restoreSession: async () => {
+        const session = await authService.getSession()
+        if (session?.user) {
+          await ensureProfile(session.user)
+          set({
             currentUser: {
               id: session.user.id,
               email: session.user.email,
               name: session.user.user_metadata?.full_name || session.user.email,
             },
+            supabaseSession: session,
+            isLoggedIn: true,
+            isSupabaseUser: true,
+          })
+          return true
+        }
+        set({ currentUser: null, isLoggedIn: false, supabaseSession: null, isSupabaseUser: false })
+        return false
+      },
+
+      // ── 하위 호환성 — App.jsx onAuthStateChange 콜백에서 사용 ──
+      setSupabaseSession: (session) => {
+        if (session?.user) {
+          ensureProfile(session.user)  // 비동기, 오류 무시
+          set({
+            currentUser: {
+              id: session.user.id,
+              email: session.user.email,
+              name: session.user.user_metadata?.full_name || session.user.email,
+            },
+            supabaseSession: session,
+            isLoggedIn: true,
+            isSupabaseUser: true,
           })
         } else {
-          set({ isSupabaseUser: false, supabaseSession: null })
+          set({
+            currentUser: null,
+            isLoggedIn: false,
+            supabaseSession: null,
+            isSupabaseUser: false,
+          })
         }
+      },
+
+      setIsAdmin: (v) => set({ isAdmin: v }),
+
+      // ── 하위 호환성 — logout() 호출 잔존 코드 대응 ──
+      logout: async () => {
+        await authService.signOut()
+        set({
+          currentUser: null,
+          isLoggedIn: false,
+          supabaseSession: null,
+          isSupabaseUser: false,
+          isAdmin: false,
+        })
       },
     }),
     {
       name: 'auth-storage',
-      version: 3,
-      migrate: (persisted) => ({
-        currentUser: persisted?.currentUser || null,
-        isLoggedIn: persisted?.isLoggedIn || false,
-        users: persisted?.users || [],
-        isSupabaseUser: false,
+      version: 4,  // v3→v4: users[] 배열 제거, 로컬 user-XXXX 시스템 폐기
+      migrate: () => ({
+        currentUser: null,
+        isLoggedIn: false,
         supabaseSession: null,
+        isSupabaseUser: false,
+        isAdmin: false,
       }),
     }
   )

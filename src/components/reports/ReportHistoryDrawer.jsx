@@ -79,7 +79,7 @@ export default function ReportHistoryDrawer({ open, onClose, userId }) {
                 {selected.title}
               </p>
               <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-                {selected.content}
+                {selected.data ?? selected.content}
               </div>
             </div>
           </div>

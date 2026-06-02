@@ -133,6 +133,105 @@ db.version(11).stores({
   await tx.calendarEvents.toCollection().modify({ syncVersion: 0, syncedAt: null, deletedAt: null })
 })
 
+// v12: 동기화 구조개선
+// - userEmail 인덱스 추가 (PK 변경 없음 — Dexie 제약)
+// - userAccounts, watchlist 테이블 신규 추가 (처음부터 UUID PK)
+// ※ calendarEvents/reports PK(++id) 는 변경 불가 → serverId 필드로 서버 UUID 별도 관리
+db.version(12).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId, userEmail, syncVersion',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, userEmail, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId, userEmail, syncVersion',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, userEmail, date, category, ticker, source, syncVersion',
+  userAccounts:   '&id, userId, userEmail',
+  watchlist:      '&id, userId, userEmail, ticker',
+})
+
+// v13: calendarEvents 기존 정수 id → UUID 교체 (서버 동기화 위해 필요)
+// userEmail 필드는 upload 시 JWT에서 서버가 강제 덮어쓰므로 로컬값 불필요
+db.version(13).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId, userEmail, syncVersion',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, userEmail, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId, userEmail, syncVersion',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, userEmail, date, category, ticker, source, syncVersion',
+  userAccounts:   '&id, userId, userEmail',
+  watchlist:      '&id, userId, userEmail, ticker',
+}).upgrade(async (tx) => {
+  const events = await tx.calendarEvents.toArray()
+  const intIdEvents = events.filter(e => typeof e.id === 'number')
+  if (intIdEvents.length === 0) return
+
+  await tx.calendarEvents.bulkDelete(intIdEvents.map(e => e.id))
+  await tx.calendarEvents.bulkAdd(
+    intIdEvents.map(e => ({
+      ...e,
+      id: crypto.randomUUID(),
+      syncedAt: null,
+    }))
+  )
+})
+
+// v14: reports 기존 정수 id → UUID 교체 (서버 동기화 위해 필요)
+db.version(14).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId, userEmail, syncVersion',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, userEmail, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId, userEmail, syncVersion',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, userEmail, date, category, ticker, source, syncVersion',
+  userAccounts:   '&id, userId, userEmail',
+  watchlist:      '&id, userId, userEmail, ticker',
+}).upgrade(async (tx) => {
+  const reports = await tx.reports.toArray()
+  const intIdReports = reports.filter(r => typeof r.id === 'number')
+  if (intIdReports.length === 0) return
+
+  await tx.reports.bulkDelete(intIdReports.map(r => r.id))
+  await tx.reports.bulkAdd(
+    intIdReports.map(({ content, ...r }) => ({
+      ...r,
+      id: crypto.randomUUID(),
+      data: content ?? r.data,
+      syncedAt: null,
+    }))
+  )
+})
+
+// v15: reports content → data 필드명 교체 (서버 schema 일치)
+db.version(15).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId, userEmail, syncVersion',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, userEmail, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId, userEmail, syncVersion',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, userEmail, date, category, ticker, source, syncVersion',
+  userAccounts:   '&id, userId, userEmail',
+  watchlist:      '&id, userId, userEmail, ticker',
+}).upgrade(async (tx) => {
+  const reports = await tx.reports.toArray()
+  const toFix = reports.filter(r => r.content !== undefined && r.data === undefined)
+  if (toFix.length === 0) return
+
+  for (const { content, ...r } of toFix) {
+    await tx.reports.put({ ...r, data: content, syncedAt: null })
+  }
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {
@@ -209,10 +308,11 @@ export async function isCacheValid(ticker, hours = 24) {
 // ─── reports CRUD ───
 
 export async function saveReport(reportData) {
-  return db.reports.add({
+  return db.reports.add(bumpSyncVersion({
     ...reportData,
+    id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
-  })
+  }))
 }
 
 export async function getReportsByType(type) {
@@ -417,4 +517,25 @@ export async function getAllCalendarEvents() {
 
 export async function getCalendarEventsByUser(userId) {
   return db.calendarEvents.where('userId').equals(userId).toArray()
+}
+
+// ─── watchlist CRUD ───
+
+export async function putWatchlistItem(item) {
+  return db.watchlist.put(item)
+}
+
+export async function bulkPutWatchlist(items) {
+  return db.watchlist.bulkPut(items)
+}
+
+export async function softDeleteWatchlistItem(id) {
+  return db.watchlist.update(id, { deletedAt: new Date().toISOString(), syncedAt: null })
+}
+
+export async function getWatchlistByUser(userId) {
+  return db.watchlist
+    .where('userId').equals(userId)
+    .filter(w => !w.deletedAt)
+    .toArray()
 }

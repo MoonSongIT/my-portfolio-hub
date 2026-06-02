@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { toast } from 'sonner'
-import { db, addTransaction, updateTransaction, deleteTransaction, getTransactionsByUser, deleteTransactionsByUser } from '../utils/db'
+import { db, addTransaction, updateTransaction, deleteTransaction, getTransactionsByUser, deleteTransactionsByUser, bumpSyncVersion } from '../utils/db'
+import { useSyncStore } from './syncStore'
 import { useCashFlowStore } from './cashFlowStore'
 import { useWatchlistStore } from './watchlistStore'
 import { useAuthStore } from './authStore'
@@ -233,7 +234,7 @@ export const useJournalStore = create(
       },
 
       addEntry: (entry) => {
-        const userId = useAuthStore.getState().currentUser?.id
+        const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
         const newEntry = {
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
@@ -242,6 +243,7 @@ export const useJournalStore = create(
           memo: '',
           linkedCashFlowId: null,
           userId,
+          userEmail: userEmail || '',
           ...entry,
         }
 
@@ -281,12 +283,14 @@ export const useJournalStore = create(
           newEntry.linkedCashFlowId = cashFlowId
         }
 
-        set((state) => { state.entries.push(newEntry) })
-        // IndexedDB에도 저장 (비동기, 실패해도 로컬스토리지 백업 유지)
-        addTransaction(newEntry).catch(err => {
+        const syncedEntry = bumpSyncVersion(newEntry)
+        set((state) => { state.entries.push(syncedEntry) })
+        // IndexedDB에도 저장 (비동기, 실패해도 로컬스토리스 백업 유지)
+        addTransaction(syncedEntry).catch(err => {
           console.warn('[DB] addTransaction failed:', err)
           toast.warning('로컬 DB 저장 실패 — 앱 데이터는 보존됩니다.')
         })
+        useSyncStore.getState().incrementPending()
 
         // 매수 종목은 관심종목에 자동 등록 (중복은 watchlistStore에서 방지)
         if (newEntry.action === 'buy' && newEntry.ticker) {
@@ -332,11 +336,13 @@ export const useJournalStore = create(
           }
         }
 
+        const syncUpdates = bumpSyncVersion(updates)
         set((state) => {
           const e = state.entries.find(e => e.id === id)
-          if (e) Object.assign(e, updates)
+          if (e) Object.assign(e, syncUpdates)
         })
-        updateTransaction(id, updates).catch(err => console.warn('[DB] updateTransaction failed:', err))
+        updateTransaction(id, syncUpdates).catch(err => console.warn('[DB] updateTransaction failed:', err))
+        useSyncStore.getState().incrementPending()
       },
 
       deleteEntry: (id) => {
@@ -348,7 +354,12 @@ export const useJournalStore = create(
         set((state) => {
           state.entries = state.entries.filter(e => e.id !== id)
         })
-        deleteTransaction(id).catch(err => console.warn('[DB] deleteTransaction failed:', err))
+        // 소프트 삭제: deletedAt 마킹 후 동기화 → 서버에서도 삭제되도록
+        const softDelete = bumpSyncVersion({ deletedAt: new Date().toISOString() })
+        updateTransaction(id, softDelete)
+          .catch(() => deleteTransaction(id))
+          .catch(err => console.warn('[DB] deleteTransaction failed:', err))
+        useSyncStore.getState().incrementPending()
       },
 
       // 매매일지 accountId 기준으로 연결된 cashFlow accountId를 강제 동기화
@@ -421,19 +432,6 @@ export const useJournalStore = create(
 
           set((state) => { state.entries = migrated })
 
-          // 매수 이력이 있는 종목을 관심종목에 동기화 (중복 방지는 watchlistStore에서 처리)
-          const addToWatchlist = useWatchlistStore.getState().addToWatchlist
-          const seen = new Set()
-          for (const e of dbEntries) {
-            if (e.action === 'buy' && e.ticker && !seen.has(e.ticker)) {
-              seen.add(e.ticker)
-              addToWatchlist({
-                ticker: e.ticker,
-                name: e.name || e.ticker,
-                market: e.market || 'KRX',
-              })
-            }
-          }
         } catch (err) {
           console.warn('[DB] loadFromDB failed, using localStorage:', err)
         }
@@ -594,7 +592,7 @@ export const useJournalStore = create(
 
       // 복수 엔트리 일괄 추가 (HTS import용, 현금흐름 자동 연동 제외)
       addEntriesBulk: (entries) => {
-        const userId = useAuthStore.getState().currentUser?.id
+        const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
         const now = new Date().toISOString()
 
         const newEntries = entries
@@ -606,6 +604,7 @@ export const useJournalStore = create(
             memo: '',
             linkedCashFlowId: null,
             userId,
+            userEmail: userEmail || '',
             source: 'eugene-hts',
             importedAt: now,
             ...entry,

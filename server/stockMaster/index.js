@@ -21,6 +21,7 @@
  *   · 기존 /api/stock-update 엔드포인트는 하위호환 유지 (stockUpdateHandler.js)
  */
 import { loadEnv } from 'vite'
+import { createClient } from '@supabase/supabase-js'
 import { fetchDartListByCls } from './dart.js'
 import { fetchKrxEtfList }   from './krxEtf.js'
 import { fetchYahooStocks, fetchUsEtf, FALLBACK_NASDAQ_STOCKS, FALLBACK_NYSE_STOCKS, FALLBACK_US_ETF } from './yahooUs.js'
@@ -277,16 +278,108 @@ export async function handleStockMaster(req, res) {
   const rawUrl = req.url || ''
   const urlObj = new URL(rawUrl, 'http://localhost')
 
-  // ── /api/stock-master/meta, /api/stock-master/download, /api/stock-master/upload ──
-  // 이 경로들은 Vercel 서버리스 함수(api/ 디렉터리)에서만 처리.
-  // 개발 서버에서는 "서버 기능 미지원" 응답을 반환해 잘못된 라우팅 방지.
-  if (rawUrl.startsWith('/api/stock-master/meta') ||
-      rawUrl.startsWith('/api/stock-master/download') ||
-      rawUrl.startsWith('/api/stock-master/upload')) {
-    res.writeHead(501, { 'Content-Type': 'application/json' })
-    return res.end(JSON.stringify({
-      error: '개발 서버에서는 서버 종목 DB 기능을 지원하지 않습니다. Vercel 배포 환경에서 사용하세요.',
+  // ── Supabase 클라이언트 (서비스 롤 키) ──────────────────────────────────
+  function getSupabase() {
+    const url = env.VITE_SUPABASE_URL
+    const key = env.SUPABASE_SERVICE_ROLE_KEY
+    if (!url || !key) throw new Error('VITE_SUPABASE_URL 또는 SUPABASE_SERVICE_ROLE_KEY가 .env에 없습니다')
+    return createClient(url, key)
+  }
+
+  // ── /api/stock-master/meta ───────────────────────────────────────────────
+  if (rawUrl.startsWith('/api/stock-master/meta')) {
+    const sb = getSupabase()
+    const EXCHANGES = ['KOSPI', 'KOSDAQ', 'NXT', 'KRX_ETF', 'NYSE', 'NASDAQ', 'US_ETF']
+    // 전체 카운트 + 거래소별 카운트를 count 쿼리로 처리 (1,000행 제한 우회)
+    const [totalResult, ...exResults] = await Promise.all([
+      sb.from('stock_master').select('*', { count: 'exact', head: true }),
+      ...EXCHANGES.map(ex =>
+        sb.from('stock_master').select('*', { count: 'exact', head: true }).eq('exchange', ex)
+      ),
+    ])
+    if (totalResult.error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      return res.end(JSON.stringify({ error: totalResult.error.message }))
+    }
+    const byExchange = {}
+    EXCHANGES.forEach((ex, i) => { if (exResults[i].count) byExchange[ex] = exResults[i].count })
+    const { data: latest } = await sb.from('stock_master').select('uploaded_at')
+      .order('uploaded_at', { ascending: false }).limit(1).single()
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify({ total: totalResult.count ?? 0, byExchange, uploadedAt: latest?.uploaded_at ?? null }))
+  }
+
+  // ── /api/stock-master/download ───────────────────────────────────────────
+  if (rawUrl.startsWith('/api/stock-master/download')) {
+    const exchange = urlObj.searchParams.get('exchange')
+    const sb = getSupabase()
+    // range(0, 49999)로 Supabase 기본 1,000행 제한 우회
+    let query = sb.from('stock_master').select('*').range(0, 49999)
+    if (exchange) query = query.eq('exchange', exchange)
+    const { data, error } = await query
+    if (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      return res.end(JSON.stringify({ error: error.message }))
+    }
+    // snake_case → camelCase
+    const toCamel = k => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+    const rows = (data ?? []).map(r =>
+      Object.fromEntries(Object.entries(r).filter(([, v]) => v != null).map(([k, v]) => [toCamel(k), v]))
+    )
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify({ rows, total: rows.length }))
+  }
+
+  // ── /api/stock-master/upload ─────────────────────────────────────────────
+  if (rawUrl.startsWith('/api/stock-master/upload')) {
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' })
+      return res.end(JSON.stringify({ error: 'Method Not Allowed' }))
+    }
+    // 요청 바디 파싱
+    const body = await new Promise((resolve, reject) => {
+      let data = ''
+      req.on('data', chunk => { data += chunk })
+      req.on('end', () => { try { resolve(JSON.parse(data)) } catch (e) { reject(e) } })
+      req.on('error', reject)
+    })
+    const { rows } = body
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      return res.end(JSON.stringify({ error: 'rows must be a non-empty array' }))
+    }
+    // camelCase → snake_case 변환 (Vercel Function의 toRow와 동일)
+    const now = new Date().toISOString()
+    const dbRows = rows.map(r => ({
+      id:            r.id,
+      ticker:        r.ticker,
+      name:          r.name,
+      name_en:       r.nameEn ?? null,
+      category:      r.category,
+      exchange:      r.exchange,
+      type:          r.type,
+      country:       r.country,
+      currency:      r.currency,
+      sector:        r.sector ?? null,
+      industry:      r.industry ?? null,
+      isin:          r.isin ?? null,
+      corp_code:     r.corpCode ?? null,
+      tradable_on:   r.tradableOn ?? null,
+      is_custom:     r.isCustom ?? false,
+      is_active:     r.isActive ?? true,
+      first_seen_at: r.firstSeenAt ?? now,
+      updated_at:    r.updatedAt ?? now,
+      source:        r.source ?? 'MANUAL',
+      uploaded_at:   now,
     }))
+    const sb = getSupabase()
+    const { error: upsertErr } = await sb.from('stock_master').upsert(dbRows, { onConflict: 'id' })
+    if (upsertErr) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      return res.end(JSON.stringify({ error: upsertErr.message }))
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify({ upserted: dbRows.length }))
   }
 
   // ── /api/stock-master/manifest ──────────────────────────────────────────

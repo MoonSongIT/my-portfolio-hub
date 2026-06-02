@@ -4,6 +4,9 @@ import { persist } from 'zustand/middleware'
 import { sampleWatchlistByUser } from '../data/sampleWatchlist'
 import { getByTicker } from '../utils/stockMasterDb'
 import { useSettingsStore } from './settingsStore'
+import { putWatchlistItem, bulkPutWatchlist, softDeleteWatchlistItem, getWatchlistByUser } from '../utils/db'
+import { useAuthStore } from './authStore'
+import { saveGroupsToServer } from '../utils/groupsApi'
 
 export const useWatchlistStore = create(
   persist((set, get) => ({
@@ -36,7 +39,8 @@ export const useWatchlistStore = create(
     },
 
     // 관심종목 추가 (중복 방지, priceAtAdded 스냅샷 + 설정 기반 기본값 적용)
-    addToWatchlist: (item) => set((state) => {
+    addToWatchlist: (item) => {
+      const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
       const { watchlistDefaults } = useSettingsStore.getState()
       const base = item.currentPrice > 0 ? item.currentPrice : null
       const targetPrice = item.targetPrice ?? (
@@ -45,21 +49,30 @@ export const useWatchlistStore = create(
       const stopLoss = item.stopLoss ?? (
         base ? Math.round(base * (1 - watchlistDefaults.stopLossPct / 100)) : null
       )
-      return {
-        watchlist: [...state.watchlist, {
-          ...item,
-          addedAt: new Date().toISOString(),
-          priceAtAdded: item.currentPrice ?? null,
-          groupIds: item.groupIds ?? [],
-          targetPrice,
-          stopLoss,
-          entryPrice: item.entryPrice ?? null,
-          highWaterMark: null,
-          trailingDropPct: null,
-          trailingAlert: false,
-        }].filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
+      const newItem = {
+        id: item.id || crypto.randomUUID(),
+        ...item,
+        userId,
+        userEmail: userEmail || '',
+        addedAt: new Date().toISOString(),
+        priceAtAdded: item.currentPrice ?? null,
+        groupIds: item.groupIds ?? [],
+        targetPrice,
+        stopLoss,
+        entryPrice: item.entryPrice ?? null,
+        highWaterMark: null,
+        trailingDropPct: null,
+        trailingAlert: false,
+        syncVersion: 0,
+        syncedAt: null,
+        deletedAt: null,
       }
-    }),
+      set((state) => ({
+        watchlist: [...state.watchlist, newItem]
+          .filter((v, i, a) => a.findIndex(t => t.ticker === v.ticker) === i),
+      }))
+      putWatchlistItem(newItem).catch(err => console.warn('[DB] addToWatchlist IDB failed:', err))
+    },
 
     /**
      * 마스터 DB 검증 후 관심종목 추가
@@ -92,36 +105,101 @@ export const useWatchlistStore = create(
     },
 
     // 관심종목 삭제 (연결 알림도 함께 삭제)
-    removeFromWatchlist: (ticker) => set((state) => ({
-      watchlist: state.watchlist.filter(item => item.ticker !== ticker),
-      alerts: state.alerts.filter(a => a.ticker !== ticker),
-    })),
+    removeFromWatchlist: (ticker) => {
+      const item = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
+      set((state) => ({
+        watchlist: state.watchlist.filter(w => w.ticker !== ticker),
+        alerts: state.alerts.filter(a => a.ticker !== ticker),
+      }))
+      if (item?.id) {
+        softDeleteWatchlistItem(item.id).catch(err => console.warn('[DB] removeFromWatchlist IDB failed:', err))
+      }
+    },
+
+    // IDB → Zustand 상태 로드 (다운로드 후 UI 반영)
+    loadFromDB: async (userId) => {
+      if (!userId) return
+      try {
+        const items = await getWatchlistByUser(userId)
+        if (items.length > 0) {
+          set((state) => ({ watchlist: items, watchlistUserId: userId }))
+        }
+      } catch (err) {
+        console.warn('[DB] watchlistStore.loadFromDB failed:', err)
+      }
+    },
+
+    // localStorage persist 데이터를 IDB로 복사 (멱등 — 트랜잭션으로 동시 호출 방지)
+    syncToIDB: async () => {
+      const { id: userId, email: userEmail } = useAuthStore.getState().currentUser ?? {}
+      if (!userId) return
+      const { watchlist } = useWatchlistStore.getState()
+      const items = watchlist.filter(w => w.userId === userId || !w.userId)
+      if (items.length === 0) return
+
+      // ticker 중복 제거
+      const byTicker = new Map()
+      items.forEach(w => byTicker.set(w.ticker, w))
+      const unique = [...byTicker.values()]
+
+      const { db: idb } = await import('../utils/db')
+      // delete + insert를 하나의 트랜잭션으로 묶어 동시 호출 시 중복 삽입 방지
+      await idb.transaction('rw', idb.watchlist, async () => {
+        const existing = await idb.watchlist.where('userId').equals(userId).toArray()
+        const existingIdByTicker = Object.fromEntries(existing.map(w => [w.ticker, w.id]))
+
+        const toSave = unique.map(w => ({
+          ...w,
+          id: existingIdByTicker[w.ticker] || w.id || crypto.randomUUID(),
+          userId,
+          userEmail: w.userEmail || userEmail || '',
+          syncVersion: w.syncVersion ?? 0,
+          syncedAt: w.syncedAt ?? null,
+          deletedAt: w.deletedAt ?? null,
+        }))
+
+        await idb.watchlist.where('userId').equals(userId).delete()
+        await idb.watchlist.bulkPut(toSave)
+      })
+    },
 
     // 초기화 (로그아웃 시 호출)
     clearWatchlist: () => set({ watchlist: [], alerts: [] }),
 
     // 관심종목 메모 업데이트
-    updateWatchlistMemo: (ticker, memo) => set((state) => ({
-      watchlist: state.watchlist.map(item =>
-        item.ticker === ticker ? { ...item, memo } : item
-      ),
-    })),
+    updateWatchlistMemo: (ticker, memo) => {
+      set((state) => ({
+        watchlist: state.watchlist.map(item =>
+          item.ticker === ticker ? { ...item, memo, syncedAt: null } : item
+        ),
+      }))
+      const updated = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
+      if (updated) putWatchlistItem(updated).catch(err => console.warn('[DB] updateWatchlistMemo IDB failed:', err))
+    },
 
     // 관심종목 태그 업데이트
-    updateWatchlistGroups: (ticker, groupIds) => set((state) => ({
-      watchlist: state.watchlist.map(item =>
-        item.ticker === ticker ? { ...item, groupIds } : item
-      ),
-    })),
+    updateWatchlistGroups: (ticker, groupIds) => {
+      set((state) => ({
+        watchlist: state.watchlist.map(item =>
+          item.ticker === ticker ? { ...item, groupIds, syncedAt: null } : item
+        ),
+      }))
+      const updated = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
+      if (updated) putWatchlistItem(updated).catch(err => console.warn('[DB] updateWatchlistGroups IDB failed:', err))
+    },
 
     // 목표가·손절가·매입가 업데이트 (알림과 독립)
-    updateWatchlistTargets: (ticker, { targetPrice, stopLoss, entryPrice }) => set((state) => ({
-      watchlist: state.watchlist.map(item =>
-        item.ticker === ticker
-          ? { ...item, targetPrice, stopLoss, entryPrice }
-          : item
-      ),
-    })),
+    updateWatchlistTargets: (ticker, { targetPrice, stopLoss, entryPrice }) => {
+      set((state) => ({
+        watchlist: state.watchlist.map(item =>
+          item.ticker === ticker
+            ? { ...item, targetPrice, stopLoss, entryPrice, syncedAt: null }
+            : item
+        ),
+      }))
+      const updated = useWatchlistStore.getState().watchlist.find(w => w.ticker === ticker)
+      if (updated) putWatchlistItem(updated).catch(err => console.warn('[DB] updateWatchlistTargets IDB failed:', err))
+    },
 
     // 개별 종목 고점 낙폭 모니터링 % 설정 (null = 설정 기본값으로 복원)
     updateTrailingDropPct: (ticker, pct) => set((state) => ({
@@ -156,29 +234,38 @@ export const useWatchlistStore = create(
 
     // ─── 태그(그룹) CRUD ───
 
-    addGroup: (name, color) => set((state) => {
-      if (state.groups.length >= 10) return state
-      return {
-        groups: [...state.groups, {
-          id: crypto.randomUUID(),
-          name,
-          color,
-          createdAt: new Date().toISOString(),
-        }],
-      }
-    }),
+    addGroup: (name, color) => {
+      set((state) => {
+        if (state.groups.length >= 10) return state
+        return {
+          groups: [...state.groups, {
+            id: crypto.randomUUID(),
+            name,
+            color,
+            createdAt: new Date().toISOString(),
+          }],
+        }
+      })
+      saveGroupsToServer(useWatchlistStore.getState().groups).catch(() => {})
+    },
 
-    renameGroup: (id, name) => set((state) => ({
-      groups: state.groups.map(g => g.id === id ? { ...g, name } : g),
-    })),
+    renameGroup: (id, name) => {
+      set((state) => ({
+        groups: state.groups.map(g => g.id === id ? { ...g, name } : g),
+      }))
+      saveGroupsToServer(useWatchlistStore.getState().groups).catch(() => {})
+    },
 
-    removeGroup: (id) => set((state) => ({
-      groups: state.groups.filter(g => g.id !== id),
-      watchlist: state.watchlist.map(item => ({
-        ...item,
-        groupIds: (item.groupIds ?? []).filter(gid => gid !== id),
-      })),
-    })),
+    removeGroup: (id) => {
+      set((state) => ({
+        groups: state.groups.filter(g => g.id !== id),
+        watchlist: state.watchlist.map(item => ({
+          ...item,
+          groupIds: (item.groupIds ?? []).filter(gid => gid !== id),
+        })),
+      }))
+      saveGroupsToServer(useWatchlistStore.getState().groups).catch(() => {})
+    },
 
     // ─── 알림 CRUD ───
 
@@ -247,19 +334,9 @@ export const useWatchlistStore = create(
   }),
   {
     name: 'watchlist-storage',
-    version: 7,
+    version: 8,
     migrate: (persisted) => ({
-      watchlist: (persisted?.watchlist ?? []).map(item => ({
-        priceAtAdded: null,
-        groupIds: [],
-        targetPrice: null,
-        stopLoss: null,
-        entryPrice: null,
-        highWaterMark: null,
-        trailingDropPct: null,
-        trailingAlert: false,
-        ...item,
-      })),
+      watchlist: [],  // watchlist는 IDB가 정식 저장소 — localStorage에서 복원하지 않음
       alerts: (persisted?.alerts ?? []).map(a => ({
         paused: false,
         ...a,
@@ -267,6 +344,13 @@ export const useWatchlistStore = create(
       groups: persisted?.groups ?? [],
       alertHistory: persisted?.alertHistory ?? [],
       watchlistUserId: persisted?.watchlistUserId ?? null,
+    }),
+    // watchlist는 IDB(Dexie)가 정식 저장소이므로 localStorage에는 저장하지 않음
+    partialize: (state) => ({
+      alerts: state.alerts,
+      groups: state.groups,
+      alertHistory: state.alertHistory,
+      watchlistUserId: state.watchlistUserId,
     }),
   })
 )
