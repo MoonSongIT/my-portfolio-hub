@@ -3,11 +3,12 @@
     "api/claude.js": {
       "maxDuration": 60
     },
-    "api/naver/[...path].js": {
+    "api/naver-proxy.js": {
       "regions": ["icn1"]
     }
   },
   "rewrites": [
+    { "source": "/api/naver/:path*",     "destination": "/api/naver-proxy?q=:path*" },
     { "source": "/api/yahoo-v10/:path*", "destination": "https://query2.finance.yahoo.com/:path*" },
     { "source": "/api/yahoo/:path*",     "destination": "https://query1.finance.yahoo.com/:path*" },
     { "source": "/((?!api/).*)",         "destination": "/index.html" }
