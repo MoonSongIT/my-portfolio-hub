@@ -174,6 +174,30 @@ function App() {
       if (session?.user?.id) {
         checkIsAdmin().then(isAdmin => useAuthStore.getState().setIsAdmin(isAdmin))
         enableSync()
+
+        // S-2: INITIAL_SESSION / SIGNED_IN 시 다운로드 트리거
+        // getSession()은 마운트 직후 null을 반환하는 race condition이 있으므로
+        // onAuthStateChange가 세션 준비를 보장하는 시점에 다운로드를 실행
+        if (_event === 'INITIAL_SESSION' || _event === 'SIGNED_IN') {
+          if (cancelled) return
+          const { lastSyncedAt } = useSyncStore.getState()
+          const since = lastSyncedAt ?? null
+          if (!since) {
+            syncService.downloadAndReload(session.user.id)
+              .then(({ total }) => {
+                if (cancelled) return
+                if (total > 0) toast.success(`서버에서 ${total}개 항목을 받아왔습니다.`)
+              })
+              .catch(err => console.warn('[Sync] 자동 다운로드 실패:', err))
+          } else {
+            syncService.downloadDeltaAndReload(session.user.id, since)
+              .then(({ total }) => {
+                if (cancelled) return
+                if (total > 0) toast.info(`서버에서 ${total}개 변경사항을 받아왔습니다.`)
+              })
+              .catch(err => console.warn('[Sync] 증분 다운로드 실패:', err))
+          }
+        }
       } else {
         useAuthStore.getState().setIsAdmin(false)
         disableSync()
