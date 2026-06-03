@@ -74,6 +74,7 @@ export function usePendingSync() {
 
   function handleLeave() {
     setModalOpen(false)
+    useSyncStore.getState().resetPending() // 이번 세션에서 팝업 반복 억제
     const target = pendingNavRef.current
     pendingNavRef.current = null
     if (target) navigate(target)
