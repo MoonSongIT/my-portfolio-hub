@@ -58,6 +58,10 @@ export default function Settings() {
     stopLossPct: watchlistDefaults.stopLossPct,
     trailingDropPct: watchlistDefaults.trailingDropPct,
   })
+  const isWlDirty =
+    wlDraft.targetPct       !== watchlistDefaults.targetPct       ||
+    wlDraft.stopLossPct     !== watchlistDefaults.stopLossPct     ||
+    wlDraft.trailingDropPct !== watchlistDefaults.trailingDropPct
   const deleteAllEntries = useJournalStore((s) => s.deleteAllEntries)
   const entryCount = useJournalStore((s) => s.entries.length)
   const recomputeFromJournal = usePortfolioStore((s) => s.recomputeFromJournal)
@@ -267,7 +271,14 @@ export default function Settings() {
 
       {/* ─── 관심종목 기본값 ─── */}
       <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">관심종목 기본값</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">관심종목 기본값</h2>
+          {isWlDirty && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+              미저장
+            </span>
+          )}
+        </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
           <p className="text-sm text-gray-500 dark:text-gray-400">
             관심종목 추가 시 현재가를 기준으로 자동 계산되는 기본값입니다. 개별 종목에서 재정의할 수 있습니다.
@@ -319,7 +330,10 @@ export default function Settings() {
               <p className="text-xs text-gray-400">고점 대비 -{wlDraft.trailingDropPct}%</p>
             </div>
           </div>
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-3">
+            {isWlDirty && (
+              <span className="text-xs text-amber-600 dark:text-amber-400">저장하지 않으면 변경사항이 사라집니다.</span>
+            )}
             <button
               onClick={() => {
                 const t = Math.max(1, Math.min(100, wlDraft.targetPct || 20))
@@ -329,7 +343,11 @@ export default function Settings() {
                 setWlDraft({ targetPct: t, stopLossPct: s, trailingDropPct: d })
                 toast.success('관심종목 기본값이 저장되었습니다.')
               }}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition"
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                isWlDirty
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-300 dark:ring-amber-700'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
             >
               저장
             </button>
@@ -530,8 +548,8 @@ export default function Settings() {
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">앱 정보</h2>
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-1.5 text-sm text-gray-600 dark:text-gray-400">
           <div className="flex justify-between"><span>앱 이름</span><span className="text-gray-900 dark:text-white font-medium">My Portfolio Hub</span></div>
-          <div className="flex justify-between"><span>버전</span><span className="text-gray-900 dark:text-white font-medium">0.9.0 (Phase 5)</span></div>
-          <div className="flex justify-between"><span>저장 방식</span><span className="text-gray-900 dark:text-white font-medium">로컬 전용 (IndexedDB + LocalStorage)</span></div>
+          <div className="flex justify-between"><span>버전</span><span className="text-gray-900 dark:text-white font-medium">1.1.0 (Phase 11)</span></div>
+          <div className="flex justify-between"><span>저장 방식</span><span className="text-gray-900 dark:text-white font-medium">IndexedDB + Supabase 동기화</span></div>
         </div>
       </section>
 
