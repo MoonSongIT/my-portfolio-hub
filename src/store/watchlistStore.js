@@ -121,9 +121,27 @@ export const useWatchlistStore = create(
       if (!userId) return
       try {
         const items = await getWatchlistByUser(userId)
-        if (items.length > 0) {
-          set((state) => ({ watchlist: items, watchlistUserId: userId }))
+        if (items.length === 0) return
+
+        // ticker 중복 제거 — 같은 ticker 중 addedAt이 최신인 것만 유지
+        const byTicker = new Map()
+        items.forEach(item => {
+          const existing = byTicker.get(item.ticker)
+          if (!existing || (item.addedAt ?? '') > (existing.addedAt ?? '')) {
+            byTicker.set(item.ticker, item)
+          }
+        })
+        const unique = [...byTicker.values()]
+
+        // 중복으로 걸러진 오래된 레코드를 IDB에서 soft-delete (서버와 동기화 시 서버에서도 제거됨)
+        if (unique.length < items.length) {
+          const keepIds = new Set(unique.map(w => w.id))
+          items.filter(w => !keepIds.has(w.id)).forEach(w => {
+            softDeleteWatchlistItem(w.id).catch(() => {})
+          })
         }
+
+        set({ watchlist: unique, watchlistUserId: userId })
       } catch (err) {
         console.warn('[DB] watchlistStore.loadFromDB failed:', err)
       }
