@@ -245,6 +245,7 @@ export const useJournalStore = create(
           userId,
           userEmail: userEmail || '',
           ...entry,
+          amount: entry.amount ?? (entry.price ?? 0) * (entry.quantity ?? 0),
         }
 
         // 매도 시 실현손익 자동 계산 (사용자가 직접 입력하지 않은 경우)
@@ -608,6 +609,7 @@ export const useJournalStore = create(
             source: 'eugene-hts',
             importedAt: now,
             ...entry,
+            amount: entry.amount ?? (entry.price ?? 0) * (entry.quantity ?? 0),
           }))
 
         // 기존 보유 현황을 계좌별 평균단가 맵으로 초기화

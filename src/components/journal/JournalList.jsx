@@ -143,7 +143,7 @@ function EntryCard({ entry, accountLabel, onEdit, onDelete }) {
           </p>
           <p className="text-xs text-gray-500 mt-0.5">
             {formatCurrency(entry.price, currency)} × {entry.quantity.toLocaleString()}주
-            {' '}= {formatCurrency(entry.amount, currency)}
+            {' '}= {formatCurrency(entry.amount ?? entry.price * entry.quantity, currency)}
           </p>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             {accountLabel && (
