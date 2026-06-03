@@ -78,7 +78,11 @@ export const syncService = {
     const { records } = await res.json()
 
     if (records?.length > 0) {
-      await db[localTable].bulkPut(records)
+      const now = new Date().toISOString()
+      // 서버에서 받은 레코드는 이미 서버에 존재하므로 syncedAt 보장
+      await db[localTable].bulkPut(
+        records.map(r => r.syncedAt ? r : { ...r, syncedAt: now })
+      )
     }
 
     return { downloaded: records?.length ?? 0 }
