@@ -130,7 +130,7 @@ function App() {
         }
         // S-2: 로그인 후 증분 다운로드 — lastSyncedAt 기준으로 변경분만 받음
         if (cancelled) return // 비동기 대기 후 재확인
-        const { lastSyncedAt, setPendingChanges } = useSyncStore.getState()
+        const { lastSyncedAt } = useSyncStore.getState()
         // since = lastSyncedAt (마진 0) — upload 완료 후 찍히는 시각이므로
         // 업로드된 레코드의 synced_at < lastSyncedAt 보장 → 재다운로드 없음
         const since = lastSyncedAt ?? null
@@ -153,10 +153,6 @@ function App() {
             .catch(err => console.warn('[Sync] 증분 다운로드 실패:', err))
         }
 
-        // S-1: pendingChanges 초기화 — IDB 실제 스캔 결과로 설정
-        syncService.countPendingRecords()
-          .then(count => { if (!cancelled) setPendingChanges(count) })
-          .catch(() => {})
         // M-6: IDB 관심종목 로드 → UI 반영 (IDB가 정식 저장소, localStorage 미사용)
         const { useWatchlistStore } = await import('./store/watchlistStore')
         await useWatchlistStore.getState().loadFromDB(session.user.id)
