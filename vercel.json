@@ -15,6 +15,12 @@
     { "source": "/api/dart/calendar/earnings",     "destination": "/api/calendar?type=dart-earnings" },
     { "source": "/api/finnhub/calendar/earnings",  "destination": "/api/calendar?type=finnhub-earnings" },
     { "source": "/api/finnhub/calendar/ipo",       "destination": "/api/calendar?type=finnhub-ipo" },
+    { "source": "/api/stock-master/meta",          "destination": "/api/stock-master?action=meta" },
+    { "source": "/api/stock-master/download",      "destination": "/api/stock-master?action=download" },
+    { "source": "/api/stock-master/upload",        "destination": "/api/stock-master?action=upload" },
+    { "source": "/api/sync/download",              "destination": "/api/sync?action=download" },
+    { "source": "/api/sync/upload",                "destination": "/api/sync?action=upload" },
+    { "source": "/api/claude/validate",            "destination": "/api/claude?action=validate" },
     { "source": "/((?!api/).*)",                   "destination": "/index.html" }
   ]
 }
