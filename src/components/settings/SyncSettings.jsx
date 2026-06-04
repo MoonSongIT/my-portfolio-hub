@@ -18,14 +18,6 @@ export default function SyncSettings() {
     enableSync, disableSync, setAutoSync, setSyncInterval,
   } = useSyncStore()
 
-  if (!isSupabaseUser) {
-    return (
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        Supabase 계정으로 로그인하면 동기화 설정을 사용할 수 있습니다.
-      </p>
-    )
-  }
-
   const handleManualSync = async () => {
     try {
       await syncService.uploadAll()
