@@ -20,7 +20,7 @@ const SERVICES = [
     name: 'DART',
     description: '국내 공시 조회',
     placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-    docsUrl: 'https://opendart.fss.or.kr/uat/uia/easyLogin.do',
+    docsUrl: 'https://opendart.fss.or.kr/intro/main.do',
     docsLabel: 'DART 키 발급',
     hasValidation: false,
   },
