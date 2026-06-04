@@ -339,7 +339,9 @@ export default function Settings() {
                   <div className="w-2 h-2 rounded-full bg-green-500" />
                   <div>
                     <p className="text-sm font-medium text-gray-900 dark:text-white">서버 계정 연결됨</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">서버 동기화 및 관리자 기능을 사용할 수 있습니다.</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {isAdmin ? '서버 동기화 및 관리자 기능을 사용할 수 있습니다.' : '서버 동기화 기능을 사용할 수 있습니다.'}
+                    </p>
                   </div>
                 </div>
                 <button
