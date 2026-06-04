@@ -2,6 +2,9 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import { readFileSync } from 'fs'
+
+const { version: APP_VERSION } = JSON.parse(readFileSync('./package.json', 'utf-8'))
 import YahooFinanceClass from 'yahoo-finance2'
 import { handleDartList } from './server/dartHandler.js'
 import { handleEdgarFilings } from './server/edgarHandler.js'
@@ -384,6 +387,9 @@ export default defineConfig(({ mode }) => {
       },
     }),
   ],
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -1,3 +1,4 @@
+// 설정 페이지 — 앱 설정 / 알림 / 관심종목 / 연결&동기화 / API 키 / 종목 DB / 데이터 관리
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Moon, Sun, Download, Upload, AlertCircle, CheckCircle2, Trash2, Bell, BellOff } from 'lucide-react'
@@ -8,9 +9,7 @@ import { requestPermission } from '../utils/calendarNotifier'
 import StorageInfo from '../components/common/StorageInfo'
 import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
-import AiKeyPanel from '../components/settings/AiKeyPanel'
-import DartKeyPanel from '../components/settings/DartKeyPanel'
-import FinnhubKeyPanel from '../components/settings/FinnhubKeyPanel'
+import ApiKeyPanel from '../components/settings/ApiKeyPanel'
 import UserRoleManager from '../components/admin/UserRoleManager'
 import { SupabaseLoginModal } from '../components/auth/SupabaseLoginModal'
 import SyncSettings from '../components/settings/SyncSettings'
@@ -23,6 +22,9 @@ import { useCashFlowStore } from '../store/cashFlowStore'
 import { useDailyPnlStore } from '../store/dailyPnlStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 
+/* global __APP_VERSION__ */
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.0'
+
 export default function Settings() {
   const {
     theme, toggleTheme,
@@ -32,6 +34,26 @@ export default function Settings() {
   } = useSettingsStore()
   const { isAdmin, isSupabaseUser } = useAuthStore()
 
+  // ── 관심종목 기본값 draft ──────────────────────────────────────────────
+  const [wlDraft, setWlDraft] = useState({
+    targetPct:       watchlistDefaults.targetPct,
+    stopLossPct:     watchlistDefaults.stopLossPct,
+    trailingDropPct: watchlistDefaults.trailingDropPct,
+  })
+  const isWlDirty =
+    wlDraft.targetPct       !== watchlistDefaults.targetPct       ||
+    wlDraft.stopLossPct     !== watchlistDefaults.stopLossPct     ||
+    wlDraft.trailingDropPct !== watchlistDefaults.trailingDropPct
+
+  // ── 데이터 스토어 ──────────────────────────────────────────────────────
+  const deleteAllEntries     = useJournalStore((s) => s.deleteAllEntries)
+  const entryCount           = useJournalStore((s) => s.entries.length)
+  const recomputeFromJournal = usePortfolioStore((s) => s.recomputeFromJournal)
+  const deleteAllCashFlows   = useCashFlowStore((s) => s.deleteAllCashFlows)
+  const deleteAllPnl         = useDailyPnlStore((s) => s.deleteAllSnapshots)
+  const clearWatchlist       = useWatchlistStore((s) => s.clearWatchlist)
+
+  // ── 서버 계정 ─────────────────────────────────────────────────────────
   const handleSupabaseSignOut = async () => {
     await authService.signOut().catch(() => {})
     useAuthStore.getState().setSupabaseSession(null)
@@ -39,6 +61,7 @@ export default function Settings() {
     toast.success('서버 계정 연결이 해제되었습니다.')
   }
 
+  // ── 알림 권한 ─────────────────────────────────────────────────────────
   const notifPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
 
   const handleRequestPermission = async () => {
@@ -53,35 +76,11 @@ export default function Settings() {
     }
   }
 
-  const [wlDraft, setWlDraft] = useState({
-    targetPct: watchlistDefaults.targetPct,
-    stopLossPct: watchlistDefaults.stopLossPct,
-    trailingDropPct: watchlistDefaults.trailingDropPct,
-  })
-  const isWlDirty =
-    wlDraft.targetPct       !== watchlistDefaults.targetPct       ||
-    wlDraft.stopLossPct     !== watchlistDefaults.stopLossPct     ||
-    wlDraft.trailingDropPct !== watchlistDefaults.trailingDropPct
-  const deleteAllEntries = useJournalStore((s) => s.deleteAllEntries)
-  const entryCount = useJournalStore((s) => s.entries.length)
-  const recomputeFromJournal = usePortfolioStore((s) => s.recomputeFromJournal)
-  const deleteAllCashFlows = useCashFlowStore((s) => s.deleteAllCashFlows)
-  const deleteAllPnl = useDailyPnlStore((s) => s.deleteAllSnapshots)
-  const clearWatchlist = useWatchlistStore((s) => s.clearWatchlist)
-
-  const fileInputRef = useRef(null)
-
-  const [supabaseModalOpen, setSupabaseModalOpen] = useState(false)
-  const [migrateModalOpen, setMigrateModalOpen] = useState(false)
-  const [importing, setImporting]               = useState(false)
-  const [importProgress, setImportProgress]     = useState(null)
-  const [confirmOpen, setConfirmOpen]           = useState(false)
-  const [pendingFile, setPendingFile]           = useState(null)
+  // ── 전체 초기화 ───────────────────────────────────────────────────────
   const [clearConfirmOpen, setClearConfirmOpen]   = useState(false)
   const [clearing, setClearing]                   = useState(false)
   const [storageRefreshKey, setStorageRefreshKey] = useState(0)
 
-  // ─── 전체 초기화 (거래내역 + 자금흐름 + 일별손익 + 관심종목) ───
   async function handleClearAll() {
     setClearing(true)
     try {
@@ -100,7 +99,7 @@ export default function Settings() {
     }
   }
 
-  // ─── 내보내기 ───
+  // ── 백업 내보내기 ─────────────────────────────────────────────────────
   const handleExport = async () => {
     try {
       await exportAllData()
@@ -111,26 +110,27 @@ export default function Settings() {
     }
   }
 
-  // ─── 가져오기: 파일 선택 ───
+  // ── 백업 가져오기 ─────────────────────────────────────────────────────
+  const fileInputRef  = useRef(null)
+  const [importing, setImporting]           = useState(false)
+  const [importProgress, setImportProgress] = useState(null)
+  const [confirmOpen, setConfirmOpen]       = useState(false)
+  const [pendingFile, setPendingFile]       = useState(null)
+
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!file.name.endsWith('.json')) {
-      toast.error('.json 파일만 가져올 수 있습니다.')
-      return
-    }
+    if (!file.name.endsWith('.json')) { toast.error('.json 파일만 가져올 수 있습니다.'); return }
     setPendingFile(file)
     setConfirmOpen(true)
     e.target.value = ''
   }
 
-  // ─── 가져오기: 확인 후 실행 ───
   const handleImportConfirm = async () => {
     if (!pendingFile) return
     setConfirmOpen(false)
     setImporting(true)
     setImportProgress({ step: 0, total: 5, label: '준비 중...' })
-
     try {
       const result = await importData(pendingFile, {
         onProgress: (step, total, label) => setImportProgress({ step, total, label }),
@@ -146,11 +146,15 @@ export default function Settings() {
     }
   }
 
+  // ── 모달 ─────────────────────────────────────────────────────────────
+  const [supabaseModalOpen, setSupabaseModalOpen] = useState(false)
+  const [migrateModalOpen, setMigrateModalOpen]   = useState(false)
+
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-8">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">설정</h1>
 
-      {/* ─── 앱 설정 ─── */}
+      {/* ══════════════ 1. 앱 설정 ══════════════ */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">앱 설정</h2>
 
@@ -158,9 +162,7 @@ export default function Settings() {
         <div className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
           <div>
             <p className="font-medium text-gray-900 dark:text-white">테마</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              현재: {theme === 'dark' ? '다크 모드' : '라이트 모드'}
-            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">현재: {theme === 'dark' ? '다크 모드' : '라이트 모드'}</p>
           </div>
           <button
             onClick={toggleTheme}
@@ -186,20 +188,74 @@ export default function Settings() {
             <option value="SP500">S&P 500</option>
           </select>
         </div>
+
+        {/* 관심종목 기본값 */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-gray-900 dark:text-white">관심종목 기본값</p>
+            {isWlDirty && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">미저장</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            관심종목 추가 시 현재가를 기준으로 자동 계산되는 기본값입니다.
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { key: 'targetPct',       label: '목표가 (%)',    hint: '현재가 +', max: 100 },
+              { key: 'stopLossPct',     label: '손절가 (%)',    hint: '현재가 -', max: 100 },
+              { key: 'trailingDropPct', label: '낙폭 알림 (%)', hint: '고점 대비 -', max: 50 },
+            ].map(({ key, label, hint, max }) => (
+              <div key={key} className="space-y-1">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number" min={1} max={max}
+                    value={wlDraft[key]}
+                    onChange={(e) => setWlDraft(d => ({ ...d, [key]: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+                <p className="text-xs text-gray-400">{hint}{wlDraft[key]}%</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            {isWlDirty && (
+              <span className="text-xs text-amber-600 dark:text-amber-400">저장하지 않으면 변경사항이 사라집니다.</span>
+            )}
+            <button
+              onClick={() => {
+                const t = Math.max(1, Math.min(100, wlDraft.targetPct || 20))
+                const s = Math.max(1, Math.min(100, wlDraft.stopLossPct || 10))
+                const d = Math.max(1, Math.min(50,  wlDraft.trailingDropPct || 10))
+                setWatchlistDefaults({ targetPct: t, stopLossPct: s, trailingDropPct: d })
+                setWlDraft({ targetPct: t, stopLossPct: s, trailingDropPct: d })
+                toast.success('관심종목 기본값이 저장되었습니다.')
+              }}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                isWlDirty
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-300 dark:ring-amber-700'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              저장
+            </button>
+          </div>
+        </div>
       </section>
 
-      {/* ─── 증시 일정 알림 ─── */}
+      {/* ══════════════ 2. 증시 일정 알림 ══════════════ */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">증시 일정 알림</h2>
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
 
-          {/* 알림 켜기/끄기 */}
+          {/* 브라우저 알림 켜기/끄기 */}
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-gray-900 dark:text-white">브라우저 알림</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                캘린더 페이지 진입 시 당일 이벤트를 알림으로 안내합니다.
-              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">캘린더 페이지 진입 시 당일 이벤트를 알림으로 안내합니다.</p>
             </div>
             {notifPermission !== 'granted' ? (
               <button
@@ -226,160 +282,101 @@ export default function Settings() {
             )}
           </div>
 
-          {/* 알림 시점 */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">알림 시점</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500">이벤트 대비 언제 알림을 받을지 선택합니다.</p>
-            </div>
-            <select
-              value={calendarNotification.timing}
-              onChange={(e) => setCalendarNotification({ timing: e.target.value })}
-              disabled={!calendarNotification.enabled}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
-            >
-              <option value="on_day">당일 (오전 9시)</option>
-              <option value="day_before">하루 전 (오전 9시)</option>
-              <option value="week_before">일주일 전 (오전 9시)</option>
-            </select>
-          </div>
-
-          {/* 임팩트 필터 */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">중요도 필터</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500">선택한 중요도 이상의 이벤트만 알림 전송합니다.</p>
-            </div>
-            <select
-              value={calendarNotification.impactFilter}
-              onChange={(e) => setCalendarNotification({ impactFilter: e.target.value })}
-              disabled={!calendarNotification.enabled}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
-            >
-              <option value="all">전체</option>
-              <option value="high">높음만</option>
-              <option value="medium">중간 이상</option>
-              <option value="low">낮음 이상</option>
-            </select>
-          </div>
-
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            ※ 알림은 증시 일정 페이지를 열었을 때 스케줄링됩니다. 브라우저가 닫혀 있으면 발송되지 않습니다.
-          </p>
-        </div>
-      </section>
-
-      {/* ─── 관심종목 기본값 ─── */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">관심종목 기본값</h2>
-          {isWlDirty && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-              미저장
-            </span>
-          )}
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            관심종목 추가 시 현재가를 기준으로 자동 계산되는 기본값입니다. 개별 종목에서 재정의할 수 있습니다.
-          </p>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">목표가 (%)</label>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={wlDraft.targetPct}
-                  onChange={(e) => setWlDraft(d => ({ ...d, targetPct: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-500">%</span>
-              </div>
-              <p className="text-xs text-gray-400">현재가 +{wlDraft.targetPct}%</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">손절가 (%)</label>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={wlDraft.stopLossPct}
-                  onChange={(e) => setWlDraft(d => ({ ...d, stopLossPct: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-500">%</span>
-              </div>
-              <p className="text-xs text-gray-400">현재가 -{wlDraft.stopLossPct}%</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">낙폭 알림 (%)</label>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={wlDraft.trailingDropPct}
-                  onChange={(e) => setWlDraft(d => ({ ...d, trailingDropPct: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-500">%</span>
-              </div>
-              <p className="text-xs text-gray-400">고점 대비 -{wlDraft.trailingDropPct}%</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-3">
-            {isWlDirty && (
-              <span className="text-xs text-amber-600 dark:text-amber-400">저장하지 않으면 변경사항이 사라집니다.</span>
-            )}
-            <button
-              onClick={() => {
-                const t = Math.max(1, Math.min(100, wlDraft.targetPct || 20))
-                const s = Math.max(1, Math.min(100, wlDraft.stopLossPct || 10))
-                const d = Math.max(1, Math.min(50, wlDraft.trailingDropPct || 10))
-                setWatchlistDefaults({ targetPct: t, stopLossPct: s, trailingDropPct: d })
-                setWlDraft({ targetPct: t, stopLossPct: s, trailingDropPct: d })
-                toast.success('관심종목 기본값이 저장되었습니다.')
-              }}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                isWlDirty
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-300 dark:ring-amber-700'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-            >
-              저장
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── 서버 계정 연결 (Supabase) ─── */}
-      <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">서버 계정</h2>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
-          {isSupabaseUser ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
+          {/* 알림 세부 설정 — 활성화 시만 표시 */}
+          {calendarNotification.enabled && (
+            <>
+              <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">연결됨</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">서버 동기화 및 관리자 기능을 사용할 수 있습니다.</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">알림 시점</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">이벤트 대비 언제 알림을 받을지 선택합니다.</p>
                 </div>
+                <select
+                  value={calendarNotification.timing}
+                  onChange={(e) => setCalendarNotification({ timing: e.target.value })}
+                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="on_day">당일 (오전 9시)</option>
+                  <option value="day_before">하루 전 (오전 9시)</option>
+                  <option value="week_before">일주일 전 (오전 9시)</option>
+                </select>
               </div>
-              <button
-                onClick={handleSupabaseSignOut}
-                className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-              >
-                연결 해제
-              </button>
-            </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">중요도 필터</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">선택한 중요도 이상의 이벤트만 알림 전송합니다.</p>
+                </div>
+                <select
+                  value={calendarNotification.impactFilter}
+                  onChange={(e) => setCalendarNotification({ impactFilter: e.target.value })}
+                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">전체</option>
+                  <option value="high">높음만</option>
+                  <option value="medium">중간 이상</option>
+                  <option value="low">낮음 이상</option>
+                </select>
+              </div>
+            </>
+          )}
+
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-xs">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>브라우저가 닫혀 있으면 알림이 발송되지 않습니다. 증시 일정 페이지를 열었을 때 스케줄링됩니다.</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════ 3. 연결 & 동기화 (B) ══════════════ */}
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">연결 & 동기화</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
+          {isSupabaseUser ? (
+            <>
+              {/* 연결됨 상태 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">서버 계정 연결됨</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">서버 동기화 및 관리자 기능을 사용할 수 있습니다.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleSupabaseSignOut}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                >
+                  연결 해제
+                </button>
+              </div>
+
+              {/* 동기화 설정 */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                <SyncSettings />
+              </div>
+
+              {/* 로컬 데이터 이전 */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">로컬 데이터 서버 이전</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">기기의 기존 데이터를 서버로 한 번에 업로드합니다.</p>
+                </div>
+                <button
+                  onClick={() => setMigrateModalOpen(true)}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                >
+                  이전 시작
+                </button>
+              </div>
+            </>
           ) : (
+            /* 미로그인 상태 */
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium text-gray-900 dark:text-white">서버 계정 연결</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">종목 DB 서버 동기화 및 관리자 기능을 사용하려면 연결하세요.</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  종목 DB 서버 동기화 및 관리자 기능을 사용하려면 연결하세요.
+                </p>
               </div>
               <button
                 onClick={() => setSupabaseModalOpen(true)}
@@ -392,45 +389,19 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* ─── 동기화 ─── */}
+      {/* ══════════════ 4. AI 및 API 키 (A) ══════════════ */}
       <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">동기화</h2>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
-          <SyncSettings />
-          {isSupabaseUser && (
-            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">로컬 데이터 서버 이전</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">기기의 기존 데이터를 서버로 한 번에 업로드합니다.</p>
-                </div>
-                <button
-                  onClick={() => setMigrateModalOpen(true)}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                >
-                  이전 시작
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 및 API 키</h2>
+        <ApiKeyPanel />
       </section>
 
-      {/* ─── AI 설정 ─── */}
-      <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 설정</h2>
-        <AiKeyPanel />
-        <DartKeyPanel />
-        <FinnhubKeyPanel />
-      </section>
-
-      {/* ─── 종목 DB 관리 ─── */}
+      {/* ══════════════ 5. 종목 DB 관리 (D) ══════════════ */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">종목 DB 관리</h2>
         <StockMasterPanel />
       </section>
 
-      {/* ─── 관리자 ─── */}
+      {/* ══════════════ 6. 관리자 ══════════════ */}
       {isAdmin && isSupabaseUser && (
         <section className="space-y-4">
           <h2 className="text-base font-semibold text-orange-600 dark:text-orange-400">관리자</h2>
@@ -438,11 +409,11 @@ export default function Settings() {
         </section>
       )}
 
-      {/* ─── 데이터 관리 ─── */}
+      {/* ══════════════ 7. 데이터 관리 (C) ══════════════ */}
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">데이터 관리</h2>
 
-        {/* 내보내기 / 가져오기 */}
+        {/* 백업 & 복원 */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-4">
           <div>
             <p className="font-medium text-gray-900 dark:text-white">백업 & 복원</p>
@@ -450,7 +421,6 @@ export default function Settings() {
               모든 거래 내역, 관심종목, 설정을 JSON 파일로 저장하거나 복원합니다.
             </p>
           </div>
-
           <div className="flex gap-3">
             <button
               onClick={handleExport}
@@ -459,7 +429,6 @@ export default function Settings() {
               <Download className="w-4 h-4" />
               내보내기 (JSON)
             </button>
-
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
@@ -468,13 +437,7 @@ export default function Settings() {
               <Upload className="w-4 h-4" />
               가져오기 (JSON)
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
+            <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileSelect} />
           </div>
 
           {importing && importProgress && (
@@ -498,7 +461,7 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* 거래내역 가져오기 */}
+        {/* HTS 거래내역 가져오기 */}
         <div className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
           <div>
             <p className="font-medium text-gray-900 dark:text-white">거래내역 가져오기</p>
@@ -515,11 +478,6 @@ export default function Settings() {
 
         {/* 저장소 현황 */}
         <StorageInfo refreshKey={storageRefreshKey} />
-      </section>
-
-      {/* ─── 데이터 정리 ─── */}
-      <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">데이터 정리</h2>
 
         {/* 전체 초기화 */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-800 px-5 py-4 space-y-3">
@@ -541,30 +499,32 @@ export default function Settings() {
             {clearing ? '초기화 중…' : '전체 초기화'}
           </button>
         </div>
-      </section>
 
-      {/* ─── 앱 정보 ─── */}
-      <section className="space-y-2">
-        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">앱 정보</h2>
+        {/* 앱 정보 (E: 버전 package.json에서) */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-1.5 text-sm text-gray-600 dark:text-gray-400">
-          <div className="flex justify-between"><span>앱 이름</span><span className="text-gray-900 dark:text-white font-medium">My Portfolio Hub</span></div>
-          <div className="flex justify-between"><span>버전</span><span className="text-gray-900 dark:text-white font-medium">1.1.0 (Phase 11)</span></div>
-          <div className="flex justify-between"><span>저장 방식</span><span className="text-gray-900 dark:text-white font-medium">IndexedDB + Supabase 동기화</span></div>
+          <div className="flex justify-between">
+            <span>앱 이름</span>
+            <span className="text-gray-900 dark:text-white font-medium">My Portfolio Hub</span>
+          </div>
+          <div className="flex justify-between">
+            <span>버전</span>
+            <span className="text-gray-900 dark:text-white font-medium">{APP_VERSION}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>저장 방식</span>
+            <span className="text-gray-900 dark:text-white font-medium">IndexedDB + Supabase 동기화</span>
+          </div>
         </div>
       </section>
 
-      {/* ─── Supabase 로그인 모달 ─── */}
+      {/* ══════════════ 모달들 ══════════════ */}
       {supabaseModalOpen && (
         <SupabaseLoginModal onClose={() => setSupabaseModalOpen(false)} />
       )}
-
-      {/* ─── 로컬 데이터 이전 모달 ─── */}
       <MigrateDataModal open={migrateModalOpen} onClose={() => setMigrateModalOpen(false)} />
-
-      {/* ─── 동기화 충돌 모달 ─── */}
       <ConflictModal />
 
-      {/* ─── 백업 복원 확인 다이얼로그 ─── */}
+      {/* 백업 복원 확인 */}
       {confirmOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
@@ -599,7 +559,7 @@ export default function Settings() {
         </div>
       )}
 
-      {/* ─── 거래 일괄 삭제 확인 다이얼로그 ─── */}
+      {/* 전체 초기화 확인 */}
       {clearConfirmOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
