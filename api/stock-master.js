@@ -70,7 +70,7 @@ async function checkIsAdmin(userId) {
     .from('user_roles')
     .select('role')
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
   return data?.role === 'admin'
 }
 
@@ -93,7 +93,7 @@ async function handleMeta(req, res) {
     .select('uploaded_at')
     .order('uploaded_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   res.status(200).json({
     total:      totalResult.count ?? 0,

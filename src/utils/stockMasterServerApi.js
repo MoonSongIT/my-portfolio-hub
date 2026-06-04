@@ -39,16 +39,16 @@ export async function checkIsAdmin() {
     return false
   }
 
+  // maybeSingle(): 행 없으면 null 반환 (single()은 행 없을 때 406 에러 발생)
   const { data, error } = await supabase
     .from('user_roles')
     .select('role')
     .eq('user_id', session.user.id)
-    .single()
+    .maybeSingle()
 
   if (error) {
     console.warn('[checkIsAdmin] 쿼리 오류:', error.code, error.message)
   }
-  console.log('[checkIsAdmin] userId:', session.user.id, '| data:', data)
 
   return data?.role === 'admin'
 }

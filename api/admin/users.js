@@ -11,7 +11,7 @@ async function isAdmin(userId) {
     .from('user_roles')
     .select('role')
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
   return data?.role === 'admin'
 }
 
