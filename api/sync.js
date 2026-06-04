@@ -1,6 +1,9 @@
-// POST /api/sync/upload — 로컬 레코드를 서버에 upsert (data 래핑 없음)
+// api/sync.js — 동기화 통합 API (download / upload)
+// vercel.json rewrites:
+//   /api/sync/download → /api/sync?action=download
+//   /api/sync/upload   → /api/sync?action=upload
 import { createClient } from '@supabase/supabase-js'
-import { setCors, handlePreflight } from '../_cors.js'
+import { setCors, handlePreflight } from './_cors.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -17,26 +20,25 @@ const TABLE_MAP = {
   reports:        'reports',
 }
 
-// camelCase → snake_case
+// camelCase ↔ snake_case 변환
+const toCamel = key => key.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
 const toSnake = key => key.replace(/([A-Z])/g, '_$1').toLowerCase()
-const recordToServer = record =>
-  Object.fromEntries(Object.entries(record).map(([k, v]) => [toSnake(k), v]))
+const recordToLocal  = record => Object.fromEntries(Object.entries(record).map(([k, v]) => [toCamel(k), v]))
+const recordToServer = record => Object.fromEntries(Object.entries(record).map(([k, v]) => [toSnake(k), v]))
 
-// UUID 형식 검증 — 비표준 ID(demo-account-general 등)를 null로 변환
+// UUID 형식 검증
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const toUUID = val => (val && UUID_RE.test(String(val)) ? val : null)
+const toUUID  = val => (val && UUID_RE.test(String(val)) ? val : null)
 
-// UUID 타입인 FK 컬럼 목록 (테이블별)
 const UUID_FIELDS = {
-  transactions:   ['account_id', 'linked_cash_flow_id'],
-  cash_flows:     ['account_id', 'linked_journal_id'],
-  user_accounts:  [],
-  watchlist:      [],
-  calendar_events:[],
-  reports:        [],
+  transactions:    ['account_id', 'linked_cash_flow_id'],
+  cash_flows:      ['account_id', 'linked_journal_id'],
+  user_accounts:   [],
+  watchlist:       [],
+  calendar_events: [],
+  reports:         [],
 }
 
-// 테이블별 허용 컬럼 — Supabase 스키마와 정확히 일치시켜 unknown column 오류 방지
 const ALLOWED_COLUMNS = {
   user_accounts: [
     'id','user_id','user_email','name','broker','type','currency',
@@ -70,18 +72,41 @@ const ALLOWED_COLUMNS = {
   ],
 }
 
-// 허용된 컬럼만 남기고 나머지 제거
 const filterColumns = (record, pgTable) => {
   const allowed = ALLOWED_COLUMNS[pgTable]
   if (!allowed) return record
   return Object.fromEntries(Object.entries(record).filter(([k]) => allowed.includes(k)))
 }
 
-export default async function handler(req, res) {
-  if (handlePreflight(req, res)) return
-  setCors(req, res)
-  if (req.method !== 'POST') return res.status(405).end()
+// ── download 핸들러 ───────────────────────────────────────────────────────
+async function handleDownload(req, res) {
+  const token = req.headers.authorization?.replace('Bearer ', '')
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
 
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+  if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
+
+  const { table, since } = req.query
+  const pgTable = TABLE_MAP[table]
+  if (!pgTable) return res.status(400).json({ error: `Unknown table: ${table}` })
+
+  let query = supabase
+    .from(pgTable)
+    .select('*')
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+
+  if (since) query = query.gt('synced_at', since)
+
+  const { data, error } = await query
+  if (error) return res.status(500).json({ error: error.message })
+
+  const records = (data ?? []).map(recordToLocal)
+  res.status(200).json({ records, count: records.length })
+}
+
+// ── upload 핸들러 ─────────────────────────────────────────────────────────
+async function handleUpload(req, res) {
   const token = req.headers.authorization?.replace('Bearer ', '')
   if (!token) return res.status(401).json({ error: 'Unauthorized' })
 
@@ -96,11 +121,10 @@ export default async function handler(req, res) {
   }
 
   const uploaded = []
-  const failed = []
+  const failed   = []
 
   for (const record of records) {
     try {
-      // camelCase → snake_case 변환 + user_id/user_email 강제 덮어쓰기
       const converted = {
         ...recordToServer(record),
         user_id:      user.id,
@@ -109,19 +133,12 @@ export default async function handler(req, res) {
         synced_at:    new Date().toISOString(),
       }
 
-      // 비표준 UUID 필드 → null 변환 (demo-account-general 등 방어)
       for (const field of (UUID_FIELDS[pgTable] ?? [])) {
-        if (converted[field] !== undefined) {
-          converted[field] = toUUID(converted[field])
-        }
+        if (converted[field] !== undefined) converted[field] = toUUID(converted[field])
       }
 
-      // Supabase 스키마에 없는 컬럼 제거 (unknown column 오류 방지)
       const serverRecord = filterColumns(converted, pgTable)
-
-      const { error } = await supabase
-        .from(pgTable)
-        .upsert(serverRecord, { onConflict: 'id' })
+      const { error } = await supabase.from(pgTable).upsert(serverRecord, { onConflict: 'id' })
 
       if (error) {
         failed.push({ id: record.id, error: error.message })
@@ -134,4 +151,16 @@ export default async function handler(req, res) {
   }
 
   res.status(200).json({ uploaded, failed })
+}
+
+// ── 메인 라우터 ───────────────────────────────────────────────────────────
+export default async function handler(req, res) {
+  if (handlePreflight(req, res)) return
+  setCors(req, res)
+
+  const { action } = req.query
+  if (action === 'download') return handleDownload(req, res)
+  if (action === 'upload')   return handleUpload(req, res)
+
+  return res.status(400).json({ error: 'action 파라미터가 필요합니다 (download|upload)' })
 }
