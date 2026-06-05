@@ -1,8 +1,9 @@
 // 목표가·손절가·매입가 달성률 프로그레스 바 (알림과 독립)
-import { useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { useWatchlistStore } from '../../store/watchlistStore'
 import { useSettingsStore } from '../../store/settingsStore'
+import { useJournalStore } from '../../store/journalStore'
 import { formatCurrency } from '../../utils/formatters'
 
 // 천단위 콤마 포맷 (소수점 보존, 빈값·부호 그대로)
@@ -44,16 +45,32 @@ function priceFromPct(pct, entry, currency) {
 export default function TargetPriceBar({ stock }) {
   const { updateWatchlistTargets, updateTrailingDropPct } = useWatchlistStore()
   const { watchlistDefaults } = useSettingsStore()
+  const computeAllHoldings = useJournalStore(s => s.computeAllHoldings)
   const [open, setOpen] = useState(false)
 
+  // 포트폴리오 보유 종목에서 평균매입가 조회
+  const portfolioAvgPrice = useMemo(() => {
+    const holdings = computeAllHoldings()
+    const found = holdings.find(h => h.ticker === stock.ticker)
+    return found?.avgPrice > 0 ? found.avgPrice : null
+  }, [computeAllHoldings, stock.ticker])
+
   // draft: 콤마 없는 숫자 문자열로 보관
-  const [draft, setDraft] = useState({
-    entryPrice:      stock.entryPrice       != null ? String(stock.entryPrice)       : '',
-    targetPrice:     stock.targetPrice      != null ? String(stock.targetPrice)      : '',
-    targetPct:       '',
-    stopLoss:        stock.stopLoss         != null ? String(stock.stopLoss)         : '',
-    stopLossPct:     '',
-    trailingDropPct: stock.trailingDropPct  != null ? String(stock.trailingDropPct)  : String(watchlistDefaults.trailingDropPct),
+  // entryPrice + targetPrice/stopLoss 둘 다 있으면 % 역산하여 초기값 설정
+  const [draft, setDraft] = useState(() => {
+    const entry = stock.entryPrice  ?? null
+    const tgt   = stock.targetPrice ?? null
+    const sl    = stock.stopLoss    ?? null
+    return {
+      entryPrice:      entry != null ? String(entry) : '',
+      targetPrice:     tgt   != null ? String(tgt)   : '',
+      targetPct:       entry && tgt ? pctFromPrices(tgt, entry) : '',
+      stopLoss:        sl    != null ? String(sl)    : '',
+      stopLossPct:     entry && sl  ? pctFromPrices(sl, entry)  : '',
+      trailingDropPct: stock.trailingDropPct != null
+        ? String(stock.trailingDropPct)
+        : String(watchlistDefaults.trailingDropPct),
+    }
   })
 
   const currency     = stock.currency || 'KRW'
@@ -158,8 +175,8 @@ export default function TargetPriceBar({ stock }) {
     return Math.round(pct)
   })()
 
-  const aboveTarget  = stock.targetPrice && currentPrice >= stock.targetPrice
-  const belowStopLoss = stock.stopLoss   && currentPrice <= stock.stopLoss
+  const aboveTarget   = stock.targetPrice && currentPrice >= stock.targetPrice
+  const belowStopLoss = stock.stopLoss    && currentPrice <= stock.stopLoss
 
   // 공용 클래스
   const priceInputCls =
@@ -222,7 +239,7 @@ export default function TargetPriceBar({ stock }) {
       {open && (
         <div className="mt-2 space-y-1.5">
 
-          {/* 매입가 */}
+          {/* 매입가 + 포트폴리오 평균매입가 가져오기 버튼 */}
           <div className="flex items-center gap-2">
             <label className="text-[11px] text-gray-500 w-12 shrink-0">매입가</label>
             <input
@@ -233,6 +250,16 @@ export default function TargetPriceBar({ stock }) {
               placeholder={currency === 'KRW' ? '75,000' : '195.50'}
               className={priceInputCls}
             />
+            {portfolioAvgPrice != null && (
+              <button
+                type="button"
+                onClick={() => handleEntryChange(String(portfolioAvgPrice))}
+                title={`포트폴리오 평균매입가 ${formatCurrency(portfolioAvgPrice, currency)} 가져오기`}
+                className="shrink-0 p-1 rounded text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* 목표가 + % */}
@@ -252,7 +279,7 @@ export default function TargetPriceBar({ stock }) {
                 inputMode="decimal"
                 value={draft.targetPct}
                 onChange={e => handlePctChange('targetPrice', 'targetPct', e.target.value)}
-                placeholder="+20"
+                placeholder={`+${watchlistDefaults.targetPct}`}
                 className={pctInputCls}
               />
               <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">%</span>
@@ -276,7 +303,7 @@ export default function TargetPriceBar({ stock }) {
                 inputMode="decimal"
                 value={draft.stopLossPct}
                 onChange={e => handlePctChange('stopLoss', 'stopLossPct', e.target.value)}
-                placeholder="-10"
+                placeholder={`-${watchlistDefaults.stopLossPct}`}
                 className={pctInputCls}
               />
               <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">%</span>
@@ -303,7 +330,7 @@ export default function TargetPriceBar({ stock }) {
           {(() => {
             const hwm = stock.highWaterMark
             if (!hwm || !currentPrice || currentPrice >= hwm) return null
-            const dropPct  = ((currentPrice - hwm) / hwm) * 100
+            const dropPct   = ((currentPrice - hwm) / hwm) * 100
             const threshold = fromComma(draft.trailingDropPct) || watchlistDefaults.trailingDropPct
             const progress  = Math.min(Math.abs(dropPct) / threshold * 100, 100)
             const exceeded  = Math.abs(dropPct) >= threshold
