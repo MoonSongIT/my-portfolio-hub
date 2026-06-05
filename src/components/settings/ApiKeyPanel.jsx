@@ -1,9 +1,10 @@
 // Anthropic / DART / Finnhub API 키를 한 패널에서 통합 관리
 import { useState } from 'react'
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, AlertCircle, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
+import { Eye, EyeOff, CheckCircle2, Loader2, AlertCircle, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import useAiCredentialStore from '../../store/aiCredentialStore.js'
 import { maskKey } from '../../utils/apiKeyValidator.js'
+import ConfirmModal from '../common/ConfirmModal'
 
 const SERVICES = [
   {
@@ -240,38 +241,16 @@ export default function ApiKeyPanel() {
       </div>
 
       {/* ─── 삭제 확인 모달 ─── */}
-      {deleteSvc && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
-                <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">{deleteSvc.name} API 키 삭제</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">이 키를 사용하는 기능이 비활성화됩니다.</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              저장된 {deleteSvc.name} API 키를 삭제하시겠습니까?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => handleDelete(deleteSvc)}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition"
-              >
-                삭제
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={!!deleteSvc}
+        title={deleteSvc ? `${deleteSvc.name} API 키 삭제` : ''}
+        subText="이 키를 사용하는 기능이 비활성화됩니다."
+        description={deleteSvc ? `저장된 ${deleteSvc.name} API 키를 삭제하시겠습니까?` : ''}
+        confirmLabel="삭제"
+        variant="danger"
+        onConfirm={() => deleteSvc && handleDelete(deleteSvc)}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }
