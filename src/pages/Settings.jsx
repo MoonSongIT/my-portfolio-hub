@@ -1,12 +1,13 @@
 // 설정 페이지 — 앱 설정 / 알림 / 관심종목 / 연결&동기화 / API 키 / 종목 DB / 데이터 관리
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Moon, Sun, Download, Upload, AlertCircle, CheckCircle2, Trash2, Bell, BellOff } from 'lucide-react'
+import { Moon, Sun, Download, Upload, AlertCircle, Trash2, Bell, BellOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettingsStore } from '../store/settingsStore'
 import { useAuthStore } from '../store/authStore'
 import { requestPermission } from '../utils/calendarNotifier'
 import StorageInfo from '../components/common/StorageInfo'
+import ConfirmModal from '../components/common/ConfirmModal'
 import { exportAllData, importData } from '../utils/dataExport'
 import StockMasterPanel from '../components/settings/StockMasterPanel'
 import ApiKeyPanel from '../components/settings/ApiKeyPanel'
@@ -34,16 +35,21 @@ export default function Settings() {
   } = useSettingsStore()
   const { isAdmin, isSupabaseUser } = useAuthStore()
 
-  // ── 관심종목 기본값 draft ──────────────────────────────────────────────
-  const [wlDraft, setWlDraft] = useState({
+  // ── 관심종목 기본값 로컬 입력 상태 (onBlur 시 즉시 저장) ───────────────
+  const [wlLocal, setWlLocal] = useState({
     targetPct:       watchlistDefaults.targetPct,
     stopLossPct:     watchlistDefaults.stopLossPct,
     trailingDropPct: watchlistDefaults.trailingDropPct,
   })
-  const isWlDirty =
-    wlDraft.targetPct       !== watchlistDefaults.targetPct       ||
-    wlDraft.stopLossPct     !== watchlistDefaults.stopLossPct     ||
-    wlDraft.trailingDropPct !== watchlistDefaults.trailingDropPct
+
+  const handleWlBlur = (key, max) => {
+    const clamped = Math.max(1, Math.min(max, wlLocal[key] || 1))
+    setWlLocal(d => ({ ...d, [key]: clamped }))
+    if (clamped !== watchlistDefaults[key]) {
+      setWatchlistDefaults({ ...watchlistDefaults, [key]: clamped })
+      toast.success('관심종목 기본값이 저장되었습니다.')
+    }
+  }
 
   // ── 데이터 스토어 ──────────────────────────────────────────────────────
   const deleteAllEntries     = useJournalStore((s) => s.deleteAllEntries)
@@ -191,14 +197,9 @@ export default function Settings() {
 
         {/* 관심종목 기본값 */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4">
-          <div className="flex items-center gap-2">
-            <p className="font-medium text-gray-900 dark:text-white">관심종목 기본값</p>
-            {isWlDirty && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">미저장</span>
-            )}
-          </div>
+          <p className="font-medium text-gray-900 dark:text-white">관심종목 기본값</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            관심종목 추가 시 현재가를 기준으로 자동 계산되는 기본값입니다.
+            관심종목 추가 시 현재가를 기준으로 자동 계산되는 기본값입니다. 값 변경 후 포커스를 벗어나면 자동 저장됩니다.
           </p>
           <div className="grid grid-cols-3 gap-4">
             {[
@@ -211,37 +212,16 @@ export default function Settings() {
                 <div className="flex items-center gap-1">
                   <input
                     type="number" min={1} max={max}
-                    value={wlDraft[key]}
-                    onChange={(e) => setWlDraft(d => ({ ...d, [key]: Number(e.target.value) }))}
+                    value={wlLocal[key]}
+                    onChange={(e) => setWlLocal(d => ({ ...d, [key]: Number(e.target.value) }))}
+                    onBlur={() => handleWlBlur(key, max)}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-500">%</span>
                 </div>
-                <p className="text-xs text-gray-400">{hint}{wlDraft[key]}%</p>
+                <p className="text-xs text-gray-400">{hint}{wlLocal[key]}%</p>
               </div>
             ))}
-          </div>
-          <div className="flex items-center justify-end gap-3">
-            {isWlDirty && (
-              <span className="text-xs text-amber-600 dark:text-amber-400">저장하지 않으면 변경사항이 사라집니다.</span>
-            )}
-            <button
-              onClick={() => {
-                const t = Math.max(1, Math.min(100, wlDraft.targetPct || 20))
-                const s = Math.max(1, Math.min(100, wlDraft.stopLossPct || 10))
-                const d = Math.max(1, Math.min(50,  wlDraft.trailingDropPct || 10))
-                setWatchlistDefaults({ targetPct: t, stopLossPct: s, trailingDropPct: d })
-                setWlDraft({ targetPct: t, stopLossPct: s, trailingDropPct: d })
-                toast.success('관심종목 기본값이 저장되었습니다.')
-              }}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                isWlDirty
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-300 dark:ring-amber-700'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-            >
-              저장
-            </button>
           </div>
         </div>
       </section>
@@ -527,75 +507,30 @@ export default function Settings() {
       <ConflictModal />
 
       {/* 백업 복원 확인 */}
-      {confirmOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">데이터 가져오기</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{pendingFile?.name}</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              백업 파일의 데이터를 현재 데이터 위에 덮어씁니다. 계속하시겠습니까?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setConfirmOpen(false); setPendingFile(null) }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleImportConfirm}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                가져오기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={confirmOpen}
+        title="데이터 가져오기"
+        subText={pendingFile?.name}
+        description="백업 파일의 데이터를 현재 데이터 위에 덮어씁니다. 계속하시겠습니까?"
+        confirmLabel="가져오기"
+        variant="warning"
+        onConfirm={handleImportConfirm}
+        onCancel={() => { setConfirmOpen(false); setPendingFile(null) }}
+      />
 
       {/* 전체 초기화 확인 */}
-      {clearConfirmOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
-                <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">전체 초기화</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">되돌릴 수 없습니다</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              거래 내역, 자금 흐름, 일별 손익 데이터가 모두 삭제됩니다. 삭제 전 내보내기로 백업하는 것을 권장합니다.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setClearConfirmOpen(false)}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleClearAll}
-                disabled={clearing}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40 transition"
-              >
-                <Trash2 className="w-4 h-4" />
-                {clearing ? '삭제 중…' : '전체 삭제'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={clearConfirmOpen}
+        title="전체 초기화"
+        subText="되돌릴 수 없습니다"
+        description="거래 내역, 자금 흐름, 일별 손익 데이터가 모두 삭제됩니다. 삭제 전 내보내기로 백업하는 것을 권장합니다."
+        confirmLabel="전체 삭제"
+        variant="danger"
+        loading={clearing}
+        loadingLabel="삭제 중…"
+        onConfirm={handleClearAll}
+        onCancel={() => setClearConfirmOpen(false)}
+      />
     </div>
   )
 }
