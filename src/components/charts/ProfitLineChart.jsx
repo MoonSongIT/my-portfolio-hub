@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
+  ComposedChart, Area, Bar, Cell, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { formatCurrency, formatShortDate } from '../../utils/formatters'
@@ -19,14 +19,14 @@ function CustomTooltip({ active, payload }) {
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm">
       <p className="font-semibold text-gray-900 dark:text-gray-100">{d.date}</p>
       <p className={d.returnRate >= 0 ? 'text-emerald-600' : 'text-red-500'}>
-        수익률: {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
+        누적 수익률: {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
       </p>
       <p className="text-gray-500 dark:text-gray-400 text-xs">
         평가액: {formatCurrency(d.totalValue)}
       </p>
-      {d.dailyReturn !== 0 && (
-        <p className={`text-xs ${d.dailyReturn >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-          일간: {d.dailyReturn > 0 ? '+' : ''}{d.dailyReturn.toFixed(2)}%
+      {d.dailyReturn != null && (
+        <p className={`text-xs font-medium ${d.dailyReturn >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+          일간 증감: {d.dailyReturn > 0 ? '+' : ''}{d.dailyReturn.toFixed(2)}%p
         </p>
       )}
     </div>
@@ -122,10 +122,10 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
         </div>
       )}
 
-      {/* 라인차트 (2개 이상) */}
+      {/* 복합 차트 (2개 이상) */}
       {!isLoading && data.length >= 2 && (
         <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+          <ComposedChart data={data} margin={{ top: 5, right: 48, left: 10, bottom: 5 }}>
             <defs>
               <linearGradient id="profitSplitColor" x1="0" y1="0" x2="0" y2="1">
                 <stop offset={gradientOffset} stopColor="#22c55e" stopOpacity={0.25} />
@@ -144,15 +144,35 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
               stroke="#9ca3af"
             />
             <YAxis
+              yAxisId="left"
               domain={yDomain}
               tickFormatter={(v) => `${v.toFixed(1)}%`}
               tick={{ fontSize: 11 }}
               stroke="#9ca3af"
               width={55}
             />
-            <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="3 3" strokeOpacity={0.6} />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              tickFormatter={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`}
+              tick={{ fontSize: 10 }}
+              stroke="#9ca3af"
+              opacity={0.6}
+              width={44}
+            />
+            <ReferenceLine yAxisId="left" y={0} stroke="#6b7280" strokeDasharray="3 3" strokeOpacity={0.6} />
             <Tooltip content={<CustomTooltip />} />
+            <Bar yAxisId="right" dataKey="dailyReturn" maxBarSize={8} radius={[2, 2, 0, 0]}>
+              {data.map((entry, i) => (
+                <Cell
+                  key={i}
+                  fill={entry.dailyReturn >= 0 ? '#EF4444' : '#3B82F6'}
+                  fillOpacity={0.65}
+                />
+              ))}
+            </Bar>
             <Area
+              yAxisId="left"
               type="monotone"
               dataKey="returnRate"
               stroke="url(#profitStrokeColor)"
@@ -161,7 +181,7 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
               dot={false}
               activeDot={{ r: 4 }}
             />
-          </AreaChart>
+          </ComposedChart>
         </ResponsiveContainer>
       )}
     </div>
