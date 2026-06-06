@@ -57,16 +57,6 @@ function Skeleton() {
  * }} props
  */
 export default function ProfitLineChart({ data = [], period, onPeriodChange, isLoading = false }) {
-  // 수익/손실 구간 fill 분리 — gradientOffset 기법
-  const gradientOffset = useMemo(() => {
-    if (data.length === 0) return 1
-    const max = Math.max(...data.map(d => d.returnRate))
-    const min = Math.min(...data.map(d => d.returnRate))
-    if (max <= 0) return 0
-    if (min >= 0) return 1
-    return max / (max - min)
-  }, [data])
-
   const lastDate = data.length > 0 ? data[data.length - 1].date : null
 
   const yDomain = useMemo(() => {
@@ -154,15 +144,15 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={chartData} margin={{ top: 5, right: 14, left: 0, bottom: 5 }}>
             <defs>
-              {/* Area fill — 면은 거의 투명, 선만 강조 */}
+              {/* Area fill — 짙은 청색 세로 페이드 (위 진하고 아래 투명) */}
               <linearGradient id="profitSplitColor" x1="0" y1="0" x2="0" y2="1">
-                <stop offset={gradientOffset} stopColor="#15803d" stopOpacity={0.12} />
-                <stop offset={gradientOffset} stopColor="#b91c1c" stopOpacity={0.12} />
+                <stop offset="0%" stopColor="#1e3a8a" stopOpacity={0.22} />
+                <stop offset="100%" stopColor="#1e3a8a" stopOpacity={0.02} />
               </linearGradient>
-              {/* Area stroke — 고채도 진한 색 (전경 강조) */}
+              {/* Area stroke — 짙은 청색 단색 (강조 전경) */}
               <linearGradient id="profitStrokeColor" x1="0" y1="0" x2="0" y2="1">
-                <stop offset={gradientOffset} stopColor="#15803d" stopOpacity={1} />
-                <stop offset={gradientOffset} stopColor="#b91c1c" stopOpacity={1} />
+                <stop offset="0%" stopColor="#1e3a8a" stopOpacity={1} />
+                <stop offset="100%" stopColor="#1e3a8a" stopOpacity={1} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.5} />
