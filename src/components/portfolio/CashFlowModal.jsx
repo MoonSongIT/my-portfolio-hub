@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
 import { useCashFlowStore, DEPOSIT_CATEGORIES, WITHDRAWAL_CATEGORIES } from '../../store/cashFlowStore'
+// 자금 입출금 등록·수정 모달 (editTarget 전달 시 수정 모드)
 import { useUserAccounts } from '../../store/accountStore'
 import { formatNumber } from '../../utils/formatters'
 
@@ -17,9 +18,11 @@ const CATEGORY_DESC = {
 
 // defaultType: 'deposit' | 'withdrawal'
 // defaultAccountId: 특정 계좌 미리 선택
-export default function CashFlowModal({ open, onClose, defaultType = 'deposit', defaultAccountId = '' }) {
-  const { addCashFlow } = useCashFlowStore()
+// editTarget: 수정 대상 cashFlow 객체 (있으면 수정 모드)
+export default function CashFlowModal({ open, onClose, defaultType = 'deposit', defaultAccountId = '', editTarget = null }) {
+  const { addCashFlow, updateCashFlow } = useCashFlowStore()
   const accounts = useUserAccounts()
+  const isEdit = !!editTarget
 
   const [type, setType]           = useState(defaultType)
   const [accountId, setAccountId] = useState(defaultAccountId || accounts[0]?.id || '')
@@ -30,23 +33,33 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
   const [memo, setMemo]           = useState('')
   const [error, setError]         = useState('')
 
-  // 모달이 열릴 때 초기값 동기화
+  // 모달이 열릴 때 초기값 동기화 — 수정 모드면 editTarget 값으로 채움
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    setError('')
+    if (editTarget) {
+      setType(editTarget.type || 'deposit')
+      setAccountId(editTarget.accountId || accounts[0]?.id || '')
+      setCategory(editTarget.category || '')
+      setAmount(editTarget.amount != null ? String(editTarget.amount) : '')
+      setCurrency(editTarget.currency || 'KRW')
+      setDate(editTarget.date || new Date().toISOString().split('T')[0])
+      setMemo(editTarget.memo || '')
+    } else {
       setType(defaultType)
       setAccountId(defaultAccountId || accounts[0]?.id || '')
       setCategory('')
       setAmount('')
       setMemo('')
-      setError('')
       setDate(new Date().toISOString().split('T')[0])
     }
-  }, [open, defaultType, defaultAccountId])
+  }, [open, defaultType, defaultAccountId, editTarget])
 
-  // 입금 ↔ 출금 전환 시 카테고리 초기화
-  useEffect(() => {
+  // 입금 ↔ 출금 탭을 직접 누를 때만 카테고리 초기화 (handleTypeChange에서 처리)
+  const handleTypeChange = (next) => {
+    setType(next)
     setCategory('')
-  }, [type])
+  }
 
   // 계좌 통화에 맞춰 currency 자동 설정
   useEffect(() => {
@@ -71,7 +84,12 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
     if (!numAmount || numAmount <= 0) { setError('금액을 올바르게 입력해주세요.'); return }
     if (!date) { setError('날짜를 입력해주세요.'); return }
 
-    addCashFlow({ accountId, type, category: category || undefined, amount: numAmount, currency, date, memo })
+    const payload = { accountId, type, category: category || undefined, amount: numAmount, currency, date, memo }
+    if (isEdit) {
+      updateCashFlow(editTarget.id, payload)
+    } else {
+      addCashFlow(payload)
+    }
     onClose()
   }
 
@@ -82,7 +100,7 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md mx-4">
         {/* 헤더 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">자금 입출금</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{isEdit ? '입출금 수정' : '자금 입출금'}</h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
@@ -96,7 +114,7 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
           <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
             <button
               type="button"
-              onClick={() => setType('deposit')}
+              onClick={() => handleTypeChange('deposit')}
               className={`flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition ${
                 type === 'deposit'
                   ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm'
@@ -108,7 +126,7 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
             </button>
             <button
               type="button"
-              onClick={() => setType('withdrawal')}
+              onClick={() => handleTypeChange('withdrawal')}
               className={`flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition ${
                 type === 'withdrawal'
                   ? 'bg-white dark:bg-gray-700 text-orange-500 shadow-sm'
@@ -217,7 +235,7 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
                 : 'bg-orange-500 hover:bg-orange-600'
             }`}
           >
-            {type === 'deposit' ? '입금 저장' : '출금 저장'}
+            {isEdit ? '수정 저장' : (type === 'deposit' ? '입금 저장' : '출금 저장')}
           </button>
         </form>
       </div>
