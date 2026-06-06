@@ -110,11 +110,14 @@ export default function Dashboard() {
   const hasSnapshotToday    = useDailyPnlStore(s => s.hasSnapshotToday)
   const allSnapshots        = useMemo(() => Object.values(snapshots), [snapshots])
 
-  // 수익률 추이 데이터 집계
-  const portfolioHistory = useMemo(
-    () => aggregatePortfolioHistory(allSnapshots, chartPeriod, exchangeRate),
-    [allSnapshots, chartPeriod, exchangeRate]
-  )
+  // 수익률 추이 데이터 집계 (종합수익률 기준: 투자원금+손익합계=자산)
+  const portfolioHistory = useMemo(() => {
+    const acct = selectedAccountId
+    const snaps = acct === 'all' ? allSnapshots : allSnapshots.filter(s => s.accountId === acct)
+    const cfs   = acct === 'all' ? cashFlows    : cashFlows.filter(f => f.accountId === acct)
+    const ens   = acct === 'all' ? entries      : entries.filter(e => e.accountId === acct)
+    return aggregatePortfolioHistory(snaps, chartPeriod, exchangeRate, cfs, ens)
+  }, [allSnapshots, chartPeriod, exchangeRate, cashFlows, entries, selectedAccountId])
 
   // 마운트 시 스냅샷 없으면 자동 저장 + 과거 데이터 백필 (silent)
   useEffect(() => {

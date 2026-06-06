@@ -15,12 +15,12 @@ const PERIODS = [
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
-  const pnl = d.totalValue - d.investedValue   // 손익합계 = 평가액 − 투자원금
+  const pnl = d.totalValue - d.investedValue   // 손익합계 = 자산 − 투자원금
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm space-y-0.5 min-w-[180px]">
       <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{d.date}</p>
       <p className={d.returnRate >= 0 ? 'text-red-500' : 'text-blue-500'}>
-        누적 수익률: {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
+        종합수익률: {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
       </p>
       <div className="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
         <span>투자원금</span>
@@ -33,7 +33,7 @@ function CustomTooltip({ active, payload }) {
         </span>
       </div>
       <div className="flex items-center justify-between gap-3 text-xs pt-1 mt-1 border-t border-gray-100 dark:border-gray-700">
-        <span className="text-gray-700 dark:text-gray-200 font-medium">총 평가액</span>
+        <span className="text-gray-700 dark:text-gray-200 font-medium">총 자산</span>
         <span className="text-gray-900 dark:text-gray-100 font-semibold">{formatCurrency(d.totalValue)}</span>
       </div>
     </div>
