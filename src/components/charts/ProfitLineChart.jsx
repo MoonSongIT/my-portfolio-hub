@@ -3,7 +3,7 @@ import {
   ComposedChart, Area, Bar, Cell, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
-import { formatCurrency, formatShortDate } from '../../utils/formatters'
+import { formatCurrency, formatCurrencyShort, formatShortDate } from '../../utils/formatters'
 import EmptyState from '../common/EmptyState'
 
 const PERIODS = [
@@ -15,20 +15,27 @@ const PERIODS = [
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
+  const pnl = d.totalValue - d.investedValue   // 손익합계 = 평가액 − 투자원금
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm">
-      <p className="font-semibold text-gray-900 dark:text-gray-100">{d.date}</p>
-      <p className={d.returnRate >= 0 ? 'text-emerald-600' : 'text-red-500'}>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm space-y-0.5 min-w-[180px]">
+      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{d.date}</p>
+      <p className={d.returnRate >= 0 ? 'text-red-500' : 'text-blue-500'}>
         누적 수익률: {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
       </p>
-      <p className="text-gray-500 dark:text-gray-400 text-xs">
-        평가액: {formatCurrency(d.totalValue)}
-      </p>
-      {d.dailyReturn != null && (
-        <p className={`text-xs font-medium ${d.dailyReturn >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
-          일간 증감: {d.dailyReturn > 0 ? '+' : ''}{d.dailyReturn.toFixed(2)}%p
-        </p>
-      )}
+      <div className="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
+        <span>투자원금</span>
+        <span>{formatCurrency(d.investedValue)}</span>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-gray-500 dark:text-gray-400">손익합계</span>
+        <span className={pnl >= 0 ? 'text-red-500 font-medium' : 'text-blue-500 font-medium'}>
+          {pnl > 0 ? '+' : ''}{formatCurrency(pnl)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-xs pt-1 mt-1 border-t border-gray-100 dark:border-gray-700">
+        <span className="text-gray-700 dark:text-gray-200 font-medium">총 평가액</span>
+        <span className="text-gray-900 dark:text-gray-100 font-semibold">{formatCurrency(d.totalValue)}</span>
+      </div>
     </div>
   )
 }
@@ -43,7 +50,7 @@ function Skeleton() {
 
 /**
  * @param {{
- *   data: Array<{date:string, returnRate:number, totalValue:number, dailyReturn:number}>,
+ *   data: Array<{date:string, returnRate:number, totalValue:number, investedValue:number, dailyReturn:number}>,
  *   period: number,
  *   onPeriodChange: (p: number) => void,
  *   isLoading?: boolean,
@@ -69,6 +76,26 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
     const max = Math.max(...rates)
     const pad = Math.max((max - min) * 0.15, 0.5)
     return [min - pad, max + pad]
+  }, [data])
+
+  // 누적 막대용 파생 데이터 — 투자원금(베이스) + 손익(상단 세그먼트)
+  // 손익 양수: 베이스=투자원금, 위에 이익(빨강) → 막대 전체=평가액
+  // 손익 음수: 베이스=평가액,   위에 손실(파랑) → 막대 전체=투자원금
+  const chartData = useMemo(() => data.map(d => {
+    const pnl = d.totalValue - d.investedValue
+    return {
+      ...d,
+      pnl,
+      principalBase: Math.min(d.investedValue, d.totalValue),
+      pnlSegment: Math.abs(pnl),
+    }
+  }), [data])
+
+  // 우측 금액 축 도메인 — 0 ~ max(평가액, 투자원금)
+  const amountDomain = useMemo(() => {
+    if (data.length === 0) return [0, 'auto']
+    const top = Math.max(...data.map(d => Math.max(d.totalValue, d.investedValue)), 0)
+    return [0, top * 1.1]
   }, [data])
 
   return (
@@ -125,7 +152,7 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
       {/* 복합 차트 (2개 이상) */}
       {!isLoading && data.length >= 2 && (
         <ResponsiveContainer width="100%" height={300}>
-          <ComposedChart data={data} margin={{ top: 5, right: 48, left: 10, bottom: 5 }}>
+          <ComposedChart data={chartData} margin={{ top: 5, right: 56, left: 10, bottom: 5 }}>
             <defs>
               <linearGradient id="profitSplitColor" x1="0" y1="0" x2="0" y2="1">
                 <stop offset={gradientOffset} stopColor="#22c55e" stopOpacity={0.25} />
@@ -154,20 +181,23 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
             <YAxis
               yAxisId="right"
               orientation="right"
-              tickFormatter={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`}
+              domain={amountDomain}
+              tickFormatter={(v) => formatCurrencyShort(v)}
               tick={{ fontSize: 10 }}
               stroke="#9ca3af"
               opacity={0.6}
-              width={44}
+              width={52}
             />
             <ReferenceLine yAxisId="left" y={0} stroke="#6b7280" strokeDasharray="3 3" strokeOpacity={0.6} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar yAxisId="right" dataKey="dailyReturn" maxBarSize={8} radius={[2, 2, 0, 0]}>
-              {data.map((entry, i) => (
+            {/* 누적 막대: 투자원금(회색 베이스) + 손익(빨강/파랑 상단 세그먼트) */}
+            <Bar yAxisId="right" dataKey="principalBase" stackId="amount" maxBarSize={28} fill="#cbd5e1" fillOpacity={0.45} />
+            <Bar yAxisId="right" dataKey="pnlSegment" stackId="amount" maxBarSize={28} radius={[2, 2, 0, 0]}>
+              {chartData.map((entry, i) => (
                 <Cell
                   key={i}
-                  fill={entry.dailyReturn >= 0 ? '#EF4444' : '#3B82F6'}
-                  fillOpacity={0.65}
+                  fill={entry.pnl >= 0 ? '#EF4444' : '#3B82F6'}
+                  fillOpacity={0.6}
                 />
               ))}
             </Bar>
