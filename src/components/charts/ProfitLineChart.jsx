@@ -152,15 +152,17 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
       {/* 복합 차트 (2개 이상) */}
       {!isLoading && data.length >= 2 && (
         <ResponsiveContainer width="100%" height={300}>
-          <ComposedChart data={chartData} margin={{ top: 5, right: 56, left: 10, bottom: 5 }}>
+          <ComposedChart data={chartData} margin={{ top: 5, right: 14, left: 0, bottom: 5 }}>
             <defs>
+              {/* Area fill — 면은 거의 투명, 선만 강조 */}
               <linearGradient id="profitSplitColor" x1="0" y1="0" x2="0" y2="1">
-                <stop offset={gradientOffset} stopColor="#22c55e" stopOpacity={0.25} />
-                <stop offset={gradientOffset} stopColor="#ef4444" stopOpacity={0.25} />
+                <stop offset={gradientOffset} stopColor="#15803d" stopOpacity={0.12} />
+                <stop offset={gradientOffset} stopColor="#b91c1c" stopOpacity={0.12} />
               </linearGradient>
+              {/* Area stroke — 고채도 진한 색 (전경 강조) */}
               <linearGradient id="profitStrokeColor" x1="0" y1="0" x2="0" y2="1">
-                <stop offset={gradientOffset} stopColor="#22c55e" stopOpacity={1} />
-                <stop offset={gradientOffset} stopColor="#ef4444" stopOpacity={1} />
+                <stop offset={gradientOffset} stopColor="#15803d" stopOpacity={1} />
+                <stop offset={gradientOffset} stopColor="#b91c1c" stopOpacity={1} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.5} />
@@ -190,14 +192,14 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
             />
             <ReferenceLine yAxisId="left" y={0} stroke="#6b7280" strokeDasharray="3 3" strokeOpacity={0.6} />
             <Tooltip content={<CustomTooltip />} />
-            {/* 누적 막대: 투자원금(회색 베이스) + 손익(빨강/파랑 상단 세그먼트) */}
-            <Bar yAxisId="right" dataKey="principalBase" stackId="amount" maxBarSize={28} fill="#cbd5e1" fillOpacity={0.45} />
-            <Bar yAxisId="right" dataKey="pnlSegment" stackId="amount" maxBarSize={28} radius={[2, 2, 0, 0]}>
+            {/* 누적 막대 — 저채도 파스텔 (은은한 배경 레이어) */}
+            <Bar yAxisId="right" dataKey="principalBase" stackId="amount" maxBarSize={32} fill="#e2e8f0" fillOpacity={0.5} />
+            <Bar yAxisId="right" dataKey="pnlSegment" stackId="amount" maxBarSize={32} radius={[2, 2, 0, 0]}>
               {chartData.map((entry, i) => (
                 <Cell
                   key={i}
-                  fill={entry.pnl >= 0 ? '#EF4444' : '#3B82F6'}
-                  fillOpacity={0.6}
+                  fill={entry.pnl >= 0 ? '#fca5a5' : '#93c5fd'}
+                  fillOpacity={0.55}
                 />
               ))}
             </Bar>
@@ -206,7 +208,7 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
               type="monotone"
               dataKey="returnRate"
               stroke="url(#profitStrokeColor)"
-              strokeWidth={2}
+              strokeWidth={3}
               fill="url(#profitSplitColor)"
               dot={false}
               activeDot={{ r: 4 }}
