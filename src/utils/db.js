@@ -232,6 +232,32 @@ db.version(15).stores({
   }
 })
 
+// v16: 매도차익 카테고리 분리 — 기존 '이자/기타(interest)' + 메모 '매도차익' → 'realized_gain'
+// 일괄 입력 시 매도차익을 interest로 잘못 분류한 레코드 정정 (분모 영향 없음, 표시·로직 정합)
+db.version(16).stores({
+  transactions:   '&id, ticker, action, date, accountId, userId, userEmail, syncVersion',
+  priceHistory:   '++id, ticker, date',
+  reports:        '++id, type, createdAt, userId, userEmail, [type+userId]',
+  cashFlows:      '&id, accountId, type, date, isAuto, userId, userEmail, syncVersion',
+  dailyPnl:       '&[ticker+date+accountId], ticker, date, accountId, userId',
+  alertHistory:   '++id, ticker, type, triggeredAt, isRead',
+  chatHistory:    '++id, sessionId, userId, agentType, updatedAt',
+  aiCredentials:  '&provider',
+  calendarEvents: '++id, userId, userEmail, date, category, ticker, source, syncVersion',
+  userAccounts:   '&id, userId, userEmail',
+  watchlist:      '&id, userId, userEmail, ticker',
+}).upgrade(async (tx) => {
+  const flows = await tx.cashFlows.toArray()
+  const targets = flows.filter(f => f.category === 'interest' && (f.memo || '').includes('매도차익'))
+  for (const f of targets) {
+    await tx.cashFlows.update(f.id, {
+      category: 'realized_gain',
+      syncVersion: (f.syncVersion ?? 0) + 1,
+      syncedAt: null,
+    })
+  }
+})
+
 // ─── transactions CRUD ───
 
 export async function addTransaction(entry) {

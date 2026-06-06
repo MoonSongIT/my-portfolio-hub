@@ -8,6 +8,7 @@ import { formatNumber } from '../../utils/formatters'
 // 카테고리별 부가 설명
 const CATEGORY_DESC = {
   investment_in:  '수익률 계산에 포함',
+  realized_gain:  '실현손익으로 집계 (분모 제외)',
   dividend:       '배당 수익으로 집계',
   interest:       '수익률 분모 제외',
   adjust_plus:    '수익률 분모 제외',

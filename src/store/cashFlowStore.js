@@ -24,6 +24,7 @@ export const CASH_FLOW_TYPES = {
 // isCapital: false → 잔고에는 반영되나 수익률 분모에서 제외
 export const CASH_FLOW_CATEGORIES = {
   INVESTMENT_IN:  { code: 'investment_in',  label: '투자금 입금', type: 'deposit',    isCapital: true  },
+  REALIZED_GAIN:  { code: 'realized_gain',  label: '매도차익',    type: 'deposit',    isCapital: false },
   DIVIDEND:       { code: 'dividend',       label: '배당금',      type: 'deposit',    isCapital: false },
   INTEREST:       { code: 'interest',       label: '이자/기타',   type: 'deposit',    isCapital: false },
   ADJUST_PLUS:    { code: 'adjust_plus',    label: '조정(+)',     type: 'deposit',    isCapital: false },

@@ -12,6 +12,7 @@ const PAGE_SIZE = 20
 const CATEGORY_CHIPS = [
   { value: 'all',            label: '전체' },
   { value: 'investment_in',  label: '투자금 입금' },
+  { value: 'realized_gain',  label: '매도차익' },
   { value: 'dividend',       label: '배당금' },
   { value: 'interest',       label: '이자/기타' },
   { value: 'adjust_plus',    label: '조정(+)' },

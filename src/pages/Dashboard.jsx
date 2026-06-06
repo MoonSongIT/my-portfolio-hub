@@ -213,7 +213,7 @@ export default function Dashboard() {
       .filter(f =>
         f.type === 'deposit' &&
         !f.isAuto &&
-        f.memo?.includes('매도차익') &&
+        f.category === 'realized_gain' &&
         (selectedAccountId === 'all' || f.accountId === selectedAccountId)
       )
       .reduce((sum, f) => sum + (f.amount || 0), 0)
