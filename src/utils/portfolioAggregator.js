@@ -72,12 +72,14 @@ export function aggregatePortfolioHistory(snapshots, period, exchangeRate, cashF
       realizedJournal += usdCur(e.currency) ? e.pnl * exchangeRate : e.pnl
     }
 
-    const pnlTotal = unrealized + realizedJournal + realizedCash + dividend
+    const realized = realizedJournal + realizedCash
+    const pnlTotal = unrealized + realized + dividend
     const investedValue = netCapital
     const totalValue = netCapital + pnlTotal
     const returnRate = netCapital > 0 ? (pnlTotal / netCapital) * 100 : 0
+    const portfolioReturnRate = investedValue > 0 ? (unrealized / investedValue) * 100 : 0
 
-    return { date, totalValue, investedValue, returnRate }
+    return { date, totalValue, investedValue, returnRate, unrealized, realized, dividend, portfolioReturnRate }
   })
 
   // forward-fill: 누락 날짜(주말 등)에 마지막 유효값 채우기

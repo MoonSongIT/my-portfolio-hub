@@ -17,10 +17,13 @@ function CustomTooltip({ active, payload }) {
   const d = payload[0].payload
   const pnl = d.totalValue - d.investedValue   // 손익합계 = 자산 − 투자원금
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm space-y-0.5 min-w-[180px]">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm space-y-0.5 min-w-[200px]">
       <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{d.date}</p>
       <p className={d.returnRate >= 0 ? 'text-red-500' : 'text-blue-500'}>
         종합수익률: {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
+      </p>
+      <p className={d.portfolioReturnRate >= 0 ? 'text-yellow-600' : 'text-blue-500'}>
+        포트폴리오: {d.portfolioReturnRate > 0 ? '+' : ''}{d.portfolioReturnRate.toFixed(2)}%
       </p>
       <div className="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
         <span>투자원금</span>
@@ -68,16 +71,14 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
     return [min - pad, max + pad]
   }, [data])
 
-  // 누적 막대용 파생 데이터 — 투자원금(베이스) + 손익(상단 세그먼트)
-  // 손익 양수: 베이스=투자원금, 위에 이익(빨강) → 막대 전체=평가액
-  // 손익 음수: 베이스=평가액,   위에 손실(파랑) → 막대 전체=투자원금
+  // 누적 막대용 파생 데이터 — 3등분: 투자원금 + (실현+배당) + 미실현
   const chartData = useMemo(() => data.map(d => {
-    const pnl = d.totalValue - d.investedValue
+    const realizedDividend = (d.realized || 0) + (d.dividend || 0)
     return {
       ...d,
-      pnl,
-      principalBase: Math.min(d.investedValue, d.totalValue),
-      pnlSegment: Math.abs(pnl),
+      principalBase: d.investedValue,
+      realizedDividendSegment: Math.max(realizedDividend, 0),
+      unrealizedSegment: Math.max(d.unrealized || 0, 0),
     }
   }), [data])
 
@@ -182,17 +183,11 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
             />
             <ReferenceLine yAxisId="left" y={0} stroke="#6b7280" strokeDasharray="3 3" strokeOpacity={0.6} />
             <Tooltip content={<CustomTooltip />} />
-            {/* 누적 막대 — 저채도 파스텔 (은은한 배경 레이어) */}
+            {/* 누적 막대 3등분: 투자원금(하단) + 실현+배당(중간) + 미실현(상단) */}
             <Bar yAxisId="right" dataKey="principalBase" stackId="amount" maxBarSize={32} fill="#e2e8f0" fillOpacity={0.5} />
-            <Bar yAxisId="right" dataKey="pnlSegment" stackId="amount" maxBarSize={32} radius={[2, 2, 0, 0]}>
-              {chartData.map((entry, i) => (
-                <Cell
-                  key={i}
-                  fill={entry.pnl >= 0 ? '#fca5a5' : '#93c5fd'}
-                  fillOpacity={0.55}
-                />
-              ))}
-            </Bar>
+            <Bar yAxisId="right" dataKey="realizedDividendSegment" stackId="amount" maxBarSize={32} fill="#d4a574" fillOpacity={0.6} />
+            <Bar yAxisId="right" dataKey="unrealizedSegment" stackId="amount" maxBarSize={32} radius={[2, 2, 0, 0]} fill="#60a5fa" fillOpacity={0.6} />
+            {/* 종합수익률 선 (짙은청색) */}
             <Area
               yAxisId="left"
               type="monotone"
@@ -200,6 +195,17 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
               stroke="url(#profitStrokeColor)"
               strokeWidth={3}
               fill="url(#profitSplitColor)"
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+            {/* 포트폴리오 수익률 선 (진한 노란색) */}
+            <Area
+              yAxisId="left"
+              type="monotone"
+              dataKey="portfolioReturnRate"
+              stroke="#B8860B"
+              strokeWidth={2.5}
+              fill="none"
               dot={false}
               activeDot={{ r: 4 }}
             />
