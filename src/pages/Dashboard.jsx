@@ -110,14 +110,41 @@ export default function Dashboard() {
   const hasSnapshotToday    = useDailyPnlStore(s => s.hasSnapshotToday)
   const allSnapshots        = useMemo(() => Object.values(snapshots), [snapshots])
 
-  // 수익률 추이 데이터 집계 (종합수익률 기준: 투자원금+손익합계=자산)
+  // 수익률 추이 데이터 집계 — 오늘 포인트는 portfolioStore 실시간으로 override
   const portfolioHistory = useMemo(() => {
     const acct = selectedAccountId
     const snaps = acct === 'all' ? allSnapshots : allSnapshots.filter(s => s.accountId === acct)
     const cfs   = acct === 'all' ? cashFlows    : cashFlows.filter(f => f.accountId === acct)
     const ens   = acct === 'all' ? entries      : entries.filter(e => e.accountId === acct)
-    return aggregatePortfolioHistory(snaps, chartPeriod, exchangeRate, cfs, ens)
-  }, [allSnapshots, chartPeriod, exchangeRate, cashFlows, entries, selectedAccountId])
+    const history = aggregatePortfolioHistory(snaps, chartPeriod, exchangeRate, cfs, ens)
+    if (history.length === 0) return history
+
+    // 오늘 포인트를 portfolioStore 실시간 미실현으로 override
+    // — 스냅샷 종가가 아닌 현재 실시간 주가 기준으로 카드와 일치시킴
+    const todayStr = new Date().toISOString().split('T')[0]
+    const base = history[history.length - 1]   // 투자원금/실현/배당은 마지막 항목 그대로
+    const investedValue = base.investedValue
+    const realized      = base.realized || 0
+    const dividend      = base.dividend || 0
+    const unrealized    = totalPnL              // portfolioStore 실시간 미실현
+    const pnlTotal      = unrealized + realized + dividend
+    const returnRate    = investedValue > 0 ? (pnlTotal / investedValue) * 100 : 0
+    const portfolioReturnRate = investedValue > 0 ? (unrealized / investedValue) * 100 : 0
+    const todayPoint = {
+      ...base,
+      date: todayStr,
+      unrealized,
+      totalValue: investedValue + pnlTotal,
+      returnRate,
+      portfolioReturnRate,
+      dailyReturn: returnRate - (history.length >= 2 ? history[history.length - 2].returnRate : 0),
+    }
+
+    // 마지막 항목이 오늘이면 교체, 아니면(주말·공휴일 이력 없음) 추가
+    return base.date === todayStr
+      ? [...history.slice(0, -1), todayPoint]
+      : [...history, todayPoint]
+  }, [allSnapshots, chartPeriod, exchangeRate, cashFlows, entries, selectedAccountId, totalPnL])
 
   // 마운트 시 스냅샷 없으면 자동 저장 + 과거 데이터 백필 (silent)
   useEffect(() => {
