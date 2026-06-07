@@ -15,50 +15,65 @@ const PERIODS = [
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
+  const realizedTotal = (d.realized || 0) + (d.dividend || 0)
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm space-y-0.5 min-w-[220px]">
-      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">{d.date}</p>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 min-w-[230px]">
+      <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 mb-2">{d.date}</p>
 
-      {/* 수익률 */}
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-gray-600 dark:text-gray-300">종합수익률</span>
-        <span className={d.returnRate >= 0 ? 'text-red-500 font-medium' : 'text-blue-500 font-medium'}>
-          {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
-        </span>
-      </div>
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-gray-600 dark:text-gray-300">포트폴리오수익률</span>
-        <span className={d.portfolioReturnRate >= 0 ? 'text-blue-500 font-medium' : 'text-blue-500 font-medium'}>
-          {d.portfolioReturnRate > 0 ? '+' : ''}{d.portfolioReturnRate.toFixed(2)}%
-        </span>
-      </div>
-
-      <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
-
-      {/* 손익 구성 */}
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-gray-600 dark:text-gray-300">미실현손익</span>
-        <span className={d.unrealized >= 0 ? 'text-red-500 font-medium' : 'text-blue-500 font-medium'}>
-          {d.unrealized > 0 ? '+' : ''}{formatCurrency(d.unrealized || 0)}
-        </span>
-      </div>
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-gray-600 dark:text-gray-300">실현손익(배당금포함)</span>
-        <span className={(d.realized + d.dividend) >= 0 ? 'text-red-500 font-medium' : 'text-blue-500 font-medium'}>
-          {(d.realized + d.dividend) > 0 ? '+' : ''}{formatCurrency((d.realized || 0) + (d.dividend || 0))}
-        </span>
+      {/* 수익률 섹션 */}
+      <div className="space-y-0.5">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className="text-gray-500 dark:text-gray-400">종합수익률</span>
+          <span className={`font-semibold ${d.returnRate >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+            {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className="text-gray-500 dark:text-gray-400">포트폴리오수익률</span>
+          <span className={`font-medium ${d.portfolioReturnRate >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+            {d.portfolioReturnRate > 0 ? '+' : ''}{d.portfolioReturnRate.toFixed(2)}%
+          </span>
+        </div>
       </div>
 
-      <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+      <div className="border-t border-gray-100 dark:border-gray-700 my-2" />
 
-      {/* 기초 정보 */}
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-gray-700 dark:text-gray-200 font-medium">투자원금</span>
-        <span className="text-gray-900 dark:text-gray-100 font-semibold">{formatCurrency(d.investedValue)}</span>
+      {/* 누적 막대 구성 — 소형 상세, 막대 색 도트 */}
+      <div className="space-y-0.5">
+        <div className="flex items-center justify-between gap-3 text-[11px]">
+          <span className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#60a5fa' }} />
+            미실현손익
+          </span>
+          <span className={(d.unrealized || 0) >= 0 ? 'text-red-400' : 'text-blue-400'}>
+            {(d.unrealized || 0) > 0 ? '+' : ''}{formatCurrency(d.unrealized || 0)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-[11px]">
+          <span className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#d4a574' }} />
+            실현(배당금포함)
+          </span>
+          <span className={realizedTotal >= 0 ? 'text-red-400' : 'text-blue-400'}>
+            {realizedTotal > 0 ? '+' : ''}{formatCurrency(realizedTotal)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-[11px]">
+          <span className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#cbd5e1' }} />
+            투자원금
+          </span>
+          <span className="text-gray-400 dark:text-gray-500">{formatCurrency(d.investedValue)}</span>
+        </div>
       </div>
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-gray-700 dark:text-gray-200 font-medium">자산합</span>
-        <span className="text-gray-900 dark:text-gray-100 font-semibold">{formatCurrency(d.totalValue)}</span>
+
+      {/* 구분선 — 투자원금 아래 */}
+      <div className="border-t border-gray-100 dark:border-gray-700 my-2" />
+
+      {/* 자산합 — 강조 표시 */}
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-medium text-gray-700 dark:text-gray-200">자산합</span>
+        <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{formatCurrency(d.totalValue)}</span>
       </div>
     </div>
   )
