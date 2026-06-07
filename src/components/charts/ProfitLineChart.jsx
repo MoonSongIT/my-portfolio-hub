@@ -41,7 +41,7 @@ function CustomTooltip({ active, payload }) {
       {/* 누적 막대 구성 — 소형 상세, 막대 색 도트 */}
       <div className="space-y-0.5">
         <div className="flex items-center justify-between gap-3 text-[11px]">
-          <span className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+          <span className="flex items-center gap-1.5" style={{ color: '#60a5fa' }}>
             <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#60a5fa' }} />
             미실현손익
           </span>
@@ -50,7 +50,7 @@ function CustomTooltip({ active, payload }) {
           </span>
         </div>
         <div className="flex items-center justify-between gap-3 text-[11px]">
-          <span className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+          <span className="flex items-center gap-1.5" style={{ color: '#d4a574' }}>
             <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#d4a574' }} />
             실현(배당금포함)
           </span>
