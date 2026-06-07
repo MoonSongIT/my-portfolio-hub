@@ -45,7 +45,7 @@ function CustomTooltip({ active, payload }) {
             <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#60a5fa' }} />
             미실현손익
           </span>
-          <span className={(d.unrealized || 0) >= 0 ? 'text-red-400' : 'text-blue-400'}>
+          <span style={{ color: '#60a5fa' }}>
             {(d.unrealized || 0) > 0 ? '+' : ''}{formatCurrency(d.unrealized || 0)}
           </span>
         </div>
@@ -54,7 +54,7 @@ function CustomTooltip({ active, payload }) {
             <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: '#d4a574' }} />
             실현(배당금포함)
           </span>
-          <span className={realizedTotal >= 0 ? 'text-red-400' : 'text-blue-400'}>
+          <span style={{ color: '#d4a574' }}>
             {realizedTotal > 0 ? '+' : ''}{formatCurrency(realizedTotal)}
           </span>
         </div>
