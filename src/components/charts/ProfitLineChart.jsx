@@ -15,28 +15,49 @@ const PERIODS = [
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
-  const pnl = d.totalValue - d.investedValue   // 손익합계 = 자산 − 투자원금
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm space-y-0.5 min-w-[200px]">
-      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{d.date}</p>
-      <p className={d.returnRate >= 0 ? 'text-red-500' : 'text-blue-500'}>
-        종합수익률: {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
-      </p>
-      <p className={d.portfolioReturnRate >= 0 ? 'text-yellow-600' : 'text-blue-500'}>
-        포트폴리오: {d.portfolioReturnRate > 0 ? '+' : ''}{d.portfolioReturnRate.toFixed(2)}%
-      </p>
-      <div className="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
-        <span>투자원금</span>
-        <span>{formatCurrency(d.investedValue)}</span>
-      </div>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm space-y-0.5 min-w-[220px]">
+      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">{d.date}</p>
+
+      {/* 수익률 */}
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-gray-500 dark:text-gray-400">손익합계</span>
-        <span className={pnl >= 0 ? 'text-red-500 font-medium' : 'text-blue-500 font-medium'}>
-          {pnl > 0 ? '+' : ''}{formatCurrency(pnl)}
+        <span className="text-gray-600 dark:text-gray-300">종합수익률</span>
+        <span className={d.returnRate >= 0 ? 'text-red-500 font-medium' : 'text-blue-500 font-medium'}>
+          {d.returnRate > 0 ? '+' : ''}{d.returnRate.toFixed(2)}%
         </span>
       </div>
-      <div className="flex items-center justify-between gap-3 text-xs pt-1 mt-1 border-t border-gray-100 dark:border-gray-700">
-        <span className="text-gray-700 dark:text-gray-200 font-medium">총 자산</span>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-gray-600 dark:text-gray-300">포트폴리오수익률</span>
+        <span className={d.portfolioReturnRate >= 0 ? 'text-blue-500 font-medium' : 'text-blue-500 font-medium'}>
+          {d.portfolioReturnRate > 0 ? '+' : ''}{d.portfolioReturnRate.toFixed(2)}%
+        </span>
+      </div>
+
+      <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+
+      {/* 손익 구성 */}
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-gray-600 dark:text-gray-300">미실현손익</span>
+        <span className={d.unrealized >= 0 ? 'text-red-500 font-medium' : 'text-blue-500 font-medium'}>
+          {d.unrealized > 0 ? '+' : ''}{formatCurrency(d.unrealized || 0)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-gray-600 dark:text-gray-300">실현손익(배당금포함)</span>
+        <span className={(d.realized + d.dividend) >= 0 ? 'text-red-500 font-medium' : 'text-blue-500 font-medium'}>
+          {(d.realized + d.dividend) > 0 ? '+' : ''}{formatCurrency((d.realized || 0) + (d.dividend || 0))}
+        </span>
+      </div>
+
+      <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+
+      {/* 기초 정보 */}
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-gray-700 dark:text-gray-200 font-medium">투자원금</span>
+        <span className="text-gray-900 dark:text-gray-100 font-semibold">{formatCurrency(d.investedValue)}</span>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-gray-700 dark:text-gray-200 font-medium">자산합</span>
         <span className="text-gray-900 dark:text-gray-100 font-semibold">{formatCurrency(d.totalValue)}</span>
       </div>
     </div>
@@ -195,17 +216,6 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
               stroke="url(#profitStrokeColor)"
               strokeWidth={3}
               fill="url(#profitSplitColor)"
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
-            {/* 포트폴리오 수익률 선 (진한 노란색) */}
-            <Area
-              yAxisId="left"
-              type="monotone"
-              dataKey="portfolioReturnRate"
-              stroke="#B8860B"
-              strokeWidth={2.5}
-              fill="none"
               dot={false}
               activeDot={{ r: 4 }}
             />
