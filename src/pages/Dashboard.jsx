@@ -73,11 +73,20 @@ export default function Dashboard() {
     })
   }, [holdings])
 
-  // API 훅 — autoRefresh Off 시 refetchInterval 비활성화
+  // API 훅 — autoRefresh Off 시 주기·마운트·포커스 갱신 모두 비활성화
+  // Off 상태에서는 수동 새로고침(handleRefresh) 시에만 시세 조회
   const batchInterval = autoRefresh ? (isAnyMarketOpen() ? 60_000 : 300_000) : false
   const rateInterval  = autoRefresh ? 5 * 60_000 : false
-  const { data: batchData, isLoading: priceLoading, isFetching: priceRefreshing, isError: priceError } = useBatchQuotes(uniqueHoldings, { refetchInterval: batchInterval })
-  const { data: rateData } = useExchangeRate({ refetchInterval: rateInterval })
+  const { data: batchData, isLoading: priceLoading, isFetching: priceRefreshing, isError: priceError } = useBatchQuotes(uniqueHoldings, {
+    refetchInterval: batchInterval,
+    refetchOnMount: autoRefresh,
+    refetchOnWindowFocus: autoRefresh,
+  })
+  const { data: rateData } = useExchangeRate({
+    refetchInterval: rateInterval,
+    refetchOnMount: autoRefresh,
+    refetchOnWindowFocus: autoRefresh,
+  })
 
   // API 응답 → Store 반영
   useEffect(() => {
