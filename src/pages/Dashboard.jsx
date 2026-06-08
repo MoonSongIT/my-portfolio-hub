@@ -8,7 +8,7 @@ import { useUserAccounts } from '../store/accountStore'
 import { useDailyPnlStore } from '../store/dailyPnlStore'
 import { useCashFlowStore } from '../store/cashFlowStore'
 import { snapshotToday, backfillHistory } from '../api/dailyPnlService'
-import { useBatchQuotes, useExchangeRate } from '../hooks/useStockData'
+import { useBatchQuotes, useExchangeRate, isAnyMarketOpen } from '../hooks/useStockData'
 import {
   calculateTotalValue,
   calculatePortfolioReturn,
@@ -44,6 +44,7 @@ export default function Dashboard() {
   const [existingSnapshotTime, setExistingSnapshotTime] = useState('')
   const [chartPeriod, setChartPeriod] = useState(30)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState(false)
   const autoSnapshotRan = useRef(false)
   const {
     accounts, selectedAccountId, exchangeRate,
@@ -72,9 +73,11 @@ export default function Dashboard() {
     })
   }, [holdings])
 
-  // API 훅
-  const { data: batchData, isLoading: priceLoading, isFetching: priceRefreshing, isError: priceError } = useBatchQuotes(uniqueHoldings)
-  const { data: rateData } = useExchangeRate()
+  // API 훅 — autoRefresh Off 시 refetchInterval 비활성화
+  const batchInterval = autoRefresh ? (isAnyMarketOpen() ? 60_000 : 300_000) : false
+  const rateInterval  = autoRefresh ? 5 * 60_000 : false
+  const { data: batchData, isLoading: priceLoading, isFetching: priceRefreshing, isError: priceError } = useBatchQuotes(uniqueHoldings, { refetchInterval: batchInterval })
+  const { data: rateData } = useExchangeRate({ refetchInterval: rateInterval })
 
   // API 응답 → Store 반영
   useEffect(() => {
@@ -418,6 +421,17 @@ export default function Dashboard() {
               title="새로고침"
             >
               <RefreshCw className={`w-4 h-4 ${priceLoading ? 'animate-spin' : ''}`} />
+            </button>
+            {/* 자동고침 토글 */}
+            <button
+              onClick={() => setAutoRefresh(v => !v)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title={autoRefresh ? '자동고침 켜짐 — 클릭하여 끄기' : '자동고침 꺼짐 — 클릭하여 켜기'}
+            >
+              <span className="text-xs text-gray-500 dark:text-gray-400 select-none">자동고침</span>
+              <div className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${autoRefresh ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200 ${autoRefresh ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </div>
             </button>
           </div>
         </div>
