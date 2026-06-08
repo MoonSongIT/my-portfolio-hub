@@ -194,9 +194,11 @@ export default function ApiKeyPanel() {
                 {/* 키 입력 */}
                 <form onSubmit={e => { e.preventDefault(); handleSave(svc) }} className="flex gap-2">
                   {/* 브라우저 접근성: password form에 username 필드 필수 */}
-                  <input type="text" name="username" autoComplete="username" className="hidden" aria-hidden="true" readOnly />
+                  <input id="api-key-username" type="text" name="username" autoComplete="username" className="hidden" aria-hidden="true" readOnly />
                   <input
+                    id={`api-key-${svc.id}`}
                     type="password"
+                    name={svc.id}
                     value={inputs[svc.id]}
                     onChange={e => setInputs(prev => ({ ...prev, [svc.id]: e.target.value }))}
                     placeholder={exists ? '새 키로 교체하려면 입력하세요' : svc.placeholder}

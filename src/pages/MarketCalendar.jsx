@@ -456,8 +456,10 @@ export default function MarketCalendar() {
             </p>
             <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">시작일</label>
+                <label htmlFor="cal-clear-from" className="text-xs font-medium text-gray-700 dark:text-gray-300">시작일</label>
                 <input
+                  id="cal-clear-from"
+                  name="from"
                   type="date"
                   value={clearRange.from}
                   onChange={e => setClearRange(r => ({ ...r, from: e.target.value }))}
@@ -465,8 +467,10 @@ export default function MarketCalendar() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">종료일</label>
+                <label htmlFor="cal-clear-to" className="text-xs font-medium text-gray-700 dark:text-gray-300">종료일</label>
                 <input
+                  id="cal-clear-to"
+                  name="to"
                   type="date"
                   value={clearRange.to}
                   onChange={e => setClearRange(r => ({ ...r, to: e.target.value }))}

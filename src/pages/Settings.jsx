@@ -186,6 +186,8 @@ export default function Settings() {
             <p className="text-sm text-gray-500 dark:text-gray-400">리포트 비교 기준</p>
           </div>
           <select
+            id="settings-benchmark"
+            name="benchmarkIndex"
             value={benchmarkIndex}
             onChange={(e) => setBenchmark(e.target.value)}
             className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -208,9 +210,11 @@ export default function Settings() {
               { key: 'trailingDropPct', label: '낙폭 알림 (%)', hint: '고점 대비 -', max: 50 },
             ].map(({ key, label, hint, max }) => (
               <div key={key} className="space-y-1">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
+                <label htmlFor={`settings-${key}`} className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
                 <div className="flex items-center gap-1">
                   <input
+                    id={`settings-${key}`}
+                    name={key}
                     type="number" min={1} max={max}
                     value={wlLocal[key]}
                     onChange={(e) => setWlLocal(d => ({ ...d, [key]: Number(e.target.value) }))}
@@ -271,6 +275,8 @@ export default function Settings() {
                   <p className="text-xs text-gray-400 dark:text-gray-500">이벤트 대비 언제 알림을 받을지 선택합니다.</p>
                 </div>
                 <select
+                  id="settings-cal-timing"
+                  name="timing"
                   value={calendarNotification.timing}
                   onChange={(e) => setCalendarNotification({ timing: e.target.value })}
                   className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -287,6 +293,8 @@ export default function Settings() {
                   <p className="text-xs text-gray-400 dark:text-gray-500">선택한 중요도 이상의 이벤트만 알림 전송합니다.</p>
                 </div>
                 <select
+                  id="settings-cal-impact"
+                  name="impactFilter"
                   value={calendarNotification.impactFilter}
                   onChange={(e) => setCalendarNotification({ impactFilter: e.target.value })}
                   className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"

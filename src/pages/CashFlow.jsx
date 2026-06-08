@@ -147,6 +147,8 @@ export default function CashFlow() {
             {dateFilter === 'custom' && (
               <div className="flex items-center gap-1.5">
                 <input
+                  id="cashflow-date-from"
+                  name="customFrom"
                   type="date"
                   value={customFrom}
                   onChange={e => setCustomFrom(e.target.value)}
@@ -154,6 +156,8 @@ export default function CashFlow() {
                 />
                 <span className="text-xs text-gray-400">~</span>
                 <input
+                  id="cashflow-date-to"
+                  name="customTo"
                   type="date"
                   value={customTo}
                   onChange={e => setCustomTo(e.target.value)}

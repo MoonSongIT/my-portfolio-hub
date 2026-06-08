@@ -145,7 +145,9 @@ export default function CustomStockForm({ onChanged }) {
           <div className="grid grid-cols-2 gap-2">
             {/* 티커 */}
             <input
+              id="custom-stock-ticker"
               type="text"
+              name="ticker"
               placeholder="티커 (예: TSLA)"
               value={form.ticker}
               onChange={e => setForm(f => ({ ...f, ticker: e.target.value }))}
@@ -153,7 +155,9 @@ export default function CustomStockForm({ onChanged }) {
             />
             {/* 종목명 */}
             <input
+              id="custom-stock-name"
               type="text"
+              name="name"
               placeholder="종목명 (예: Tesla Inc.)"
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -161,6 +165,8 @@ export default function CustomStockForm({ onChanged }) {
             />
             {/* 국내/해외 */}
             <select
+              id="custom-stock-category"
+              name="category"
               value={form.category}
               onChange={handleCategoryChange}
               className={INPUT_CLASS}
@@ -171,6 +177,8 @@ export default function CustomStockForm({ onChanged }) {
             </select>
             {/* 거래소 */}
             <select
+              id="custom-stock-exchange"
+              name="exchange"
               value={form.exchange}
               onChange={e => setForm(f => ({ ...f, exchange: e.target.value }))}
               className={INPUT_CLASS}
@@ -181,6 +189,8 @@ export default function CustomStockForm({ onChanged }) {
             </select>
             {/* 유형 */}
             <select
+              id="custom-stock-type"
+              name="type"
               value={form.type}
               onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
               className={INPUT_CLASS}

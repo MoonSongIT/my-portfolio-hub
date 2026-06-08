@@ -56,7 +56,9 @@ export function SupabaseLoginModal({ onClose }) {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <input
+              id="login-email"
               type="email"
+              name="email"
               placeholder="이메일"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -65,7 +67,9 @@ export function SupabaseLoginModal({ onClose }) {
             />
             {mode !== 'forgot' && (
               <input
+                id="login-password"
                 type="password"
+                name="password"
                 placeholder="비밀번호"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

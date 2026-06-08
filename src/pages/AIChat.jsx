@@ -406,6 +406,8 @@ export default function AIChat() {
           <div className="mx-auto flex max-w-3xl items-center gap-3">
             <input
               ref={inputRef}
+              id="ai-chat-input"
+              name="message"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}

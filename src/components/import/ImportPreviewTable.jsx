@@ -96,6 +96,8 @@ export default function ImportPreviewTable() {
                 >
                   <td className="px-3 py-2">
                     <input
+                      id={`preview-row-${idx}`}
+                      name={`preview-row-${idx}`}
                       type="checkbox"
                       checked={!isExcluded}
                       onChange={() => togglePreviewRow(idx)}

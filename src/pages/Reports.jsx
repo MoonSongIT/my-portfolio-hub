@@ -442,6 +442,8 @@ export default function Reports() {
             {dateRange === 'custom' && (
               <div className="flex items-center gap-1 ml-1">
                 <input
+                  id="report-date-from"
+                  name="dateFrom"
                   type="date"
                   value={customRange.from}
                   onChange={e => setCustomRange(prev => ({ ...prev, from: e.target.value }))}
@@ -449,6 +451,8 @@ export default function Reports() {
                 />
                 <span className="text-xs text-gray-400">~</span>
                 <input
+                  id="report-date-to"
+                  name="dateTo"
                   type="date"
                   value={customRange.to}
                   onChange={e => setCustomRange(prev => ({ ...prev, to: e.target.value }))}
@@ -520,6 +524,8 @@ export default function Reports() {
                   {targetEditing ? (
                     <>
                       <input
+                        id="report-annual-target"
+                        name="annualTarget"
                         type="number"
                         value={targetDraft}
                         onChange={e => setTargetDraft(e.target.value)}

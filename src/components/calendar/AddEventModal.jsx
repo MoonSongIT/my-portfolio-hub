@@ -163,8 +163,10 @@ export default function AddEventModal({ open, onClose, editData = null, initialD
           {/* 카테고리 + 임팩트 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">카테고리</label>
+              <label htmlFor="event-category" className="text-sm font-medium text-gray-700 dark:text-gray-300">카테고리</label>
               <select
+                id="event-category"
+                name="category"
                 value={form.category}
                 onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))}
                 className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
@@ -173,8 +175,10 @@ export default function AddEventModal({ open, onClose, editData = null, initialD
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">중요도</label>
+              <label htmlFor="event-impact" className="text-sm font-medium text-gray-700 dark:text-gray-300">중요도</label>
               <select
+                id="event-impact"
+                name="impact"
                 value={form.impact}
                 onChange={e => setForm(prev => ({ ...prev, impact: e.target.value }))}
                 className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
@@ -217,8 +221,10 @@ export default function AddEventModal({ open, onClose, editData = null, initialD
 
           {/* 메모 */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">메모 (선택)</label>
+            <label htmlFor="event-memo" className="text-sm font-medium text-gray-700 dark:text-gray-300">메모 (선택)</label>
             <textarea
+              id="event-memo"
+              name="memo"
               value={form.memo}
               onChange={e => setForm(prev => ({ ...prev, memo: e.target.value }))}
               placeholder="추가 메모"
