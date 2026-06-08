@@ -282,6 +282,8 @@ export default function JournalBatchForm({ open, onClose }) {
               <div className={row.action === 'sell' ? 'grid grid-cols-2 gap-2' : ''}>
                 <div>
                   <select
+                    id={`psychology-${row._id}`}
+                    name={`psychology-${row._id}`}
                     value={row.psychology}
                     onChange={(e) => updateRow(row._id, 'psychology', e.target.value)}
                     className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"

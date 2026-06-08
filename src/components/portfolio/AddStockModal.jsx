@@ -206,8 +206,10 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
         <div className="space-y-4 py-2">
           {/* 계좌 선택 */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">계좌</label>
+            <label htmlFor="addstock-account" className="text-sm font-medium text-gray-700 dark:text-gray-300">계좌</label>
             <select
+              id="addstock-account"
+              name="accountId"
               value={form.accountId}
               onChange={(e) => setForm(prev => ({ ...prev, accountId: e.target.value }))}
               disabled={isEdit}
@@ -297,8 +299,10 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
           {/* 시장 + 섹터 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">시장</label>
+              <label htmlFor="addstock-market" className="text-sm font-medium text-gray-700 dark:text-gray-300">시장</label>
               <select
+                id="addstock-market"
+                name="market"
                 value={form.market}
                 onChange={(e) => handleMarketChange(e.target.value)}
                 className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
@@ -307,8 +311,10 @@ export default function AddStockModal({ open, onClose, editStock = null }) {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">섹터</label>
+              <label htmlFor="addstock-sector" className="text-sm font-medium text-gray-700 dark:text-gray-300">섹터</label>
               <select
+                id="addstock-sector"
+                name="sector"
                 value={form.sector}
                 onChange={(e) => setForm(prev => ({ ...prev, sector: e.target.value }))}
                 className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"

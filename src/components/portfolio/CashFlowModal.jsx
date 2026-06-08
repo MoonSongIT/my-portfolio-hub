@@ -141,8 +141,10 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
 
           {/* 계좌 선택 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">계좌</label>
+            <label htmlFor="cashflow-account" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">계좌</label>
             <select
+              id="cashflow-account"
+              name="accountId"
               value={accountId}
               onChange={e => setAccountId(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -156,8 +158,10 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
 
           {/* 카테고리 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">카테고리</label>
+            <label htmlFor="cashflow-category" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">카테고리</label>
             <select
+              id="cashflow-category"
+              name="category"
               value={category}
               onChange={e => setCategory(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -173,11 +177,13 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
 
           {/* 금액 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">금액</label>
+            <label htmlFor="cashflow-amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">금액</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <input
+                  id="cashflow-amount"
                   type="text"
+                  name="amount"
                   inputMode="numeric"
                   value={amountDisplay}
                   onChange={handleAmountChange}
@@ -189,6 +195,8 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
                 </span>
               </div>
               <select
+                id="cashflow-currency"
+                name="currency"
                 value={currency}
                 onChange={e => setCurrency(e.target.value)}
                 className="px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -201,9 +209,11 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
 
           {/* 날짜 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">날짜</label>
+            <label htmlFor="cashflow-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">날짜</label>
             <input
+              id="cashflow-date"
               type="date"
+              name="date"
               value={date}
               onChange={e => setDate(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -212,9 +222,11 @@ export default function CashFlowModal({ open, onClose, defaultType = 'deposit', 
 
           {/* 메모 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">메모 (선택)</label>
+            <label htmlFor="cashflow-memo" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">메모 (선택)</label>
             <input
+              id="cashflow-memo"
               type="text"
+              name="memo"
               value={memo}
               onChange={e => setMemo(e.target.value)}
               placeholder="예: 급여 입금, 생활비 출금 등"

@@ -102,6 +102,8 @@ export default function HtsImportModal({ open, onClose }) {
             <p className="text-sm text-gray-500 mb-1">유진투자증권 HTS 거래내역 Excel 파일(.xlsx/.xls)을 선택하세요.</p>
             <input
               ref={fileRef}
+              id="hts-import-file"
+              name="file"
               type="file"
               accept=".xlsx,.xls"
               onChange={handleFileChange}

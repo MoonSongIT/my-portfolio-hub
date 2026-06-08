@@ -271,8 +271,10 @@ export default function ChatPanel({
         <div className="border-t px-4 py-3 shrink-0">
           <div className="flex items-center gap-2">
             <input
+              id="chat-input"
               ref={inputRef}
               type="text"
+              name="message"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}

@@ -104,7 +104,7 @@ export default function ImportConfirmDialog({ onCancel, onApplied }) {
 
           {/* 계좌 연결 */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <label htmlFor="import-account" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
               계좌 연결 <span className="normal-case font-normal text-gray-400">(선택)</span>
             </label>
             {accounts.length === 0 ? (
@@ -113,6 +113,8 @@ export default function ImportConfirmDialog({ onCancel, onApplied }) {
               </p>
             ) : (
               <select
+                id="import-account"
+                name="accountId"
                 value={selectedAccountId}
                 onChange={(e) => setSelectedAccountId(e.target.value)}
                 className={SELECT_CLS}
@@ -129,10 +131,12 @@ export default function ImportConfirmDialog({ onCancel, onApplied }) {
 
           {/* 심리 일괄 설정 */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <label htmlFor="import-bulk-psychology" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
               매매 심리 일괄 설정 <span className="normal-case font-normal text-gray-400">(선택)</span>
             </label>
             <select
+              id="import-bulk-psychology"
+              name="bulkPsychology"
               value={bulkPsychology ?? '(심리 미설정)'}
               onChange={(e) =>
                 setBulkPsychology(e.target.value === '(심리 미설정)' ? null : e.target.value)

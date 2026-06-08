@@ -87,6 +87,8 @@ export default function HtsFileDropzone() {
       <p className="text-xs text-gray-400">.xlsx, .xls 지원</p>
       <input
         ref={inputRef}
+        id="hts-file-input"
+        name="file"
         type="file"
         accept=".xlsx,.xls"
         className="hidden"

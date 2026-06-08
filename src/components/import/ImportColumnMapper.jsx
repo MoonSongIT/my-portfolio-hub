@@ -30,8 +30,10 @@ export default function ImportColumnMapper() {
       {/* 시트 선택 (다중 시트인 경우만 표시) */}
       {parsedSheets.length > 1 && (
         <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-700 w-24 shrink-0">시트 선택</label>
+          <label htmlFor="import-sheet" className="text-sm font-medium text-gray-700 w-24 shrink-0">시트 선택</label>
           <select
+            id="import-sheet"
+            name="sheet"
             value={selectedSheet ?? ''}
             onChange={(e) => setSelectedSheet(e.target.value)}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

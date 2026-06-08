@@ -241,8 +241,10 @@ export default function TargetPriceBar({ stock }) {
 
           {/* 매입가 + 포트폴리오 평균매입가 가져오기 버튼 */}
           <div className="flex items-center gap-2">
-            <label className="text-[11px] text-gray-500 w-12 shrink-0">매입가</label>
+            <label htmlFor="target-entry-price" className="text-[11px] text-gray-500 w-12 shrink-0">매입가</label>
             <input
+              id="target-entry-price"
+              name="entryPrice"
               type="text"
               inputMode="numeric"
               value={toComma(draft.entryPrice)}
@@ -264,8 +266,10 @@ export default function TargetPriceBar({ stock }) {
 
           {/* 목표가 + % */}
           <div className="flex items-center gap-2">
-            <label className="text-[11px] text-gray-500 w-12 shrink-0">목표가</label>
+            <label htmlFor="target-price" className="text-[11px] text-gray-500 w-12 shrink-0">목표가</label>
             <input
+              id="target-price"
+              name="targetPrice"
               type="text"
               inputMode="numeric"
               value={toComma(draft.targetPrice)}
@@ -275,6 +279,8 @@ export default function TargetPriceBar({ stock }) {
             />
             <div className="relative flex-shrink-0">
               <input
+                id="target-price-pct"
+                name="targetPct"
                 type="text"
                 inputMode="decimal"
                 value={draft.targetPct}
@@ -288,8 +294,10 @@ export default function TargetPriceBar({ stock }) {
 
           {/* 손절가 + % */}
           <div className="flex items-center gap-2">
-            <label className="text-[11px] text-gray-500 w-12 shrink-0">손절가</label>
+            <label htmlFor="target-stop-loss" className="text-[11px] text-gray-500 w-12 shrink-0">손절가</label>
             <input
+              id="target-stop-loss"
+              name="stopLoss"
               type="text"
               inputMode="numeric"
               value={toComma(draft.stopLoss)}
@@ -299,6 +307,8 @@ export default function TargetPriceBar({ stock }) {
             />
             <div className="relative flex-shrink-0">
               <input
+                id="target-stop-loss-pct"
+                name="stopLossPct"
                 type="text"
                 inputMode="decimal"
                 value={draft.stopLossPct}
@@ -312,9 +322,11 @@ export default function TargetPriceBar({ stock }) {
 
           {/* 낙폭 알림 % */}
           <div className="flex items-center gap-2">
-            <label className="text-[11px] text-gray-500 w-12 shrink-0">낙폭 알림</label>
+            <label htmlFor="target-trailing-drop" className="text-[11px] text-gray-500 w-12 shrink-0">낙폭 알림</label>
             <div className="relative flex-1">
               <input
+                id="target-trailing-drop"
+                name="trailingDropPct"
                 type="text"
                 inputMode="decimal"
                 value={draft.trailingDropPct}

@@ -45,6 +45,8 @@ export default function JournalList({ filterAccountId = 'all', dateRange = 'all'
       {/* 필터 바 */}
       <div className="flex flex-wrap gap-2 mb-4">
         <input
+          id="journal-search-ticker"
+          name="searchTicker"
           value={searchTicker}
           onChange={(e) => setSearchTicker(e.target.value)}
           placeholder="종목 검색..."
@@ -70,6 +72,8 @@ export default function JournalList({ filterAccountId = 'all', dateRange = 'all'
 
         {/* 심리 필터 */}
         <select
+          id="journal-filter-psychology"
+          name="filterPsychology"
           value={filterPsychology}
           onChange={(e) => setFilterPsychology(e.target.value)}
           className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"

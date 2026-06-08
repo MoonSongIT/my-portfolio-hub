@@ -118,6 +118,8 @@ export default function StockComparePanel({ baseTicker, baseMarket, baseName, on
           <div className="relative" ref={searchRef}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 z-10" />
             <input
+              id="compare-stock-search"
+              name="compareQuery"
               value={compareQuery}
               onChange={(e) => { setCompareQuery(e.target.value); setDropdownOpen(true) }}
               onFocus={() => suggestions.length && setDropdownOpen(true)}
