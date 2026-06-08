@@ -314,6 +314,11 @@ export const useJournalStore = create(
             cashFlowUpdates.accountId = updates.accountId
           }
 
+          // 날짜 변경 시 연결된 입출금 내역도 함께 동기화
+          if (updates.date !== undefined && updates.date !== entry.date) {
+            cashFlowUpdates.date = updates.date
+          }
+
           const newAction  = updates.action   ?? entry.action
           const newPrice   = updates.price    ?? entry.price
           const newQty     = updates.quantity ?? entry.quantity
