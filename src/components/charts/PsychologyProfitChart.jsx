@@ -84,7 +84,10 @@ export default function PsychologyProfitChart({ data }) {
             width={90}
             tick={{ fontSize: 12 }}
           />
-          <Tooltip content={<CustomTooltip isCountMode={!hasPnlData} />} />
+          <Tooltip
+            content={<CustomTooltip isCountMode={!hasPnlData} />}
+            wrapperStyle={{ background: 'transparent', border: 'none', boxShadow: 'none' }}
+          />
           <Bar dataKey="displayValue" radius={[0, 4, 4, 0]}>
             {chartData.map((entry, index) => (
               <Cell

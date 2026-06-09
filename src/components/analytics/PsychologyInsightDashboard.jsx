@@ -85,7 +85,10 @@ export default function PsychologyInsightDashboard() {
           >
             <XAxis type="number" tickFormatter={v => formatCurrencyShort(v)} tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="name" width={96} tick={{ fontSize: 12 }} />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip
+              content={<CustomTooltip />}
+              wrapperStyle={{ background: 'transparent', border: 'none', boxShadow: 'none' }}
+            />
             <Bar dataKey="avgPnl" radius={[0, 3, 3, 0]}>
               {chartData.map((entry, i) => (
                 <Cell key={i} fill={entry.avgPnl >= 0 ? '#ef4444' : '#3b82f6'} />
