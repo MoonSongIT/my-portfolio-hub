@@ -12,13 +12,13 @@ function CustomTooltip({ active, payload, isCountMode }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm">
-      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{d.psychology}</p>
-      <p className="text-gray-600 dark:text-gray-300">거래 건수: {d.count}건</p>
+    <div className="bg-white border border-gray-300 rounded-lg shadow-xl p-3 text-sm min-w-[160px]">
+      <p className="font-semibold text-gray-900 mb-1">{d.psychology}</p>
+      <p className="text-gray-500">거래 건수: {d.count}건</p>
       {isCountMode ? (
-        <p className="text-gray-400 dark:text-gray-400 text-xs mt-1">매도 기록이 있으면 손익이 표시됩니다</p>
+        <p className="text-gray-400 text-xs mt-1">매도 기록이 있으면 손익이 표시됩니다</p>
       ) : (
-        <p className={`font-semibold ${d.avgPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+        <p className={`font-semibold mt-0.5 ${d.avgPnl >= 0 ? 'text-green-600' : 'text-red-500'}`}>
           평균 손익: {d.avgPnl >= 0 ? '+' : ''}{formatCurrency(d.avgPnl)}
         </p>
       )}
