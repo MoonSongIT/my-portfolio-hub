@@ -37,7 +37,25 @@ export function aggregatePortfolioHistory(snapshots, period, exchangeRate, cashF
     if (!byDate.has(s.date)) byDate.set(s.date, [])
     byDate.get(s.date).push(s)
   }
-  const dates = [...byDate.keys()].sort()
+
+  // 주말 부분 스냅샷 감지: 주말 날짜의 종목 수가 직전 날 대비 50% 미만이면 제외
+  // → forwardFill이 직전 거래일 값으로 채우므로 차트가 정상 표시됨
+  const isWeekendDate = (d) => { const dow = new Date(d + 'T12:00:00').getDay(); return dow === 0 || dow === 6 }
+  const tickerCntByDate = new Map()
+  for (const [d, snaps] of byDate.entries()) {
+    tickerCntByDate.set(d, new Set(snaps.map(s => s.ticker)).size)
+  }
+  const allDates = [...byDate.keys()].sort()
+  const dates = allDates.filter((date, idx) => {
+    if (!isWeekendDate(date) || idx === 0) return true
+    const prev = tickerCntByDate.get(allDates[idx - 1]) ?? 0
+    const cur  = tickerCntByDate.get(date)
+    if (prev > 0 && cur < prev * 0.5) {
+      console.warn(`[aggregator] 주말 부분 스냅샷 제외: ${date} (${cur}/${prev}종목)`)
+      return false
+    }
+    return true
+  })
 
   // cashFlow / 일지 환율 환산 헬퍼
   const cfAmt = (f) => usdCur(f.currency) ? f.amount * exchangeRate : f.amount
