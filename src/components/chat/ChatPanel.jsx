@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import MessageBubble from './MessageBubble'
 import QuickPromptButtons from './QuickPromptButtons'
 import { useChatStore } from '../../store/chatStore'
-import { sendToAgent } from '../../api/claudeApi'
+import { sendToAgent, continuePreviousResponse } from '../../api/claudeApi'
 import { useApiKeyGuard } from '../../hooks/useApiKeyGuard'
 import ApiKeyRequiredDialog from '../common/ApiKeyRequiredDialog'
 
@@ -143,6 +143,25 @@ export default function ChatPanel({
 
     try {
       const effectiveAgent = resolveAgent(msg)
+
+      // "이어서" 계열 + 마지막 AI 응답이 max_tokens로 잘린 경우 → 잘린 지점부터 이어서 생성
+      if (CONTINUATION_RE.test(msg)) {
+        const lastAI = [...messages].reverse().find(m => m.role === 'assistant')
+        if (lastAI?.incomplete) {
+          const lastAIIdx = messages.findIndex(m => m.id === lastAI.id)
+          const lastUser = messages.slice(0, lastAIIdx).reverse().find(m => m.role === 'user')
+          if (lastUser) {
+            const result = await continuePreviousResponse(
+              lastUser.content,
+              lastAI.content,
+              lastAI.agentType || 'journal'
+            )
+            addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
+            return
+          }
+        }
+      }
+
       const result = await sendToAgent(msg, context, effectiveAgent)
       addAIMessage(result.text, result.agentType, result.agentInfo, result.incomplete)
     } catch (err) {
