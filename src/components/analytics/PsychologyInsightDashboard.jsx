@@ -5,6 +5,19 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList,
 } from 'recharts'
 
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const value = payload[0]?.value ?? 0
+  return (
+    <div className="bg-white border border-gray-300 rounded-lg shadow-xl p-3 text-sm min-w-[140px]">
+      <p className="font-semibold text-gray-900 mb-1">{label}</p>
+      <p className={`font-semibold ${value >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        평균 손익: {value >= 0 ? '+' : ''}{formatCurrencyShort(value)}
+      </p>
+    </div>
+  )
+}
+
 export default function PsychologyInsightDashboard() {
   const { stats, maturityScore } = usePsychologyInsight()
 
@@ -62,7 +75,7 @@ export default function PsychologyInsightDashboard() {
           >
             <XAxis type="number" tickFormatter={v => formatCurrencyShort(v)} tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="name" width={96} tick={{ fontSize: 12 }} />
-            <Tooltip formatter={v => [formatCurrencyShort(v), '평균 손익']} />
+            <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="avgPnl" radius={[0, 3, 3, 0]}>
               {chartData.map((entry, i) => (
                 <Cell key={i} fill={entry.avgPnl >= 0 ? '#ef4444' : '#3b82f6'} />
