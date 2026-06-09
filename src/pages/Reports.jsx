@@ -830,8 +830,9 @@ export default function Reports() {
                       />
                       <Tooltip
                         formatter={(v) => [`${v.toLocaleString('ko-KR')}원`, '배당금']}
-                        contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '13px' }}
-                        labelStyle={{ color: '#e5e7eb' }}
+                        contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '13px' }}
+                        labelStyle={{ color: '#111827' }}
+                        itemStyle={{ color: '#374151' }}
                       />
                       <Bar dataKey="배당금" radius={[4, 4, 0, 0]}>
                         {monthlyDividendData.map((_, i) => (
