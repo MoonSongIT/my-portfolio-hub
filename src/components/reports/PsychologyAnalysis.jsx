@@ -77,8 +77,9 @@ export default function PsychologyAnalysis({ entries }) {
               />
               <Tooltip
                 formatter={(v) => [formatPnl(v), '평균손익']}
-                contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
-                labelStyle={{ color: '#e5e7eb' }}
+                contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '12px' }}
+                labelStyle={{ color: '#111827' }}
+                itemStyle={{ color: '#374151' }}
               />
               <Bar dataKey="avgPnl" radius={[0, 4, 4, 0]}>
                 {stats.map((s, i) => (
