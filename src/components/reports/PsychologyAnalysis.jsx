@@ -192,8 +192,9 @@ export default function PsychologyAnalysis({ entries }) {
                 />
                 <Tooltip
                   formatter={(v) => [formatPnl(v), '평균손익']}
-                  contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
-                  labelStyle={{ color: '#e5e7eb' }}
+                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '12px' }}
+                  labelStyle={{ color: '#111827' }}
+                  itemStyle={{ color: '#374151' }}
                 />
                 <Bar dataKey="avgPnl" radius={[4, 4, 0, 0]}>
                   {dowStats.map((s, i) => (
@@ -220,8 +221,9 @@ export default function PsychologyAnalysis({ entries }) {
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="#9ca3af" />
                 <Tooltip
                   formatter={(v) => [`${v}건`, '거래수']}
-                  contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
-                  labelStyle={{ color: '#e5e7eb' }}
+                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '12px' }}
+                  labelStyle={{ color: '#111827' }}
+                  itemStyle={{ color: '#374151' }}
                 />
                 <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -259,8 +261,9 @@ export default function PsychologyAnalysis({ entries }) {
                 />
                 <Tooltip
                   formatter={(v) => [formatPnl(v), '평균손익']}
-                  contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
-                  labelStyle={{ color: '#e5e7eb' }}
+                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '12px' }}
+                  labelStyle={{ color: '#111827' }}
+                  itemStyle={{ color: '#374151' }}
                 />
                 <Bar dataKey="avgPnl" radius={[0, 4, 4, 0]}>
                   {sectorStats.map((s, i) => (
