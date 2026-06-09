@@ -120,37 +120,36 @@ async function handleUpload(req, res) {
     return res.status(200).json({ uploaded: [], failed: [] })
   }
 
-  const uploaded = []
-  const failed   = []
+  const now = new Date().toISOString()
 
-  for (const record of records) {
-    try {
-      const converted = {
-        ...recordToServer(record),
-        user_id:      user.id,
-        user_email:   user.email,
-        sync_version: (record.syncVersion ?? 0) + 1,
-        synced_at:    new Date().toISOString(),
-      }
-
-      for (const field of (UUID_FIELDS[pgTable] ?? [])) {
-        if (converted[field] !== undefined) converted[field] = toUUID(converted[field])
-      }
-
-      const serverRecord = filterColumns(converted, pgTable)
-      const { error } = await supabase.from(pgTable).upsert(serverRecord, { onConflict: 'id' })
-
-      if (error) {
-        failed.push({ id: record.id, error: error.message })
-      } else {
-        uploaded.push({ ...record, syncVersion: serverRecord.sync_version })
-      }
-    } catch (err) {
-      failed.push({ id: record.id, error: err.message })
+  // 모든 레코드를 동기적으로 변환 (await 없음 — 네트워크 호출 없음)
+  const serverRecords = records.map(record => {
+    const converted = {
+      ...recordToServer(record),
+      user_id:      user.id,
+      user_email:   user.email,
+      sync_version: (record.syncVersion ?? 0) + 1,
+      synced_at:    now,
     }
+    for (const field of (UUID_FIELDS[pgTable] ?? [])) {
+      if (converted[field] !== undefined) converted[field] = toUUID(converted[field])
+    }
+    return filterColumns(converted, pgTable)
+  })
+
+  // 단일 bulk upsert — N개 레코드를 1번 API 호출로 처리 (타임아웃 방지)
+  const { error } = await supabase.from(pgTable).upsert(serverRecords, { onConflict: 'id' })
+
+  if (error) {
+    const failed = records.map(r => ({ id: r.id, error: error.message }))
+    return res.status(200).json({ uploaded: [], failed })
   }
 
-  res.status(200).json({ uploaded, failed })
+  const uploaded = records.map((r, i) => ({
+    ...r,
+    syncVersion: serverRecords[i].sync_version,
+  }))
+  res.status(200).json({ uploaded, failed: [] })
 }
 
 // ── 메인 라우터 ───────────────────────────────────────────────────────────

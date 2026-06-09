@@ -3,6 +3,9 @@
     "api/claude.js": {
       "maxDuration": 60
     },
+    "api/sync.js": {
+      "maxDuration": 30
+    },
     "api/naver-proxy.js": {
       "regions": ["icn1"]
     }
