@@ -5,13 +5,23 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList,
 } from 'recharts'
 
+const TOOLTIP_STYLE = {
+  background: '#ffffff',
+  border: '1px solid #d1d5db',
+  borderRadius: '8px',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+  padding: '10px 14px',
+  fontSize: '13px',
+  minWidth: '140px',
+}
+
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   const value = payload[0]?.value ?? 0
   return (
-    <div className="bg-white border border-gray-300 rounded-lg shadow-xl p-3 text-sm min-w-[140px]">
-      <p className="font-semibold text-gray-900 mb-1">{label}</p>
-      <p className={`font-semibold ${value >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+    <div style={TOOLTIP_STYLE}>
+      <p style={{ fontWeight: 600, color: '#111827', marginBottom: '4px' }}>{label}</p>
+      <p style={{ fontWeight: 600, color: value >= 0 ? '#16a34a' : '#dc2626' }}>
         평균 손익: {value >= 0 ? '+' : ''}{formatCurrencyShort(value)}
       </p>
     </div>

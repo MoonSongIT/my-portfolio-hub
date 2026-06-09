@@ -8,18 +8,31 @@ const PSYCHOLOGY_COLORS = [
   '#EC4899', '#14B8A6', '#F97316', '#8B5CF6',
 ]
 
+const TOOLTIP_STYLE = {
+  background: '#ffffff',
+  border: '1px solid #d1d5db',
+  borderRadius: '8px',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+  padding: '10px 14px',
+  fontSize: '13px',
+  minWidth: '160px',
+}
+
 function CustomTooltip({ active, payload, isCountMode }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
+  const pnl = d.avgPnl ?? 0
   return (
-    <div className="bg-white border border-gray-300 rounded-lg shadow-xl p-3 text-sm min-w-[160px]">
-      <p className="font-semibold text-gray-900 mb-1">{d.psychology}</p>
-      <p className="text-gray-500">거래 건수: {d.count}건</p>
+    <div style={TOOLTIP_STYLE}>
+      <p style={{ fontWeight: 600, color: '#111827', marginBottom: '4px' }}>{d.psychology}</p>
+      <p style={{ color: '#6b7280' }}>거래 건수: {d.count}건</p>
       {isCountMode ? (
-        <p className="text-gray-400 text-xs mt-1">매도 기록이 있으면 손익이 표시됩니다</p>
+        <p style={{ color: '#9ca3af', fontSize: '11px', marginTop: '4px' }}>
+          매도 기록이 있으면 손익이 표시됩니다
+        </p>
       ) : (
-        <p className={`font-semibold mt-0.5 ${d.avgPnl >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-          평균 손익: {d.avgPnl >= 0 ? '+' : ''}{formatCurrency(d.avgPnl)}
+        <p style={{ fontWeight: 600, color: pnl >= 0 ? '#16a34a' : '#dc2626', marginTop: '2px' }}>
+          평균 손익: {pnl >= 0 ? '+' : ''}{formatCurrency(pnl)}
         </p>
       )}
     </div>
