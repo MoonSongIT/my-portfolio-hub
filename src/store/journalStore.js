@@ -422,7 +422,9 @@ export const useJournalStore = create(
 
           // 구 카테고리명 → 신규 카테고리명 마이그레이션 (변경된 항목만 write-back)
           const toUpdate = []
-          const migrated = dbEntries.map(e => {
+          const migrated = dbEntries
+            .filter(e => !e.deletedAt)  // 소프트 삭제된 항목 제외 (loadFromDB 재로드 버그 방지)
+            .map(e => {
             const map = PSYCHOLOGY_MIGRATION_MAP[e.action]
             if (!map || !e.psychology) return e
             const newPsychology = map[e.psychology] ?? e.psychology
@@ -523,6 +525,7 @@ export const useJournalStore = create(
 
         const map = {}
         entries.forEach(e => {
+          if (e.deletedAt) return  // 소프트 삭제된 항목 방어 필터
           if (!map[e.psychology]) {
             map[e.psychology] = { psychology: e.psychology, count: 0, pnlCount: 0, totalPnl: 0 }
           }
@@ -530,7 +533,9 @@ export const useJournalStore = create(
           if (e.pnl !== null && e.pnl !== undefined) {
             map[e.psychology].pnlCount += 1
             // USD 종목 pnl은 KRW로 환산
-            const pnlKRW = (e.market !== 'KRX') ? e.pnl * exchangeRate : e.pnl
+            // 리스트 표시(NYSE||NASDAQ → USD)와 동일한 조건으로 통일
+            const isUsd = e.market === 'NYSE' || e.market === 'NASDAQ'
+            const pnlKRW = isUsd ? e.pnl * exchangeRate : e.pnl
             map[e.psychology].totalPnl += pnlKRW
           }
         })
