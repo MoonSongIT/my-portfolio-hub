@@ -164,7 +164,8 @@ export default function Dashboard() {
     autoSnapshotRan.current = true
     if (holdings.length === 0) return
 
-    if (!hasSnapshotToday()) {
+    const todayDow = new Date().getDay()
+    if (!hasSnapshotToday() && todayDow >= 1 && todayDow <= 5) {
       snapshotToday(selectedAccountId === 'all' ? undefined : selectedAccountId)
         .catch(() => {})
     }

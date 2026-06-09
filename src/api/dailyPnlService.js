@@ -51,6 +51,13 @@ function getInvestedAt(entries, ticker, accountId) {
  * - 각 종목의 현재가(fetchQuote) → dailyPnl 계산 → 저장
  */
 export async function snapshotToday(accountId) {
+  // 주말(토=6, 일=0)에는 시장이 닫혀 있으므로 스냅샷 저장 건너뜀
+  const dow = new Date().getDay()
+  if (dow === 0 || dow === 6) {
+    console.info('[dailyPnlService] 주말 — 스냅샷 저장 건너뜀')
+    return { results: [], failed: [] }
+  }
+
   const journalStore   = useJournalStore.getState()
   const dailyPnlStore  = useDailyPnlStore.getState()
   const accountStore   = useAccountStore.getState()
