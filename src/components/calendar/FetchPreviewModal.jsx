@@ -2,6 +2,8 @@
 
 import { useMemo, useState, useEffect } from 'react'
 import { useCalendarStore } from '../../store/calendarStore'
+import { useWatchlistStore } from '../../store/watchlistStore'
+import { usePortfolioStore } from '../../store/portfolioStore'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../ui/dialog'
@@ -23,6 +25,8 @@ const SOURCE_LABEL   = { dart: 'DART', finnhub: 'Finnhub' }
 
 export default function FetchPreviewModal({ open, onClose, onConfirm, results = [] }) {
   const existingEvents = useCalendarStore(s => s.events)
+  const watchlist = useWatchlistStore(s => s.watchlist)
+  const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
 
   // 기존 DB 이벤트 맵 — ticker|date|category 기준 중복/업데이트 감지
   const existingMap = useMemo(() => {
@@ -33,13 +37,30 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
     return m
   }, [existingEvents])
 
+  // 관심종목 + 보유종목 ticker 합집합
+  const relevantTickers = useMemo(() => {
+    const s = new Set(watchlist.map(w => w.ticker))
+    try { getSelectedHoldings().forEach(h => s.add(h.ticker)) } catch { /* 포트폴리오 없음 */ }
+    return s
+  }, [watchlist, getSelectedHoldings])
+
   const [checked, setChecked] = useState(new Set())
 
-  // 모달이 열릴 때마다 전체 해제 상태로 초기화 — 사용자가 직접 선택
+  // 모달이 열릴 때 관심/보유 종목 자동 선택
   useEffect(() => {
     if (!open) return
-    setChecked(new Set())
-  }, [open, results, existingMap])
+    const autoChecked = new Set()
+    results.forEach((ev, i) => {
+      if (ev.ticker && relevantTickers.has(ev.ticker)) autoChecked.add(i)
+    })
+    setChecked(autoChecked)
+  }, [open, results]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 현재 선택된 항목 중 관심/보유 종목 수
+  const relevantCheckedCount = useMemo(
+    () => results.filter((ev, i) => checked.has(i) && ev.ticker && relevantTickers.has(ev.ticker)).length,
+    [checked, results, relevantTickers]
+  )
 
   const allSelected  = results.length > 0 && checked.size === results.length
   const someSelected = checked.size > 0 && !allSelected
@@ -90,6 +111,11 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 전체 선택 ({results.length}건)
               </span>
+              {relevantCheckedCount > 0 && (
+                <span className="ml-auto text-xs text-blue-600 dark:text-blue-400 font-medium">
+                  관심/보유 종목 {relevantCheckedCount}개 선택됨
+                </span>
+              )}
             </div>
 
             {/* 이벤트 목록 */}
