@@ -199,6 +199,7 @@ export default function JournalBatchForm({ open, onClose }) {
               {/* 종목 검색 */}
               <div className="relative">
                 <Input
+                  lang="ko"
                   value={row._searchQuery || (row.ticker ? `${row.name} (${row.ticker})` : '')}
                   onChange={(e) => {
                     updateRow(row._id, '_searchQuery', e.target.value)
@@ -319,6 +320,7 @@ export default function JournalBatchForm({ open, onClose }) {
 
               {/* 메모 */}
               <Input
+                lang="ko"
                 value={row.memo}
                 onChange={(e) => updateRow(row._id, 'memo', e.target.value)}
                 placeholder="메모 (선택)"

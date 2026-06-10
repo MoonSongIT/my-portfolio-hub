@@ -560,6 +560,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null, init
             <textarea
               value={form.memo}
               onChange={(e) => set('memo', e.target.value)}
+              lang="ko"
               autoComplete="off"
               placeholder={lastTrade?.memo || '매매 이유, 시장 상황, 느낀 점 등 자유롭게...'}
               rows={2}
