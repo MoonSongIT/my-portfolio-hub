@@ -43,12 +43,14 @@ export default function CalendarMonthView({ events, currentDate, onDateClick, on
         dateClick={(info) => onDateClick?.(info.dateStr)}
         eventClick={(info) => onEventClick?.(info.event.extendedProps)}
         moreLinkClick={(info) => {
-          info.jsEvent?.preventDefault()
-          info.jsEvent?.stopPropagation()
           const d = info.date
           const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
           const hiddenIds = (info.hiddenSegs ?? []).map(seg => seg.event.id)
           onMoreLinkClick(dateStr, hiddenIds)
+          // return false가 동작하지 않을 경우를 대비해 다음 프레임에서 팝오버 강제 제거
+          requestAnimationFrame(() => {
+            document.querySelector('.fc-popover-close')?.click()
+          })
           return false
         }}
         eventContent={(arg) => {
