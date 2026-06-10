@@ -5,6 +5,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 한국어 IME 힌트 — lang="ko" 속성이 있는 텍스트 입력 필드에 적용 */
+input[lang="ko"],
+textarea[lang="ko"] {
+  ime-mode: active;
+}
+
 /* 프로젝트 커스텀 스타일 */
 @layer components {
   .card {
