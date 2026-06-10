@@ -9,7 +9,7 @@ import './calendar.css'
 
 const IMPACT_STARS = { high: '★★★', medium: '★★', low: '★' }
 
-export default function CalendarMonthView({ events, currentDate, onDateClick, onEventClick }) {
+export default function CalendarMonthView({ events, currentDate, onDateClick, onEventClick, onMoreLinkClick = () => {} }) {
   const calendarRef = useRef(null)
 
   useEffect(() => {
@@ -42,6 +42,12 @@ export default function CalendarMonthView({ events, currentDate, onDateClick, on
         dayMaxEvents={3}
         dateClick={(info) => onDateClick?.(info.dateStr)}
         eventClick={(info) => onEventClick?.(info.event.extendedProps)}
+        moreLinkClick={(info) => {
+          const d = info.date
+          const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          onMoreLinkClick(dateStr)
+          return false
+        }}
         eventContent={(arg) => {
           const stars = IMPACT_STARS[arg.event.extendedProps.impact]
           return (
