@@ -36,6 +36,9 @@ export const useSettingsStore = create(
       calendarNotification: { ...state.calendarNotification, ...patch },
     })),
 
+    lastJournalAccountId: null,
+    setLastJournalAccountId: (id) => set({ lastJournalAccountId: id }),
+
     // 동기화 활성화 / 비활성화
     syncEnabled: false,
     enableSync: () => set({ syncEnabled: true }),

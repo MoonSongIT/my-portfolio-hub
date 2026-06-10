@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { useJournalStore } from '../../store/journalStore'
 import { useUserAccounts, useAccountStore, ACCOUNT_TYPES } from '../../store/accountStore'
+import { useSettingsStore } from '../../store/settingsStore'
 import { useCashFlowStore } from '../../store/cashFlowStore'
 import { useWatchlistStore } from '../../store/watchlistStore'
 import { usePortfolioStore } from '../../store/portfolioStore'
@@ -74,6 +75,8 @@ const INITIAL_FORM = {
 export default function JournalEntryForm({ open, onClose, editEntry = null, initialValues = null }) {
   const { addEntry, updateEntry, entries, addToRecentSelections } = useJournalStore()
   const accounts = useUserAccounts()
+  const lastJournalAccountId = useSettingsStore(s => s.lastJournalAccountId)
+  const setLastJournalAccountId = useSettingsStore(s => s.setLastJournalAccountId)
   const cashFlows = useCashFlowStore(s => s.cashFlows)
   const { getAvailableCash } = useCashFlowStore()
   const watchlist = useWatchlistStore(s => s.watchlist)
@@ -144,7 +147,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null, init
         pnl: editEntry.pnl !== null && editEntry.pnl !== undefined ? String(editEntry.pnl) : '',
       })
     } else {
-      const defaultAccountId = accounts.length > 0 ? accounts[0].id : ''
+      const defaultAccountId = lastJournalAccountId || (accounts.length > 0 ? accounts[0].id : '')
       const base = { ...INITIAL_FORM, date: today(), accountId: defaultAccountId }
       setForm(initialValues ? { ...base, ...initialValues } : base)
     }
@@ -299,7 +302,7 @@ export default function JournalEntryForm({ open, onClose, editEntry = null, init
               <div className="flex-1">
                 <AccountSelector
                   value={form.accountId}
-                  onChange={(v) => set('accountId', v)}
+                  onChange={(v) => { set('accountId', v); setLastJournalAccountId(v) }}
                   showAllOption={false}
                 />
               </div>
