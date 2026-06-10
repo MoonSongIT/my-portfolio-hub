@@ -91,13 +91,3 @@
   text-overflow: ellipsis;
 }
 
-/* FullCalendar 기본 +N more 팝오버 숨김 — 커스텀 DayEventsModal로 대체
-   display:none은 FullCalendar 내부 getBoundingClientRect를 깨뜨리므로
-   opacity+position으로 시각적으로만 숨김 */
-.fc-popover {
-  opacity: 0 !important;
-  pointer-events: none !important;
-  position: fixed !important;
-  left: -9999px !important;
-  top: -9999px !important;
-}
