@@ -90,3 +90,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* FullCalendar 기본 +N more 팝오버 숨김 — 커스텀 DayEventsModal로 대체 */
+.fc-popover {
+  display: none !important;
+}

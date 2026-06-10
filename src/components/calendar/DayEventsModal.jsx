@@ -21,7 +21,7 @@ function formatDate(dateStr) {
   return `${Number(y)}년 ${Number(m)}월 ${Number(d)}일`
 }
 
-export default function DayEventsModal({ open, date, events = [], onClose, onDelete }) {
+export default function DayEventsModal({ open, date, events = [], onClose, onDelete, onEventClick }) {
   const [checked, setChecked] = useState(new Set())
 
   // 모달이 열릴 때마다 선택 초기화
@@ -82,21 +82,27 @@ export default function DayEventsModal({ open, date, events = [], onClose, onDel
             {/* 스크롤 가능한 이벤트 목록 */}
             <div className="overflow-y-auto flex-1 max-h-80 space-y-1 pr-1">
               {events.map(ev => (
-                <label
+                <div
                   key={ev.id}
-                  className={`flex items-start gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                  className={`flex items-start gap-3 p-2.5 rounded-lg transition-colors ${
                     checked.has(ev.id)
                       ? 'bg-blue-50 dark:bg-blue-900/20'
                       : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                   }`}
                 >
+                  {/* 체크박스 — 선택 전용, 클릭 전파 차단 */}
                   <input
                     type="checkbox"
                     checked={checked.has(ev.id)}
                     onChange={() => toggleOne(ev.id)}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    onClick={e => e.stopPropagation()}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
                   />
-                  <div className="flex-1 min-w-0">
+                  {/* 이벤트 정보 — 클릭 시 상세/수정 모달 열기 */}
+                  <div
+                    className="flex-1 min-w-0 cursor-pointer"
+                    onClick={() => { onClose(); onEventClick?.(ev) }}
+                  >
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <EventBadge category={ev.category} />
                       {ev.impact && (
@@ -120,7 +126,7 @@ export default function DayEventsModal({ open, date, events = [], onClose, onDel
                       </p>
                     )}
                   </div>
-                </label>
+                </div>
               ))}
             </div>
           </>

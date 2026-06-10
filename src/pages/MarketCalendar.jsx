@@ -471,6 +471,7 @@ export default function MarketCalendar() {
         }
         onClose={() => setDayEventsModal({ open: false, date: null, hiddenIds: null })}
         onDelete={handleDayEventDelete}
+        onEventClick={(ev) => setSelectedEvent(ev)}
       />
 
       {/* 날짜 범위 삭제 다이얼로그 */}
