@@ -37,10 +37,18 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
     return m
   }, [existingEvents])
 
-  // 관심종목 + 보유종목 ticker 합집합
+  // 숫자만으로 된 ticker(한국 종목코드)는 6자리 0-패딩, 그 외(미국)는 대문자 trim
+  const normTicker = (t) => {
+    if (!t) return null
+    const s = String(t).trim()
+    return /^\d+$/.test(s) ? s.padStart(6, '0') : s.toUpperCase()
+  }
+
+  // 관심종목 + 보유종목 ticker 합집합 (정규화)
   const relevantTickers = useMemo(() => {
-    const s = new Set(watchlist.map(w => w.ticker))
-    try { getSelectedHoldings().forEach(h => s.add(h.ticker)) } catch { /* 포트폴리오 없음 */ }
+    const s = new Set()
+    watchlist.forEach(w => { const n = normTicker(w.ticker); if (n) s.add(n) })
+    try { getSelectedHoldings().forEach(h => { const n = normTicker(h.ticker); if (n) s.add(n) }) } catch { /* 포트폴리오 없음 */ }
     return s
   }, [watchlist, getSelectedHoldings])
 
@@ -51,14 +59,15 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
     if (!open) return
     const autoChecked = new Set()
     results.forEach((ev, i) => {
-      if (ev.ticker && relevantTickers.has(ev.ticker)) autoChecked.add(i)
+      const n = normTicker(ev.ticker)
+      if (n && relevantTickers.has(n)) autoChecked.add(i)
     })
     setChecked(autoChecked)
-  }, [open, results]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, results, relevantTickers])
 
   // 현재 선택된 항목 중 관심/보유 종목 수
   const relevantCheckedCount = useMemo(
-    () => results.filter((ev, i) => checked.has(i) && ev.ticker && relevantTickers.has(ev.ticker)).length,
+    () => results.filter((ev, i) => { const n = normTicker(ev.ticker); return checked.has(i) && n && relevantTickers.has(n) }).length,
     [checked, results, relevantTickers]
   )
 
