@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { useJournalStore } from '../../store/journalStore'
 import { useUserAccounts } from '../../store/accountStore'
+import { useSettingsStore } from '../../store/settingsStore'
 import { useWatchlistStore } from '../../store/watchlistStore'
 import { usePortfolioStore } from '../../store/portfolioStore'
 import { ensureHistory } from '../../api/dailyPnlService'
@@ -35,6 +36,9 @@ export default function JournalBatchForm({ open, onClose }) {
   const accounts = useUserAccounts()
   const watchlist = useWatchlistStore(s => s.watchlist)
   const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
+  const lastJournalAccountId = useSettingsStore(s => s.lastJournalAccountId)
+  const setLastJournalAccountId = useSettingsStore(s => s.setLastJournalAccountId)
+
   const [accountId, setAccountId] = useState('')
   const [date, setDate] = useState(today())
   const [rows, setRows] = useState([emptyRow()])
@@ -47,12 +51,11 @@ export default function JournalBatchForm({ open, onClose }) {
     sell: getGroupedPsychology('sell'),
   }), [])
 
-  // 폼 열릴 때 첫 번째 계좌 기본 선택
-  useMemo(() => {
-    if (open && !accountId && accounts.length > 0) {
-      setAccountId(accounts[0].id)
-    }
-  }, [open, accounts])
+  // 폼 열릴 때 마지막 선택 계좌(또는 첫 번째 계좌) 기본 선택
+  useEffect(() => {
+    if (!open) return
+    setAccountId(lastJournalAccountId || (accounts.length > 0 ? accounts[0].id : ''))
+  }, [open])
 
   // 관심종목 + 보유종목 합산 후 ticker 중복 제거
   const stockPool = useMemo(() => {
@@ -157,7 +160,7 @@ export default function JournalBatchForm({ open, onClose }) {
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">계좌</label>
           <AccountSelector
             value={accountId}
-            onChange={setAccountId}
+            onChange={(v) => { setAccountId(v); setLastJournalAccountId(v) }}
             showAllOption={false}
           />
           {errors.accountId && <p className="text-red-500 text-xs">{errors.accountId}</p>}
