@@ -2,6 +2,8 @@
 
 import { useMemo, useState, useEffect } from 'react'
 import { useCalendarStore } from '../../store/calendarStore'
+import { useWatchlistStore } from '../../store/watchlistStore'
+import { usePortfolioStore } from '../../store/portfolioStore'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../ui/dialog'
@@ -23,6 +25,8 @@ const SOURCE_LABEL   = { dart: 'DART', finnhub: 'Finnhub' }
 
 export default function FetchPreviewModal({ open, onClose, onConfirm, results = [] }) {
   const existingEvents = useCalendarStore(s => s.events)
+  const watchlist = useWatchlistStore(s => s.watchlist)
+  const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
 
   // 기존 DB 이벤트 맵 — ticker|date|category 기준 중복/업데이트 감지
   const existingMap = useMemo(() => {
@@ -33,13 +37,39 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
     return m
   }, [existingEvents])
 
+  // 숫자만으로 된 ticker(한국 종목코드)는 6자리 0-패딩, 그 외(미국)는 대문자 trim
+  const normTicker = (t) => {
+    if (!t) return null
+    const s = String(t).trim()
+    return /^\d+$/.test(s) ? s.padStart(6, '0') : s.toUpperCase()
+  }
+
+  // 관심종목 + 보유종목 ticker 합집합 (정규화)
+  const relevantTickers = useMemo(() => {
+    const s = new Set()
+    watchlist.forEach(w => { const n = normTicker(w.ticker); if (n) s.add(n) })
+    try { getSelectedHoldings().forEach(h => { const n = normTicker(h.ticker); if (n) s.add(n) }) } catch { /* 포트폴리오 없음 */ }
+    return s
+  }, [watchlist, getSelectedHoldings])
+
   const [checked, setChecked] = useState(new Set())
 
-  // 모달이 열릴 때마다 전체 해제 상태로 초기화 — 사용자가 직접 선택
+  // 모달이 열릴 때 관심/보유 종목 자동 선택
   useEffect(() => {
     if (!open) return
-    setChecked(new Set())
-  }, [open, results, existingMap])
+    const autoChecked = new Set()
+    results.forEach((ev, i) => {
+      const n = normTicker(ev.ticker)
+      if (n && relevantTickers.has(n)) autoChecked.add(i)
+    })
+    setChecked(autoChecked)
+  }, [open, results, relevantTickers])
+
+  // 현재 선택된 항목 중 관심/보유 종목 수
+  const relevantCheckedCount = useMemo(
+    () => results.filter((ev, i) => { const n = normTicker(ev.ticker); return checked.has(i) && n && relevantTickers.has(n) }).length,
+    [checked, results, relevantTickers]
+  )
 
   const allSelected  = results.length > 0 && checked.size === results.length
   const someSelected = checked.size > 0 && !allSelected
@@ -90,6 +120,11 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 전체 선택 ({results.length}건)
               </span>
+              {relevantCheckedCount > 0 && (
+                <span className="ml-auto text-xs text-blue-600 dark:text-blue-400 font-medium">
+                  관심/보유 종목 {relevantCheckedCount}개 선택됨
+                </span>
+              )}
             </div>
 
             {/* 이벤트 목록 */}
