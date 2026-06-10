@@ -43,9 +43,12 @@ export default function CalendarMonthView({ events, currentDate, onDateClick, on
         dateClick={(info) => onDateClick?.(info.dateStr)}
         eventClick={(info) => onEventClick?.(info.event.extendedProps)}
         moreLinkClick={(info) => {
+          info.jsEvent?.preventDefault()
+          info.jsEvent?.stopPropagation()
           const d = info.date
           const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-          onMoreLinkClick(dateStr)
+          const hiddenIds = (info.hiddenSegs ?? []).map(seg => seg.event.id)
+          onMoreLinkClick(dateStr, hiddenIds)
           return false
         }}
         eventContent={(arg) => {

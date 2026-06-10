@@ -186,8 +186,8 @@ export default function MarketCalendar() {
     setShowClearConfirm(false)
   }
 
-  const handleMoreLinkClick = (dateStr) => {
-    setDayEventsModal({ open: true, date: dateStr })
+  const handleMoreLinkClick = (dateStr, hiddenIds) => {
+    setDayEventsModal({ open: true, date: dateStr, hiddenIds })
   }
 
   const handleDayEventDelete = async (ids) => {
@@ -464,8 +464,12 @@ export default function MarketCalendar() {
       <DayEventsModal
         open={dayEventsModal.open}
         date={dayEventsModal.date}
-        events={displayedEvents.filter(ev => ev.date === dayEventsModal.date)}
-        onClose={() => setDayEventsModal({ open: false, date: null })}
+        events={
+          dayEventsModal.hiddenIds
+            ? displayedEvents.filter(ev => dayEventsModal.hiddenIds.includes(String(ev.id)))
+            : []
+        }
+        onClose={() => setDayEventsModal({ open: false, date: null, hiddenIds: null })}
         onDelete={handleDayEventDelete}
       />
 
