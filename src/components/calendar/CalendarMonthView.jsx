@@ -8,6 +8,7 @@ import { CATEGORY_COLORS } from './EventBadge'
 import './calendar.css'
 
 const IMPACT_STARS = { high: '★★★', medium: '★★', low: '★' }
+const IMPACT_ORDER = { high: 1, medium: 2, low: 3 }
 
 export default function CalendarMonthView({ events, currentDate, onDateClick, onEventClick, onMoreLinkClick = () => {} }) {
   const calendarRef = useRef(null)
@@ -40,6 +41,9 @@ export default function CalendarMonthView({ events, currentDate, onDateClick, on
         events={fcEvents}
         height="auto"
         dayMaxEvents={3}
+        eventOrder={(a, b) =>
+          (IMPACT_ORDER[a.extendedProps?.impact] ?? 4) - (IMPACT_ORDER[b.extendedProps?.impact] ?? 4)
+        }
         dateClick={(info) => onDateClick?.(info.dateStr)}
         eventClick={(info) => onEventClick?.(info.event.extendedProps)}
         moreLinkClick={(info) => {
