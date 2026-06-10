@@ -35,16 +35,10 @@ export default function FetchPreviewModal({ open, onClose, onConfirm, results = 
 
   const [checked, setChecked] = useState(new Set())
 
-  // 모달이 열릴 때마다 신규·업데이트 가능 항목 선택, 완전 중복 항목 제외
+  // 모달이 열릴 때마다 전체 해제 상태로 초기화 — 사용자가 직접 선택
   useEffect(() => {
     if (!open) return
-    const initial = new Set()
-    results.forEach((ev, i) => {
-      const existingEv = ev.ticker ? existingMap.get(`${ev.ticker}|${ev.date}|${ev.category}`) : null
-      const isDuplicate = existingEv && !!existingEv.name  // 기존에 name 있음 → 완전 중복
-      if (!isDuplicate) initial.add(i)
-    })
-    setChecked(initial)
+    setChecked(new Set())
   }, [open, results, existingMap])
 
   const allSelected  = results.length > 0 && checked.size === results.length

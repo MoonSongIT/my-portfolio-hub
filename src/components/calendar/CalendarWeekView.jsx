@@ -3,7 +3,8 @@
 import { useMemo } from 'react'
 import EventBadge, { CATEGORY_COLORS } from './EventBadge'
 
-const DAY_LABELS   = ['월', '화', '수', '목', '금', '토', '일']
+const DAY_LABELS    = ['월', '화', '수', '목', '금', '토', '일']
+const IMPACT_ORDER  = { high: 1, medium: 2, low: 3 }
 const IMPACT_ICONS  = { high: '🔴', medium: '🟡', low: '🟢' }
 const IMPACT_LABELS = { high: '높음', medium: '중간', low: '낮음' }
 const IMPACT_BAR   = { high: 'border-red-500', medium: 'border-yellow-400', low: 'border-green-400' }
@@ -51,6 +52,9 @@ export default function CalendarWeekView({ events, currentDate, onEventClick, on
       const key = (e.date ?? '').slice(0, 10)
       if (!map[key]) map[key] = []
       map[key].push(e)
+    })
+    Object.keys(map).forEach(k => {
+      map[k].sort((a, b) => (IMPACT_ORDER[a.impact] ?? 4) - (IMPACT_ORDER[b.impact] ?? 4))
     })
     return map
   }, [events])

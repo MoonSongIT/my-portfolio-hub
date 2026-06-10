@@ -14,6 +14,7 @@ import { CATEGORY_COLORS } from '../components/calendar/EventBadge'
 import AddEventModal from '../components/calendar/AddEventModal'
 import EventDetailModal from '../components/calendar/EventDetailModal'
 import FetchPreviewModal from '../components/calendar/FetchPreviewModal'
+import DayEventsModal from '../components/calendar/DayEventsModal'
 import { Button } from '../components/ui/button'
 
 const CalendarMonthView = lazy(() => import('../components/calendar/CalendarMonthView'))
@@ -72,13 +73,16 @@ const SCOPE_FILTERS = [
   { value: 'portfolio', label: '보유종목' },
 ]
 
+const IMPACT_ORDER = { high: 1, medium: 2, low: 3 }
+const impactSort   = (a, b) => (IMPACT_ORDER[a.impact] ?? 4) - (IMPACT_ORDER[b.impact] ?? 4)
+
 export default function MarketCalendar() {
   const {
     events, view, currentDate, filterCategory, filterScope, filterImpact,
     setView, setCurrentDate, setFilter, setFilterImpact, loadEvents,
     isFetching, fetchResult,
     fetchFromDart, fetchFromFinnhub, fetchFromAll,
-    bulkAddEvents, clearFetchResult, deleteEventsByRange,
+    bulkAddEvents, clearFetchResult, deleteEventsByRange, deleteEvent,
   } = useCalendarStore()
 
   const currentUser = useAuthStore(s => s.currentUser)
@@ -95,6 +99,7 @@ export default function MarketCalendar() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearRange, setClearRange] = useState({ from: '', to: '' })
+  const [dayEventsModal, setDayEventsModal] = useState({ open: false, date: null })
   const fetchDropdownRef = useRef(null)
 
   const watchlistTickers = useMemo(() => watchlist.map(w => w.ticker), [watchlist])
@@ -181,6 +186,19 @@ export default function MarketCalendar() {
     setShowClearConfirm(false)
   }
 
+  const handleMoreLinkClick = (dateStr) => {
+    setDayEventsModal({ open: true, date: dateStr })
+  }
+
+  const handleDayEventDelete = async (ids) => {
+    const userId = currentUser?.id
+    if (!userId) return
+    for (const id of ids) {
+      await deleteEvent(userId, id)
+    }
+    toast.success(`${ids.length}건의 일정이 삭제되었습니다.`)
+  }
+
   const displayedEvents = useMemo(() => {
     return events.filter(e => {
       if (filterCategory !== 'all' && e.category !== filterCategory) return false
@@ -188,7 +206,7 @@ export default function MarketCalendar() {
       if (filterScope === 'watchlist') return watchlistTickers.includes(e.ticker)
       if (filterScope === 'portfolio') return portfolioTickers.includes(e.ticker)
       return true
-    })
+    }).slice().sort(impactSort)
   }, [events, filterCategory, filterImpact, filterScope, watchlistTickers, portfolioTickers])
 
   const navigate = (dir) => {
@@ -393,6 +411,7 @@ export default function MarketCalendar() {
               currentDate={currentDate}
               onDateClick={handleDateClick}
               onEventClick={(event) => setSelectedEvent(event)}
+              onMoreLinkClick={handleMoreLinkClick}
             />
           </Suspense>
         )}
@@ -441,6 +460,13 @@ export default function MarketCalendar() {
         onClose={handlePreviewClose}
         onConfirm={handlePreviewConfirm}
         results={fetchResult ?? []}
+      />
+      <DayEventsModal
+        open={dayEventsModal.open}
+        date={dayEventsModal.date}
+        events={displayedEvents.filter(ev => ev.date === dayEventsModal.date)}
+        onClose={() => setDayEventsModal({ open: false, date: null })}
+        onDelete={handleDayEventDelete}
       />
 
       {/* 날짜 범위 삭제 다이얼로그 */}
