@@ -2,7 +2,7 @@
 import axios from 'axios'
 import useAiCredentialStore from '../store/aiCredentialStore.js'
 import { useSettingsStore } from '../store/settingsStore.js'
-import { routeToAgent, AGENT_LABELS } from '../agents/orchestrator.js'
+import { routeToAgentSmart, AGENT_LABELS } from '../agents/orchestrator.js'
 import { RESEARCH_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
@@ -10,6 +10,7 @@ import { REPORT_PROMPT, WEEKLY_REPORT_PROMPT, MONTHLY_REPORT_PROMPT, buildReport
 import { buildJournalCoachPrompt, buildJournalContext, buildCompressedJournalContext } from '../agents/journalCoachAgent.js'
 import { ANALYSIS_PROMPT, MARKET_BRIEF_PROMPT, PORTFOLIO_ANALYSIS_PROMPT, buildMovementContext, buildMarketBriefContext, buildPortfolioMovementContext } from '../agents/analysisAgent.js'
 import { fetchNews } from './newsApi.js'
+import { scoreNewsSentiment, mergeSentiment } from './sentimentApi.js'
 import { fetchDisclosures } from './disclosureApi.js'
 import { fetchQuote } from './stockApi.js'
 import { getCached, setCached } from './apiCache'
@@ -271,8 +272,8 @@ export async function callClaudeWithRetry(payload, maxAttempts = 3) {
  * @returns {Promise<{text: string, agentType: string, agentInfo: object}>}
  */
 export async function sendToAgent(userMessage, context = {}, forceAgent = null) {
-  // 에이전트 라우팅
-  const agentType = forceAgent || await routeToAgent(userMessage, context)
+  // 에이전트 라우팅 (정적 우선 + 폴백 시 LLM 보정)
+  const agentType = forceAgent || await routeToAgentSmart(userMessage)
   const agentInfo = AGENT_LABELS[agentType] || AGENT_LABELS.portfolio
   const maxTokens = AGENT_MAX_TOKENS[agentType] || 2048
 
@@ -298,7 +299,10 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
             fetchNews(ticker, market).catch(() => []),
             fetchDisclosures(ticker, market, disclosureDays).catch(() => []),
           ])
-          contextText = buildMovementContext({ ticker, name, changePercent, market, news, disclosures })
+          // 뉴스 감성 점수 산출 후 병합 (실패 시 원본 뉴스 그대로 — 항상 ON)
+          const sentiments = await scoreNewsSentiment(news, { name, ticker, market }).catch(() => [])
+          const newsWithSentiment = mergeSentiment(news, sentiments)
+          contextText = buildMovementContext({ ticker, name, changePercent, market, news: newsWithSentiment, disclosures })
           systemPrompt = ANALYSIS_PROMPT
         } else if (context.holdings?.length > 0) {
           // 경로 2: changePercent 없는 종목만 quote fetch (이미 있으면 중복 fetch 방지)

@@ -6,6 +6,7 @@ export const ANALYSIS_PROMPT = `당신은 주가 급등락 원인 분석 전문 
 분석 규칙:
 - 수집된 데이터(뉴스·공시)에 근거한 분석만 수행하세요. 데이터가 부족하면 "데이터 부족으로 원인을 특정하기 어렵습니다"라고 명시하세요.
 - 추측성 표현("아마", "~일 수 있습니다") 최소화 — 뉴스/공시가 있으면 해당 내용을 직접 인용하세요.
+- 뉴스에 감성 점수(호재/악재·강도)와 종합 감성이 제공되면 등락 원인 판단에 우선 활용하세요.
 - 3가지 이내 핵심 요인으로 압축하세요.
 - 마지막에 면책 문구를 반드시 포함하세요.
 
@@ -72,11 +73,21 @@ export function buildMovementContext({ ticker, name, changePercent, market, news
 
   const latestNews = news.slice(0, 8)
   if (latestNews.length > 0) {
+    // 종합 감성 라벨 (감성 점수가 있는 뉴스만 평균) — movement 분석 전용
+    const scored = latestNews.filter(n => typeof n.sentiment === 'number')
+    if (scored.length > 0) {
+      const avg = scored.reduce((s, n) => s + n.sentiment, 0) / scored.length
+      const label = avg <= -0.2 ? '악재 우세' : avg >= 0.2 ? '호재 우세' : '중립'
+      lines.push(`[뉴스 종합 감성] ${label} (평균 ${avg.toFixed(2)}, ${scored.length}건 기준)`)
+    }
     lines.push('[최근 뉴스]')
     latestNews.forEach((item, i) => {
       const date = item.date || item.providerPublishTime || ''
       const source = item.publisher || item.source || ''
-      lines.push(`${i + 1}. ${item.title}${date ? ` (${date})` : ''}${source ? ` [${source}]` : ''}`)
+      const sent = typeof item.sentiment === 'number'
+        ? ` (감성 ${item.sentiment >= 0 ? '+' : ''}${item.sentiment.toFixed(1)}/${item.strength || 'low'}${item.sentimentReason ? ` — ${item.sentimentReason}` : ''})`
+        : ''
+      lines.push(`${i + 1}. ${item.title}${date ? ` (${date})` : ''}${source ? ` [${source}]` : ''}${sent}`)
     })
     lines.push('')
   } else {

@@ -1,4 +1,8 @@
 // AI 오케스트레이터 — 사용자 요청을 분석하여 적절한 에이전트로 라우팅
+import useAiCredentialStore from '../store/aiCredentialStore.js'
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+const VALID_AGENTS = ['analysis', 'journal', 'research', 'portfolio', 'alert', 'report']
 
 /**
  * 에이전트 라우팅 규칙
@@ -57,6 +61,88 @@ export function routeToAgent(userMessage) {
 
   // 기본 fallback → portfolio
   return 'portfolio'
+}
+
+/**
+ * 메시지에 portfolio 규칙 키워드가 실제로 포함되어 있는지 (폴백과 구분용)
+ * @param {string} message
+ * @returns {boolean}
+ */
+function hasPortfolioKeyword(message) {
+  const msg = message.toLowerCase()
+  const rule = ROUTING_RULES.find(r => r.agent === 'portfolio')
+  return !!rule && rule.keywords.some(kw => msg.includes(kw.toLowerCase()))
+}
+
+const INTENT_SYSTEM = `당신은 주식 투자 앱의 의도 분류기입니다.
+사용자 메시지를 아래 6개 중 하나로만 분류하고, 그 단어 하나만 출력하세요.
+- analysis: 주가 급등락 원인, 오늘 시장/종목이 왜 움직였는지
+- journal: 내 매매 패턴·실수·심리·일지 회고
+- research: 특정 종목 분석·전망·매수 검토·재무/기술적 지표
+- portfolio: 내 보유 종목·수익률·자산 현황·비중·리밸런싱
+- alert: 관심종목 모니터링·오늘 시장 브리핑·알림·신호
+- report: 성과 리포트·결산·주간/월간 보고서
+다른 텍스트 없이 영문 소문자 한 단어만 출력하세요.`
+
+/**
+ * Haiku 응답에서 유효한 에이전트 타입 추출 (순수 함수 — 테스트 대상)
+ * @param {string} text
+ * @returns {string|null}
+ */
+export function parseIntentResponse(text) {
+  if (!text || typeof text !== 'string') return null
+  const lower = text.toLowerCase()
+  return VALID_AGENTS.find(agent => lower.includes(agent)) ?? null
+}
+
+/**
+ * Haiku로 메시지 의도를 분류 (2초 타임아웃, 실패 시 null)
+ * @param {string} message
+ * @returns {Promise<string|null>}
+ */
+export async function classifyIntentLLM(message) {
+  if (!message) return null
+  const { apiKey } = useAiCredentialStore.getState()
+  const headers = { 'Content-Type': 'application/json' }
+  if (apiKey) headers['X-User-Api-Key'] = apiKey
+
+  try {
+    const res = await fetch(`${API_BASE}/claude`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        maxTokens: 16,
+        systemPrompt: INTENT_SYSTEM,
+        messages: [{ role: 'user', content: message }],
+      }),
+      signal: AbortSignal.timeout(2000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return parseIntentResponse(data.content?.[0]?.text ?? '')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 하이브리드 라우팅 — 정적 규칙 우선, 기본 폴백(portfolio) 케이스에서만 LLM 보정
+ * 명확한 키워드 메시지는 LLM 호출 없이 즉시 라우팅(지연 0)
+ * @param {string} message
+ * @returns {Promise<string>}
+ */
+export async function routeToAgentSmart(message) {
+  if (!message || typeof message !== 'string') return 'portfolio'
+
+  const staticResult = routeToAgent(message)
+  // 정적 결과가 명확하면(portfolio 외) 그대로 사용
+  if (staticResult !== 'portfolio') return staticResult
+  // portfolio 키워드가 실제로 있으면 신뢰, 없으면 기본 폴백 → LLM 보정
+  if (hasPortfolioKeyword(message)) return 'portfolio'
+
+  const llmResult = await classifyIntentLLM(message)
+  return llmResult || 'portfolio'
 }
 
 /**
