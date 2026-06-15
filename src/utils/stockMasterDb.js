@@ -286,10 +286,15 @@ export async function addCustom(row) {
   const existing = await stockMasterDb.stocks.get(id)
   if (existing) return false
 
+  // country / currency 는 NOT NULL 컬럼 — exchange 기준으로 파생 (서버 정규화 로직과 일관)
+  const isDomestic = category === 'DOMESTIC'
+
   await stockMasterDb.stocks.put({
     ...row,
     id,
     category,
+    country:  row.country  ?? (isDomestic ? 'KR' : 'US'),
+    currency: row.currency ?? (isDomestic ? 'KRW' : 'USD'),
     isCustom: true,
     isActive: true,
     source: 'MANUAL',

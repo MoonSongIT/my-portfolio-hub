@@ -11,6 +11,7 @@ const supabase = createClient(
 )
 
 const EXCHANGES = ['KOSPI', 'KOSDAQ', 'NXT', 'KRX_ETF', 'NYSE', 'NASDAQ', 'US_ETF']
+const DOMESTIC_EXCHANGES = new Set(['KOSPI', 'KOSDAQ', 'NXT', 'KRX_ETF'])
 
 // ── 공통 헬퍼 ─────────────────────────────────────────────────────────────
 
@@ -41,6 +42,9 @@ function fromRow(r) {
 
 function toRow(r) {
   const now = new Date().toISOString()
+  // country / currency 는 NOT NULL 컬럼 — 누락 시 exchange 기준 보정
+  // (구버전에서 country 없이 저장된 커스텀 종목도 재입력 없이 업로드 가능하도록)
+  const isDomestic = DOMESTIC_EXCHANGES.has(r.exchange)
   return {
     id:            r.id,
     ticker:        r.ticker,
@@ -49,8 +53,8 @@ function toRow(r) {
     category:      r.category,
     exchange:      r.exchange,
     type:          r.type,
-    country:       r.country,
-    currency:      r.currency,
+    country:       r.country  ?? (isDomestic ? 'KR' : 'US'),
+    currency:      r.currency ?? (isDomestic ? 'KRW' : 'USD'),
     sector:        r.sector       ?? null,
     industry:      r.industry     ?? null,
     isin:          r.isin         ?? null,
