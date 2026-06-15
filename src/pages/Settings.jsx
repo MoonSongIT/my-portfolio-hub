@@ -32,6 +32,7 @@ export default function Settings() {
     benchmarkIndex, setBenchmark,
     watchlistDefaults, setWatchlistDefaults,
     calendarNotification, setCalendarNotification,
+    webSearchEnabled, setWebSearchEnabled,
   } = useSettingsStore()
   const { isAdmin, isSupabaseUser } = useAuthStore()
 
@@ -383,6 +384,29 @@ export default function Settings() {
       <section className="space-y-4">
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">AI 및 API 키</h2>
         <ApiKeyPanel />
+
+        {/* 실시간 웹 검색 토글 — analysis·research·alert 에이전트에 적용 */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white">실시간 웹 검색</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                AI 분석(원인 분석·종목 리서치·시장 알림) 시 최신 뉴스를 직접 검색하고 출처를 인용합니다.
+                검색당 추가 비용이 발생하므로 본인 API 키 사용량에 유의하세요.
+              </p>
+            </div>
+            <button
+              onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+              className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                webSearchEnabled
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              {webSearchEnabled ? '사용 중' : '사용 안 함'}
+            </button>
+          </div>
+        </div>
       </section>
 
       {/* ══════════════ 5. 종목 DB 관리 (D) ══════════════ */}

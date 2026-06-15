@@ -1,6 +1,7 @@
 // Anthropic Claude API 호출 — 서버사이드 프록시 경유
 import axios from 'axios'
 import useAiCredentialStore from '../store/aiCredentialStore.js'
+import { useSettingsStore } from '../store/settingsStore.js'
 import { routeToAgent, AGENT_LABELS } from '../agents/orchestrator.js'
 import { RESEARCH_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
@@ -68,6 +69,67 @@ const AGENT_MAX_TOKENS = {
   research: 2048,
   portfolio: 1024,
   alert: 1024,
+}
+
+/**
+ * 에이전트별 모델 — 깊은 분석이 필요한 계열은 최고 사양(Opus 4.8)
+ * 미지정 에이전트는 프록시 기본값(Sonnet)으로 폴백
+ */
+const AGENT_MODELS = {
+  analysis: 'claude-opus-4-8',
+  research: 'claude-opus-4-8',
+  report:   'claude-opus-4-8',
+}
+
+/**
+ * 에이전트별 web_search 도구 설정 — analysis·research·alert 만 실시간 검색
+ * settingsStore.webSearchEnabled 가 true 일 때만 실제 첨부됨
+ */
+const WEB_SEARCH_TOOL = {
+  type: 'web_search_20250305',
+  name: 'web_search',
+  max_uses: 3,
+  user_location: { type: 'approximate', country: 'KR', timezone: 'Asia/Seoul' },
+  allowed_domains: ['finance.naver.com', 'hankyung.com', 'mk.co.kr', 'dart.fss.or.kr', 'sedaily.com'],
+}
+const AGENT_TOOLS = {
+  analysis: [WEB_SEARCH_TOOL],
+  research: [WEB_SEARCH_TOOL],
+  alert:    [WEB_SEARCH_TOOL],
+}
+
+/**
+ * Claude 응답 content 배열에서 모든 text 블록을 결합하고 인용(citations)을 수집
+ * web_search 사용 시 content 가 여러 블록(text/server_tool_use/web_search_tool_result)으로
+ * 나뉘므로 content[0].text 만 읽으면 본문이 누락된다.
+ * @param {{ content?: Array }} data
+ * @returns {{ text: string, citations: Array<{url: string, title: string}> }}
+ */
+export function extractTextAndCitations(data) {
+  const blocks = data?.content
+  if (!Array.isArray(blocks)) {
+    return { text: data?.content?.[0]?.text ?? '', citations: [] }
+  }
+  const textParts = []
+  const citations = []
+  for (const b of blocks) {
+    if (b?.type === 'text' && b.text) {
+      textParts.push(b.text)
+      if (Array.isArray(b.citations)) {
+        for (const c of b.citations) {
+          if (c?.url) citations.push({ url: c.url, title: c.title || c.url })
+        }
+      }
+    }
+  }
+  // url 기준 중복 제거
+  const seen = new Set()
+  const uniqueCitations = citations.filter(c => {
+    if (seen.has(c.url)) return false
+    seen.add(c.url)
+    return true
+  })
+  return { text: textParts.join(''), citations: uniqueCitations }
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -383,14 +445,26 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
     ? `${contextText}\n\n사용자 질문: ${userMessage}`
     : userMessage
 
+  // 에이전트별 모델 (미지정 시 프록시 기본값) + 웹 검색 도구 (설정 ON & 해당 에이전트만)
+  const model = AGENT_MODELS[agentType]
+  const webSearchOn = useSettingsStore.getState().webSearchEnabled
+  const tools = (webSearchOn && AGENT_TOOLS[agentType]) ? AGENT_TOOLS[agentType] : undefined
+
   try {
     const response = await callClaudeWithRetry({
       systemPrompt,
       messages: [{ role: 'user', content: combinedMessage }],
       maxTokens,
+      model,
+      tools,
     })
 
-    const text = response.data?.content?.[0]?.text || '응답을 받지 못했습니다.'
+    const { text: rawText, citations } = extractTextAndCitations(response.data)
+    let text = rawText || '응답을 받지 못했습니다.'
+    // 웹 검색 인용이 있으면 응답 하단에 출처 추가
+    if (citations.length > 0) {
+      text += '\n\n[참고 출처]\n' + citations.map((c, i) => `[${i + 1}] ${c.title} — ${c.url}`).join('\n')
+    }
     // max_tokens로 잘린 응답 감지
     const incomplete = response.data?.stop_reason === 'max_tokens'
     return { text, agentType, agentInfo, incomplete }

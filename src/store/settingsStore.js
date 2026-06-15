@@ -19,6 +19,7 @@ export const useSettingsStore = create(
       timing: 'on_day',        // 'on_day' | 'day_before' | 'week_before'
       impactFilter: 'all',     // 'all' | 'high' | 'medium' | 'low'
     },
+    webSearchEnabled: false,   // AI 분석 시 실시간 웹 검색 사용 (검색당 추가 비용 — 기본 OFF)
 
     setTheme: (theme) => set({ theme }),
     toggleTheme: () => set((state) => ({
@@ -35,6 +36,7 @@ export const useSettingsStore = create(
     setCalendarNotification: (patch) => set((state) => ({
       calendarNotification: { ...state.calendarNotification, ...patch },
     })),
+    setWebSearchEnabled: (enabled) => set({ webSearchEnabled: enabled }),
 
     // 동기화 활성화 / 비활성화
     syncEnabled: false,

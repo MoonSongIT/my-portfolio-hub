@@ -1,4 +1,13 @@
 // api/claude.js — Vercel Serverless Function
+// 허용 모델 화이트리스트 — 클라이언트가 임의 모델을 주입하지 못하도록 제한
+const ALLOWED_MODELS = new Set([
+  'claude-opus-4-8',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+  'claude-haiku-4-5-20251001',
+])
+const DEFAULT_MODEL = 'claude-sonnet-4-6'
+
 export default async function handler(req, res) {
   // CORS 헤더 — X-User-Api-Key 헤더 허용 추가
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -12,7 +21,7 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
 
-  const { systemPrompt, messages, maxTokens = 4096 } = req.body
+  const { systemPrompt, messages, maxTokens = 4096, model, tools } = req.body
 
   if (!systemPrompt || !messages?.length) {
     return res.status(400).json({ error: '필수 파라미터 누락 (systemPrompt, messages)' })
@@ -25,6 +34,18 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'API 키 미설정 — 설정에서 API 키를 등록해주세요.' })
   }
 
+  // 허용 모델만 통과 — 미허용·미지정 시 기본값으로 보정 (임의 모델 주입 방지)
+  const resolvedModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL
+
+  // web_search 등 서버 도구는 클라이언트가 지정한 배열만 전달 (없으면 미포함)
+  const requestBody = {
+    model: resolvedModel,
+    max_tokens: maxTokens,
+    system: systemPrompt,
+    messages,
+  }
+  if (Array.isArray(tools) && tools.length > 0) requestBody.tools = tools
+
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -33,12 +54,7 @@ export default async function handler(req, res) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
