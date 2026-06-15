@@ -200,11 +200,18 @@ export async function extractTicker(message) {
 
   // 3순위: 마스터 DB 검색 — 종목명으로 텍스트 추출
   try {
-    // 메시지를 단어로 분리해 2글자 이상 어절로 검색
+    // "오늘/왜/시장" 등 질의 상용어는 종목명 prefix(예: 오늘이엔엠)에 오매칭되므로 제외
+    const STOPWORDS = new Set([
+      '오늘', '어제', '내일', '요즘', '최근', '지금', '현재', '얼마', '관련', '대해', '대한',
+      '무슨', '무슨일', '이유', '원인', '시장', '종목', '주가', '주식', '분석', '전망', '어때',
+      '움직', '등락', '급등', '급락', '상승', '하락', '가격',
+    ])
+    // 2글자 이상 어절, 상용어 제외, 긴(구체적인) 단어를 우선 검색
     const words = message
       .replace(/[^\w가-힣]/g, ' ')
       .split(/\s+/)
-      .filter(w => w.length >= 2)
+      .filter(w => w.length >= 2 && !STOPWORDS.has(w))
+      .sort((a, b) => b.length - a.length)
 
     for (const word of words) {
       const rows = await searchByQuery(word, { limit: 3 })
