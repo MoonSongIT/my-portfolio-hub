@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { calcAllocation, calcSectorAllocation, calcCountryAllocation, calcAccountAllocation } from '../../utils/calculator'
+import { calcAllocation, calcStockAllocation, calcSectorAllocation, calcCountryAllocation, calcAccountAllocation } from '../../utils/calculator'
 import { formatCurrency } from '../../utils/formatters'
 
 const COLORS = [
@@ -76,9 +76,11 @@ export default function AllocationPieChart({ holdings, accounts = [], selectedAc
   const showAccountTab = selectedAccountId === 'all' && accounts.length > 1
   const [viewType, setViewType] = useState('stock')
 
-  const stockAllocation = calcAllocation(holdings)
-  const sectorAllocation = calcSectorAllocation(stockAllocation)
-  const countryAllocation = calcCountryAllocation(stockAllocation)
+  const rawAllocation = calcAllocation(holdings)
+  // 종목별: 같은 종목을 계좌 구분 없이 하나로 합산 (전체 조회 시 중복 슬라이스 방지)
+  const stockAllocation = calcStockAllocation(rawAllocation)
+  const sectorAllocation = calcSectorAllocation(rawAllocation)
+  const countryAllocation = calcCountryAllocation(rawAllocation)
   const accountAllocation = showAccountTab ? calcAccountAllocation(accounts) : []
 
   const dataMap = {

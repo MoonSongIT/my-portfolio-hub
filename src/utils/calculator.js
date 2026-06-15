@@ -80,6 +80,21 @@ export const calcAllocation = (holdings, exchangeRate = EXCHANGE_RATE) => {
   })
 }
 
+// 종목별 그룹핑 — 같은 종목(계좌가 달라도)을 하나로 합산
+// 전체(여러 계좌) 조회 시 동일 종목이 계좌별로 따로 나오는 것을 방지
+export const calcStockAllocation = (allocations) => {
+  const stocks = {}
+  allocations.forEach(a => {
+    const key = `${a.market ?? ''}:${a.ticker}`
+    if (!stocks[key]) {
+      stocks[key] = { ticker: a.ticker, name: a.name, value: 0, weight: 0, sector: a.sector, market: a.market }
+    }
+    stocks[key].value += a.value
+    stocks[key].weight += a.weight
+  })
+  return Object.values(stocks).sort((a, b) => b.value - a.value)
+}
+
 // 섹터별 그룹핑
 export const calcSectorAllocation = (allocations) => {
   const sectors = {}
