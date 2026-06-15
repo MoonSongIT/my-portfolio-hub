@@ -3,7 +3,7 @@ import axios from 'axios'
 import useAiCredentialStore from '../store/aiCredentialStore.js'
 import { useSettingsStore } from '../store/settingsStore.js'
 import { routeToAgentSmart, AGENT_LABELS } from '../agents/orchestrator.js'
-import { RESEARCH_PROMPT, buildResearchContext } from '../agents/researchAgent.js'
+import { RESEARCH_PROMPT, buildResearchContext, extractTicker } from '../agents/researchAgent.js'
 import { PORTFOLIO_PROMPT, buildPortfolioContext } from '../agents/portfolioAgent.js'
 import { ALERT_PROMPT, buildAlertContext } from '../agents/alertAgent.js'
 import { REPORT_PROMPT, WEEKLY_REPORT_PROMPT, MONTHLY_REPORT_PROMPT, buildReportContext } from '../agents/reportAgent.js'
@@ -64,7 +64,7 @@ const AGENT_PROMPTS = {
  * - portfolio / alert: 짧은 요약 → 2048
  */
 const AGENT_MAX_TOKENS = {
-  analysis: 1024,
+  analysis: 2048,
   journal: 2048,
   report: 2048,
   research: 2048,
@@ -286,10 +286,25 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
       case 'analysis': {
         // context에서 종목 정보 추출 (researchBundle 우선, stockData 폴백)
         const sd = context.researchBundle?.stockData ?? context.stockData ?? null
-        const ticker = sd?.symbol ?? sd?.ticker ?? null
-        const name = sd?.name ?? ticker ?? ''
-        const market = sd?.market ?? 'NASDAQ'
-        const changePercent = sd?.changePercent ?? 0
+        let ticker = sd?.symbol ?? sd?.ticker ?? null
+        let name = sd?.name ?? ticker ?? ''
+        let market = sd?.market ?? 'NASDAQ'
+        let changePercent = sd?.changePercent ?? 0
+
+        // 채팅 free-text: 컨텍스트에 종목이 없으면 메시지에서 종목 추출 시도
+        // (시세 조회 성공 시에만 종목 경로로 전환 — 실패하면 포트폴리오/시장 경로로 폴백)
+        if (!ticker) {
+          const extracted = await extractTicker(userMessage).catch(() => null)
+          if (extracted) {
+            const q = await fetchQuote(extracted.ticker, extracted.market).catch(() => null)
+            if (q && q.currentPrice != null) {
+              ticker = extracted.ticker
+              market = extracted.market
+              name = q.name ?? extracted.ticker
+              changePercent = q.changePercent ?? 0
+            }
+          }
+        }
 
         if (ticker) {
           // 경로 1: 종목이 있으면 급등락 원인 분석
