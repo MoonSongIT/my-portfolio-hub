@@ -85,12 +85,14 @@ const AGENT_MODELS = {
  * 에이전트별 web_search 도구 설정 — analysis·research·alert 만 실시간 검색
  * settingsStore.webSearchEnabled 가 true 일 때만 실제 첨부됨
  */
+// allowed_domains 는 조직(Console) 레벨 도메인 설정과 충돌 시 400(invalid_request_error)을
+// 유발하므로 사용하지 않는다. 한국 결과 편향은 user_location 으로 처리하고, 검색 범위는
+// 모델이 질의에 맞게 자율 결정하도록 둔다(미국 종목 검색도 가능).
 const WEB_SEARCH_TOOL = {
   type: 'web_search_20250305',
   name: 'web_search',
   max_uses: 3,
   user_location: { type: 'approximate', country: 'KR', timezone: 'Asia/Seoul' },
-  allowed_domains: ['finance.naver.com', 'hankyung.com', 'mk.co.kr', 'dart.fss.or.kr', 'sedaily.com'],
 }
 const AGENT_TOOLS = {
   analysis: [WEB_SEARCH_TOOL],
