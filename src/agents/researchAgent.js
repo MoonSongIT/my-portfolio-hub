@@ -173,6 +173,9 @@ const EXCHANGE_TO_MARKET = {
   NYSE: 'NYSE', NASDAQ: 'NASDAQ', AMEX: 'NYSE', US_ETF: 'NASDAQ',
 }
 
+// 한 검색어가 이 개수 이상 종목명에 부분일치하면 일반어로 보고 특정 종목 확정을 건너뜀
+const AMBIGUOUS_LIMIT = 3
+
 /**
  * 사용자 메시지에서 종목 티커를 추출합니다.
  *
@@ -200,11 +203,16 @@ export async function extractTicker(message) {
 
   // 3순위: 마스터 DB 검색 — 종목명으로 텍스트 추출
   try {
-    // "오늘/왜/시장" 등 질의 상용어는 종목명 prefix(예: 오늘이엔엠)에 오매칭되므로 제외
+    // 질의 상용어 + 업종 일반명사는 종목명에 부분일치(예: "반도체"→SFA반도체)하므로 제외
     const STOPWORDS = new Set([
+      // 질의 상용어
       '오늘', '어제', '내일', '요즘', '최근', '지금', '현재', '얼마', '관련', '대해', '대한',
       '무슨', '무슨일', '이유', '원인', '시장', '종목', '주가', '주식', '분석', '전망', '어때',
       '움직', '등락', '급등', '급락', '상승', '하락', '가격',
+      // 업종 일반명사 (회사명 부분일치 오매칭 방지)
+      '반도체', '자동차', '바이오', '전자', '화학', '금융', '건설', '제약', '에너지', '조선',
+      '방산', '게임', '통신', '유통', '화장품', '철강', '항공', '해운', '식품', '보험', '증권',
+      '은행', '엔터', '미디어', '의료', '헬스케어', '배터리', '이차전지', '디스플레이',
     ])
     // 2글자 이상 어절, 상용어 제외, 긴(구체적인) 단어를 우선 검색
     const words = message
@@ -213,16 +221,22 @@ export async function extractTicker(message) {
       .filter(w => w.length >= 2 && !STOPWORDS.has(w))
       .sort((a, b) => b.length - a.length)
 
+    // exchange 우선순위: KOSPI > KOSDAQ > NASDAQ > NYSE > 나머지
+    const PRIORITY = { KOSPI: 0, KOSDAQ: 1, KRX_ETF: 2, NASDAQ: 3, NYSE: 4, AMEX: 5, US_ETF: 6, NXT: 7 }
+
     for (const word of words) {
-      const rows = await searchByQuery(word, { limit: 3 })
+      const rows = await searchByQuery(word, { limit: 10 })
       if (rows.length === 0) continue
 
-      // exchange 우선순위: KOSPI > KOSDAQ > NASDAQ > NYSE > 나머지
-      const PRIORITY = { KOSPI: 0, KOSDAQ: 1, KRX_ETF: 2, NASDAQ: 3, NYSE: 4, AMEX: 5, US_ETF: 6, NXT: 7 }
-      const sorted = [...rows].sort(
+      // 모호성 가드: 종목명이 검색어와 정확히 일치하면 그 종목으로 인정.
+      // 정확 일치가 없고 여러 종목에 부분일치하면(업종어/일반어) 건너뜀.
+      const exactRows = rows.filter(r => r.name.toLowerCase() === word.toLowerCase())
+      if (exactRows.length === 0 && rows.length >= AMBIGUOUS_LIMIT) continue
+
+      const candidates = exactRows.length > 0 ? exactRows : rows
+      const best = [...candidates].sort(
         (a, b) => (PRIORITY[a.exchange] ?? 99) - (PRIORITY[b.exchange] ?? 99)
-      )
-      const best = sorted[0]
+      )[0]
       return {
         ticker:   best.ticker,
         exchange: best.exchange,
