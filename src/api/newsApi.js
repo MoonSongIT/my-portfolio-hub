@@ -6,6 +6,8 @@ const yahooApi = axios.create({ baseURL: '/api/yahoo', timeout: 8000 })
 const naverApi = axios.create({ baseURL: '/api/naver', timeout: 8000 })
 
 const NEWS_COUNT = 8
+// 한국 종목: Naver 뉴스가 이 개수 이상이면 Yahoo 병합을 생략(글로벌 무관 뉴스 오염 차단)
+const NAVER_SUFFICIENT = 3
 
 /** 1초 대기 유틸 */
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
@@ -108,11 +110,16 @@ export async function fetchNews(ticker, market) {
   let result
 
   if (isKorean) {
-    const [naverNews, yahooNews] = await Promise.all([
-      fetchNewsNaver(pureTicker),
-      fetchNewsYahoo(`${pureTicker}.KS`),
-    ])
-    result = sortByDate(dedupeByTitle([...naverNews, ...yahooNews])).slice(0, 5)
+    // 1순위: Naver 종목 전용 뉴스. 충분하면 Yahoo를 병합하지 않음(글로벌 junk 차단)
+    const naverNews = await fetchNewsNaver(pureTicker)
+    if (naverNews.length >= NAVER_SUFFICIENT) {
+      result = sortByDate(dedupeByTitle(naverNews)).slice(0, 5)
+    } else {
+      // Naver 부족 시에만 Yahoo 보강 — 시장별 접미사 적용 (KOSDAQ는 .KQ)
+      const suffix = market === 'KOSDAQ' ? '.KQ' : '.KS'
+      const yahooNews = await fetchNewsYahoo(`${pureTicker}${suffix}`)
+      result = sortByDate(dedupeByTitle([...naverNews, ...yahooNews])).slice(0, 5)
+    }
   } else {
     result = (await fetchNewsYahoo(ticker)).slice(0, 5)
   }
