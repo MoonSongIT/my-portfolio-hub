@@ -21,7 +21,7 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
 
-  const { systemPrompt, messages, maxTokens = 4096, model, tools } = req.body
+  const { systemPrompt, messages, maxTokens = 4096, model, tools, thinking } = req.body
 
   if (!systemPrompt || !messages?.length) {
     return res.status(400).json({ error: '필수 파라미터 누락 (systemPrompt, messages)' })
@@ -45,6 +45,20 @@ export default async function handler(req, res) {
     messages,
   }
   if (Array.isArray(tools) && tools.length > 0) requestBody.tools = tools
+
+  // 확장적 사고(thinking)
+  // - adaptive: 모델이 사고량 자동 조절 (Opus 4.8 등 신모델 필수 모드)
+  // - enabled: budget_tokens < max_tokens 일 때만 전달 (제약 위반 시 400 방지)
+  if (thinking?.type === 'adaptive') {
+    requestBody.thinking = { type: 'adaptive' }
+  } else if (
+    thinking?.type === 'enabled' &&
+    Number.isInteger(thinking.budget_tokens) &&
+    thinking.budget_tokens >= 1024 &&
+    thinking.budget_tokens < maxTokens
+  ) {
+    requestBody.thinking = thinking
+  }
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {

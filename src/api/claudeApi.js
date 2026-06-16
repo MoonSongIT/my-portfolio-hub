@@ -63,11 +63,12 @@ const AGENT_PROMPTS = {
  * - research: 중간 → 3072
  * - portfolio / alert: 짧은 요약 → 2048
  */
+// analysis·research 는 확장적 사고(adaptive) 사용 → 사고+본문 출력 여유 위해 4096
 const AGENT_MAX_TOKENS = {
-  analysis: 2048,
+  analysis: 4096,
   journal: 2048,
   report: 2048,
-  research: 2048,
+  research: 4096,
   portfolio: 1024,
   alert: 1024,
 }
@@ -99,6 +100,18 @@ const AGENT_TOOLS = {
   analysis: [WEB_SEARCH_TOOL],
   research: [WEB_SEARCH_TOOL],
   alert:    [WEB_SEARCH_TOOL],
+}
+
+/**
+ * 에이전트별 확장적 사고(thinking) 설정 — analysis·research 에 항상 적용
+ * Opus 4.8은 manual('enabled')을 미지원(400)하고 'adaptive'만 허용 → adaptive 사용.
+ * adaptive 는 모델이 사고량을 자동 조절하며, Opus 4.8은 display 기본값이 'omitted'.
+ * 사고 블록(type:'thinking')은 extractTextAndCitations가 무시하므로 본문에 새지 않음.
+ */
+const THINKING_CONFIG = { type: 'adaptive' }
+const AGENT_THINKING = {
+  analysis: THINKING_CONFIG,
+  research: THINKING_CONFIG,
 }
 
 /**
@@ -470,6 +483,8 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
   const model = AGENT_MODELS[agentType]
   const webSearchOn = useSettingsStore.getState().webSearchEnabled
   const tools = (webSearchOn && AGENT_TOOLS[agentType]) ? AGENT_TOOLS[agentType] : undefined
+  // 확장적 사고 (analysis·research 항상 ON) — 프록시가 budget<max_tokens 검증
+  const thinking = AGENT_THINKING[agentType]
 
   try {
     const response = await callClaudeWithRetry({
@@ -478,6 +493,7 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
       maxTokens,
       model,
       tools,
+      thinking,
     })
 
     const { text: rawText, citations } = extractTextAndCitations(response.data)
