@@ -61,7 +61,7 @@ export default function Dashboard() {
   const cashFlows = useCashFlowStore(s => s.cashFlows)
   const [sectorMap, setSectorMap] = useState({})
   const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
-  const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId])
+  const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId, cashFlows])
 
   // 고유 종목만 추출 (일괄 시세 조회용)
   const uniqueHoldings = useMemo(() => {
@@ -227,7 +227,7 @@ export default function Dashboard() {
 
   const availableCash = useMemo(
     () => getAvailableCash(selectedAccountId),
-    [selectedAccountId, getAvailableCash]
+    [selectedAccountId, getAvailableCash, cashFlows]
   )
 
   // 순 투자원금 — isCapital=true 카테고리(투자금 입출금)만 합산
