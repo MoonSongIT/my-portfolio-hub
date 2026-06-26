@@ -204,6 +204,52 @@ async function getMarketIndices() {
   return indices
 }
 
+// 미국 선행지표 6종 — 한국 증시 개장 방향·변동성을 선행하는 신호 (근거: docs/15.01.*)
+// invert: true = 값 상승이 한국 증시에 음(-)의 신호 (VIX·금리·달러·환율·유가)
+const LEADING_INDICATORS = [
+  { key: 'sox',    label: 'SOX(반도체)', ticker: '^SOX',     market: 'NASDAQ', invert: false },
+  { key: 'vix',    label: 'VIX(공포)',   ticker: '^VIX',     market: 'NYSE',   invert: true  },
+  { key: 'us10y',  label: '美10Y',       ticker: '^TNX',     market: 'NYSE',   invert: true  },
+  { key: 'dxy',    label: 'DXY(달러)',   ticker: 'DX-Y.NYB', market: 'NYSE',   invert: true  },
+  { key: 'usdkrw', label: '원/달러',     ticker: 'KRW=X',    market: 'NYSE',   invert: true  },
+  { key: 'wti',    label: 'WTI(유가)',   ticker: 'CL=F',     market: 'NYSE',   invert: true  },
+]
+
+/**
+ * 미국 선행지표 6종 조회 (60초 캐시) — 실패 티커는 null로 스킵(부분 실패 내성)
+ * @returns {Promise<{ indicators: Array, snapshot: Record<string, number> }>}
+ *   indicators: 표시용 [{key,label,ticker,invert,price,changePercent,available}]
+ *   snapshot: computeOvernightBias 입력용 { key: changePercent } (조회 성공 지표만)
+ */
+export async function getLeadingIndicators() {
+  const cacheKey = 'indicators:leading'
+  const cached = getCached(cacheKey)
+  if (cached) return cached
+
+  const quotes = await Promise.all(
+    LEADING_INDICATORS.map(ind => fetchQuote(ind.ticker, ind.market).catch(() => null))
+  )
+
+  const indicators = LEADING_INDICATORS.map((ind, i) => ({
+    key: ind.key,
+    label: ind.label,
+    ticker: ind.ticker,
+    invert: ind.invert,
+    price: quotes[i]?.currentPrice ?? null,
+    changePercent: quotes[i]?.changePercent ?? null,
+    available: quotes[i] != null,
+  }))
+
+  const snapshot = {}
+  for (const ind of indicators) {
+    if (ind.changePercent != null) snapshot[ind.key] = ind.changePercent
+  }
+
+  const result = { indicators, snapshot }
+  setCached(cacheKey, result, 60 * 1000)
+  return result
+}
+
 /**
  * 에러 메시지 생성 (HTTP 상태코드별 사용자 친화적 메시지)
  * @param {object} error
