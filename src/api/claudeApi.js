@@ -12,7 +12,8 @@ import { ANALYSIS_PROMPT, MARKET_BRIEF_PROMPT, PORTFOLIO_ANALYSIS_PROMPT, buildM
 import { fetchNews } from './newsApi.js'
 import { scoreNewsSentiment, mergeSentiment } from './sentimentApi.js'
 import { fetchDisclosures } from './disclosureApi.js'
-import { fetchQuote } from './stockApi.js'
+import { fetchQuote, fetchHistory } from './stockApi.js'
+import { computeOvernightBias, computeVixRegime } from './regimeApi.js'
 import { getCached, setCached } from './apiCache'
 import { searchByQuery } from '../utils/stockMasterDb.js'
 
@@ -251,6 +252,28 @@ export async function getLeadingIndicators() {
 }
 
 /**
+ * VIX 변동성 레짐 — 1년 히스토리 기반 252일 백분위 분류 (6시간 캐시, 실패 시 null)
+ * @returns {Promise<{ regime, percentile, p33, p67 }|null>}
+ */
+export async function getVixRegime() {
+  const cacheKey = 'regime:vix'
+  const cached = getCached(cacheKey)
+  if (cached) return cached
+
+  const hist = await fetchHistory('^VIX', 'NYSE', '1y').catch(() => [])
+  const closes = (hist || []).map(d => d.close).filter(v => v != null)
+  if (closes.length < 30) return null
+
+  const currentVix = closes[closes.length - 1]
+  const prevVix = closes[closes.length - 2]
+  const dayChange = prevVix ? ((currentVix - prevVix) / prevVix) * 100 : null
+
+  const result = computeVixRegime(closes, currentVix, dayChange)
+  setCached(cacheKey, result, 6 * 60 * 60 * 1000) // 6시간 (장중 갱신 충분)
+  return result
+}
+
+/**
  * 에러 메시지 생성 (HTTP 상태코드별 사용자 친화적 메시지)
  * @param {object} error
  * @returns {string}
@@ -401,12 +424,27 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           contextText = buildPortfolioMovementContext({ holdings: enrichedHoldings, news })
           systemPrompt = PORTFOLIO_ANALYSIS_PROMPT
         } else {
-          // 경로 3: 종목도 포트폴리오도 없으면 전체 시장 브리핑
-          const [indices, news] = await Promise.all([
+          // 경로 3: 종목도 포트폴리오도 없으면 전체 시장 브리핑 + 미국 선행지표 종합
+          const [indices, leading, vixRegime, news] = await Promise.all([
             getMarketIndices().catch(() => []),
+            getLeadingIndicators().catch(() => ({ indicators: [], snapshot: {} })),
+            getVixRegime().catch(() => null),
             fetchNews('^GSPC', 'NYSE').catch(() => []),
           ])
-          contextText = buildMarketBriefContext({ indices, news })
+          // 지수 등락(S&P500·NASDAQ)도 bias에 반영
+          const idxMap = Object.fromEntries(indices.map(i => [i.label, i.changePercent]))
+          const bias = computeOvernightBias({
+            ...leading.snapshot,
+            sp500: idxMap['S&P500'],
+            nasdaq: idxMap['NASDAQ'],
+          })
+          contextText = buildMarketBriefContext({
+            indices,
+            leading: leading.indicators,
+            bias,
+            regime: vixRegime,
+            news,
+          })
           systemPrompt = MARKET_BRIEF_PROMPT
         }
         break
