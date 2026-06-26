@@ -11,7 +11,7 @@ const VALID_AGENTS = ['analysis', 'journal', 'research', 'portfolio', 'alert', '
 export const ROUTING_RULES = [
   {
     agent: 'analysis',
-    keywords: ['왜', '이유', '원인', '어떻게 된', '무슨 일', '급락', '급등', '폭락', '폭등', '하락 이유', '상승 이유', '오늘 시장', '시장 왜', '코스피 왜', '나스닥 왜'],
+    keywords: ['왜', '이유', '원인', '어떻게 된', '무슨 일', '급락', '급등', '폭락', '폭등', '하락 이유', '상승 이유', '오늘 시장', '시장 왜', '코스피 왜', '나스닥 왜', '장 전망', '증시 전망', '시장 국면', '선행지표', '변동성', '오늘 장'],
   },
   {
     agent: 'journal',
