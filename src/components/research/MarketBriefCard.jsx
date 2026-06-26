@@ -187,8 +187,11 @@ export default function MarketBriefCard() {
             {availableLeading.map(l => (
               <span key={l.key} className="text-gray-600 dark:text-gray-400">
                 {l.label}{' '}
+                <span className="tabular-nums text-gray-800 dark:text-gray-200">
+                  {l.price != null ? l.price.toLocaleString() : '-'}
+                </span>{' '}
                 <span className={l.changePercent >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}>
-                  {l.changePercent >= 0 ? '+' : ''}{l.changePercent?.toFixed(2)}%
+                  ({l.changePercent >= 0 ? '+' : ''}{l.changePercent?.toFixed(2)}%)
                 </span>
               </span>
             ))}
