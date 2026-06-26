@@ -373,9 +373,14 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
         let market = sd?.market ?? 'NASDAQ'
         let changePercent = sd?.changePercent ?? 0
 
+        // 시장 전반 의도("오늘 시장"·"장 전망"·"국면" 등)면 보유종목이 있어도 시장 국면(경로 3) 우선
+        const hasMarketIntent = /시장|증시|장\s?전망|국면|선행지표|코스피|코스닥|지수|오늘\s?장/.test(userMessage || '')
+        const hasPortfolioIntent = /포트폴리오|내\s?종목|보유|수익률|평가손익|자산|리밸런싱/.test(userMessage || '')
+        const preferMarketBrief = hasMarketIntent && !hasPortfolioIntent
+
         // 채팅 free-text: 컨텍스트에 종목이 없으면 메시지에서 종목 추출 시도
         // (시세 조회 성공 시에만 종목 경로로 전환 — 실패하면 포트폴리오/시장 경로로 폴백)
-        if (!ticker) {
+        if (!ticker && !preferMarketBrief) {
           const extracted = await extractTicker(userMessage).catch(() => null)
           if (extracted) {
             const q = await fetchQuote(extracted.ticker, extracted.market).catch(() => null)
@@ -401,7 +406,7 @@ export async function sendToAgent(userMessage, context = {}, forceAgent = null) 
           const newsWithSentiment = mergeSentiment(news, sentiments)
           contextText = buildMovementContext({ ticker, name, changePercent, market, news: newsWithSentiment, disclosures })
           systemPrompt = ANALYSIS_PROMPT
-        } else if (context.holdings?.length > 0) {
+        } else if (!preferMarketBrief && context.holdings?.length > 0) {
           // 경로 2: changePercent 없는 종목만 quote fetch (이미 있으면 중복 fetch 방지)
           const [enrichedHoldings, news] = await Promise.all([
             Promise.all(
