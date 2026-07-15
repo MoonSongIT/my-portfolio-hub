@@ -46,12 +46,16 @@ export default function Dashboard() {
   const [accountModalOpen, setAccountModalOpen] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const autoSnapshotRan = useRef(false)
-  const {
-    accounts, selectedAccountId, exchangeRate,
-    getSelectedHoldings, getSelectedCash,
-    updateAllPrices, updateExchangeRate, lastUpdated,
-    selectAccount,
-  } = usePortfolioStore()
+  // 스토어 필드별 선택적 구독 — 관련 없는 필드 변경이 Dashboard 전체를 재렌더하지 않도록 분리
+  const accounts          = usePortfolioStore(s => s.accounts)
+  const selectedAccountId = usePortfolioStore(s => s.selectedAccountId)
+  const exchangeRate      = usePortfolioStore(s => s.exchangeRate)
+  const lastUpdated       = usePortfolioStore(s => s.lastUpdated)
+  const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
+  const getSelectedCash     = usePortfolioStore(s => s.getSelectedCash)
+  const updateAllPrices     = usePortfolioStore(s => s.updateAllPrices)
+  const updateExchangeRate  = usePortfolioStore(s => s.updateExchangeRate)
+  const selectAccount       = usePortfolioStore(s => s.selectAccount)
 
   // 실제 계좌 수는 accountStore 기준으로 읽음 (portfolioStore.accounts는 동기화 지연 있음)
   const userAccounts = useUserAccounts()
@@ -157,6 +161,10 @@ export default function Dashboard() {
       ? [...history.slice(0, -1), todayPoint]
       : [...history, todayPoint]
   }, [allSnapshots, chartPeriod, exchangeRate, cashFlows, entries, selectedAccountId, totalPnL])
+
+  // 차트 데이터는 지연값으로 전달 — 계좌 전환 등 무거운 recharts 렌더를 non-blocking으로 미뤄 INP 개선
+  // memo(ProfitLineChart)가 urgent 페인트 시 이전 배열 참조를 받아 재렌더를 건너뜀
+  const deferredHistory = useDeferredValue(portfolioHistory)
 
   // 마운트 시 스냅샷 없으면 자동 저장 + 과거 데이터 백필 (silent)
   useEffect(() => {
@@ -543,7 +551,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <ProfitLineChart
-              data={portfolioHistory}
+              data={deferredHistory}
               period={chartPeriod}
               onPeriodChange={setChartPeriod}
               isLoading={snapshotLoading}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, memo } from 'react'
 import {
   ComposedChart, Area, Bar, Cell, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -95,7 +95,7 @@ function Skeleton() {
  *   isLoading?: boolean,
  * }} props
  */
-export default function ProfitLineChart({ data = [], period, onPeriodChange, isLoading = false }) {
+function ProfitLineChart({ data = [], period, onPeriodChange, isLoading = false }) {
   const lastDate = data.length > 0 ? data[data.length - 1].date : null
 
   const yDomain = useMemo(() => {
@@ -240,3 +240,6 @@ export default function ProfitLineChart({ data = [], period, onPeriodChange, isL
     </div>
   )
 }
+
+// 부모(Dashboard) 재렌더 시 data/period가 동일하면 recharts 재렌더 스킵 — INP 개선
+export default memo(ProfitLineChart)
