@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useRef } from 'react'
+import { useMemo, useEffect, useState, useRef, useDeferredValue } from 'react'
 import { Link } from 'react-router-dom'
 import { TrendingUp, TrendingDown, Wallet, RefreshCw, Camera, Loader2, BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
