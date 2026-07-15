@@ -98,7 +98,9 @@ export const useAuthStore = create(
       // ── 하위 호환성 — App.jsx onAuthStateChange 콜백에서 사용 ──
       setSupabaseSession: (session) => {
         if (session?.user) {
-          ensureProfile(session.user)  // 비동기, 오류 무시
+          // Supabase 권고: onAuthStateChange 콜백 내부에서 DB 호출 시 세션 토큰이
+          // 아직 부착되지 않아 401 발생 → 다음 틱으로 미뤄 토큰 부착 후 실행
+          setTimeout(() => ensureProfile(session.user), 0)  // 비동기, 오류 무시
           set({
             currentUser: {
               id: session.user.id,
