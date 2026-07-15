@@ -97,10 +97,34 @@ function shouldSkip(row, col) {
 }
 
 /**
+ * 유진 HTS 표준 15열 고정 컬럼맵 — 헤더 미탐지 시 기본값
+ * detectEugeneColumns의 fallback 인덱스와 동일
+ */
+export const DEFAULT_EUGENE_COLUMNS = {
+  date: 0,
+  name: 1,
+  type: 2,
+  buyPrice: 3,
+  buyQty: 4,
+  buyAmount: 5,
+  sellPrice: 6,
+  sellQty: 7,
+  sellAmount: 8,
+  tradingCost: 9,
+  realizedPnl: 10,
+  realizedRate: 11,
+  commission: 12,
+  tax: 13,
+  ticker: 14,
+}
+
+/**
  * 유진 HTS 단일 데이터 행 → 정규화된 거래 엔트리
  * buyQty > 0 → buy, 그 외 → sell
+ * @param {Array} row 데이터 행 (positional)
+ * @param {object} [col=DEFAULT_EUGENE_COLUMNS] 컬럼 인덱스 맵 (미지정 시 표준 15열)
  */
-export function parseEugeneRow(row, col) {
+export function parseEugeneRow(row, col = DEFAULT_EUGENE_COLUMNS) {
   const date = normalizeDate(row[col.date])
   const name = String(row[col.name] ?? '').trim()
   const ticker = normalizeTicker(row[col.ticker])
