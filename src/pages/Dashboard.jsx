@@ -360,8 +360,9 @@ export default function Dashboard() {
       sub: `아침대비 ${formatPercent(morningPnl.rate)}`,
       sub2: `실현 ${formatCurrencyShort(realizedTodayPnl.amount)} (${realizedTodayPnl.count}건)`,
       icon: morningPnl.amount >= 0 ? TrendingUp : TrendingDown,
-      color: morningPnl.amount >= 0 ? 'text-emerald-600' : 'text-red-500',
-      bgColor: morningPnl.amount >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20',
+      // 한국 주식 색상 컨벤션: 상승(+)=빨강, 하락(-)=파랑 (미국 관행과 반대)
+      color: morningPnl.amount >= 0 ? 'text-red-600' : 'text-blue-600',
+      bgColor: morningPnl.amount >= 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20',
       loading: priceLoading,
     },
     {
@@ -370,15 +371,15 @@ export default function Dashboard() {
       sub: formatCurrencyShort(totalPnL),
       sub2: holdingsSub,
       icon: totalReturn >= 0 ? TrendingUp : TrendingDown,
-      color: totalReturn >= 0 ? 'text-emerald-600' : 'text-red-500',
-      bgColor: totalReturn >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20',
+      color: totalReturn >= 0 ? 'text-red-600' : 'text-blue-600',
+      bgColor: totalReturn >= 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20',
     },
     {
       title: '종합수익률',
       value: formatPercent(comprehensiveReturn),
       icon: comprehensiveReturn >= 0 ? TrendingUp : TrendingDown,
-      color: comprehensiveReturn >= 0 ? 'text-emerald-600' : 'text-red-500',
-      bgColor: comprehensiveReturn >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20',
+      color: comprehensiveReturn >= 0 ? 'text-red-600' : 'text-blue-600',
+      bgColor: comprehensiveReturn >= 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20',
       breakdown: [
         { label: '미실현손익', value: formatCurrencyShort(totalPnL), pnl: totalPnL },
         { label: '실현손익', value: formatCurrencyShort(combinedRealizedPnl), pnl: combinedRealizedPnl },
@@ -520,7 +521,7 @@ export default function Dashboard() {
                             item.divider
                               ? 'font-semibold text-gray-600 dark:text-gray-300'
                               : item.pnl != null
-                                ? item.pnl >= 0 ? 'text-emerald-600' : 'text-red-500'
+                                ? item.pnl >= 0 ? 'text-red-600' : 'text-blue-600'
                                 : 'text-gray-500 dark:text-gray-400'
                           }>
                             {item.value}
@@ -604,7 +605,7 @@ export default function Dashboard() {
                     <TableCell className="text-right">
                       {formatCurrency(h.currentPrice, h.currency)}
                     </TableCell>
-                    <TableCell className={`text-right font-semibold ${h.returnRate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <TableCell className={`text-right font-semibold ${h.returnRate >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
                       {formatPercent(h.returnRate)}
                     </TableCell>
                     <TableCell className="text-right text-gray-600 dark:text-gray-400">

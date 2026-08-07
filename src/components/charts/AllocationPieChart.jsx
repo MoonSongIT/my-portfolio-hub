@@ -8,6 +8,10 @@ const COLORS = [
   '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1',
 ]
 
+// 국가별 차트 하단 안내문 — S&P500 등 미국 지수 추종 ETF는 국내 상장이라도 미국 자산으로 분류됨을 명시
+// (calcCountryAllocation의 종목명 '미국' 포함 예외 규칙과 짝을 이루는 UI 설명)
+const COUNTRY_NOTE = 'S&P500 등 미국 지수를 추종하는 ETF는 국내 상장이라도 미국 자산으로 분류됩니다.'
+
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const data = payload[0].payload
@@ -116,6 +120,11 @@ export default function AllocationPieChart({ holdings, accounts = [], selectedAc
               {label}
             </p>
             <SingleChart data={chartData} innerRadius={45} outerRadius={80} height={240} />
+            {key === 'country' && (
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center mt-1 px-2 leading-snug">
+                {COUNTRY_NOTE}
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -138,6 +147,11 @@ export default function AllocationPieChart({ holdings, accounts = [], selectedAc
           ))}
         </div>
         <SingleChart data={data} innerRadius={60} outerRadius={110} height={300} />
+        {currentView === 'country' && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-2 px-2 leading-snug">
+            {COUNTRY_NOTE}
+          </p>
+        )}
       </div>
     </div>
   )
