@@ -51,6 +51,7 @@ export default function Dashboard() {
   const selectedAccountId = usePortfolioStore(s => s.selectedAccountId)
   const exchangeRate      = usePortfolioStore(s => s.exchangeRate)
   const lastUpdated       = usePortfolioStore(s => s.lastUpdated)
+  const prices            = usePortfolioStore(s => s.prices)
   const getSelectedHoldings = usePortfolioStore(s => s.getSelectedHoldings)
   const getSelectedCash     = usePortfolioStore(s => s.getSelectedCash)
   const updateAllPrices     = usePortfolioStore(s => s.updateAllPrices)
@@ -64,7 +65,8 @@ export default function Dashboard() {
   const getAvailableCash = useCashFlowStore(s => s.getAvailableCash)
   const cashFlows = useCashFlowStore(s => s.cashFlows)
   const [sectorMap, setSectorMap] = useState({})
-  const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId])
+  // prices도 의존성에 포함 — 새로고침으로 시세만 갱신돼도(accounts 참조는 불변) 재계산되도록
+  const holdings = useMemo(() => getSelectedHoldings(), [accounts, selectedAccountId, prices])
   const { krw: cashKRW, usd: cashUSD } = useMemo(() => getSelectedCash(), [accounts, selectedAccountId, cashFlows])
 
   // 고유 종목만 추출 (일괄 시세 조회용)
@@ -541,7 +543,7 @@ export default function Dashboard() {
             <CardTitle className="text-lg">자산 배분</CardTitle>
           </CardHeader>
           <CardContent>
-            <AllocationPieChart holdings={holdingsWithSector} accounts={accounts} selectedAccountId={selectedAccountId} />
+            <AllocationPieChart holdings={holdingsWithSector} accounts={accounts} selectedAccountId={selectedAccountId} exchangeRate={exchangeRate} />
           </CardContent>
         </Card>
 

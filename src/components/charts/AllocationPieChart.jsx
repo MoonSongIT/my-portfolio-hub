@@ -72,16 +72,16 @@ function SingleChart({ data, innerRadius = 60, outerRadius = 110, height = 300 }
   )
 }
 
-export default function AllocationPieChart({ holdings, accounts = [], selectedAccountId = 'all' }) {
+export default function AllocationPieChart({ holdings, accounts = [], selectedAccountId = 'all', exchangeRate }) {
   const showAccountTab = selectedAccountId === 'all' && accounts.length > 1
   const [viewType, setViewType] = useState('stock')
 
-  const rawAllocation = calcAllocation(holdings)
+  const rawAllocation = calcAllocation(holdings, exchangeRate)
   // 종목별: 같은 종목을 계좌 구분 없이 하나로 합산 (전체 조회 시 중복 슬라이스 방지)
   const stockAllocation = calcStockAllocation(rawAllocation)
   const sectorAllocation = calcSectorAllocation(rawAllocation)
   const countryAllocation = calcCountryAllocation(rawAllocation)
-  const accountAllocation = showAccountTab ? calcAccountAllocation(accounts) : []
+  const accountAllocation = showAccountTab ? calcAccountAllocation(accounts, exchangeRate) : []
 
   const dataMap = {
     stock: stockAllocation,
