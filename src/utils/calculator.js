@@ -107,13 +107,19 @@ export const calcSectorAllocation = (allocations) => {
 }
 
 // 국가별 그룹핑 (KR / US)
+// - market이 NYSE/NASDAQ인 실제 해외 상장 종목만 미국으로 분류 (KOSDAQ 등 국내 시장은 전부 한국)
+// - 예외: 국내(KRX) 상장이라도 종목명에 '미국'이 포함되면 미국 익스포저로 분류한다
+//   (예: TIGER 미국S&P500 — 국내 상장 ETF지만 추종 지수가 미국이라 미국으로 보고 싶은 경우)
+//   단, 원화로 거래되는 종목이므로 환율 변환 없이 원화 평가액(a.value)을 그대로 합산한다
 export const calcCountryAllocation = (allocations) => {
   const countries = {
     한국: { name: '한국', value: 0, weight: 0 },
     미국: { name: '미국', value: 0, weight: 0 },
   }
   allocations.forEach(a => {
-    const key = a.market === 'KRX' ? '한국' : '미국'
+    const isOverseasListed = a.market === 'NYSE' || a.market === 'NASDAQ'
+    const isUsNamedDomesticEtf = !isOverseasListed && a.name?.includes('미국')
+    const key = (isOverseasListed || isUsNamedDomesticEtf) ? '미국' : '한국'
     countries[key].value += a.value
     countries[key].weight += a.weight
   })
